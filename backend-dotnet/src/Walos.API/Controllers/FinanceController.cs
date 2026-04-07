@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Walos.API.Middleware;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Finance;
 using Walos.Domain.Entities;
@@ -14,22 +13,20 @@ namespace Walos.API.Controllers;
 public class FinanceController : ControllerBase
 {
     private readonly IFinanceRepository _repository;
+    private readonly ITenantContext _tenant;
     private readonly ILogger<FinanceController> _logger;
 
-    public FinanceController(IFinanceRepository repository, ILogger<FinanceController> logger)
+    public FinanceController(IFinanceRepository repository, ITenantContext tenant, ILogger<FinanceController> logger)
     {
         _repository = repository;
+        _tenant = tenant;
         _logger = logger;
     }
-
-    private long GetCompanyId() => long.Parse(User.FindFirst("companyId")?.Value ?? "0");
-    private long GetUserId() => long.Parse(User.FindFirst("userId")?.Value ?? "0");
-    private long? GetBranchId() => HttpContext.GetBranchId() ?? (long.TryParse(User.FindFirst("branchId")?.Value, out var b) ? b : null);
 
     [HttpGet("categories")]
     public async Task<IActionResult> GetCategories([FromQuery] string? type)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
         var categories = (await _repository.GetCategoriesAsync(companyId, type)).ToList();
         return Ok(ApiResponse<List<FinancialCategory>>.Ok(categories, count: categories.Count));
     }
@@ -37,8 +34,8 @@ public class FinanceController : ControllerBase
     [HttpPost("categories")]
     public async Task<IActionResult> CreateCategory([FromBody] CreateFinancialCategoryRequest request)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
 
         if (string.IsNullOrWhiteSpace(request.Name))
             return BadRequest(ApiResponse.Fail("El nombre de la categoria es obligatorio"));
@@ -62,7 +59,7 @@ public class FinanceController : ControllerBase
     [HttpPut("categories/{id:long}")]
     public async Task<IActionResult> UpdateCategory(long id, [FromBody] UpdateFinancialCategoryRequest request)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
         var category = await _repository.GetCategoryByIdAsync(id, companyId);
         if (category is null)
             return NotFound(ApiResponse.Fail("Categoria no encontrada"));
@@ -82,7 +79,7 @@ public class FinanceController : ControllerBase
     [HttpDelete("categories/{id:long}")]
     public async Task<IActionResult> DeleteCategory(long id)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
         await _repository.SoftDeleteCategoryAsync(id, companyId);
         return Ok(ApiResponse.Ok("Categoria eliminada exitosamente"));
     }
@@ -90,8 +87,8 @@ public class FinanceController : ControllerBase
     [HttpGet("entries")]
     public async Task<IActionResult> GetEntries([FromQuery] long? branchId, [FromQuery] string? type, [FromQuery] long? categoryId, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
     {
-        var companyId = GetCompanyId();
-        var branch = branchId ?? GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var branch = branchId ?? _tenant.BranchId;
         var entries = (await _repository.GetEntriesAsync(companyId, branch, type, categoryId, startDate, endDate)).ToList();
         return Ok(ApiResponse<List<FinancialEntry>>.Ok(entries, count: entries.Count));
     }
@@ -99,9 +96,9 @@ public class FinanceController : ControllerBase
     [HttpPost("entries")]
     public async Task<IActionResult> CreateEntry([FromBody] CreateFinancialEntryRequest request)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
-        var branchId = request.BranchId ?? GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
+        var branchId = request.BranchId ?? _tenant.BranchId;
 
         if (request.Type is not ("income" or "expense"))
             return BadRequest(ApiResponse.Fail("El tipo debe ser income o expense"));
@@ -140,7 +137,7 @@ public class FinanceController : ControllerBase
     [HttpPut("entries/{id:long}")]
     public async Task<IActionResult> UpdateEntry(long id, [FromBody] UpdateFinancialEntryRequest request)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
         var existing = await _repository.GetEntryByIdAsync(id, companyId);
         if (existing is null)
             return NotFound(ApiResponse.Fail("Movimiento no encontrado"));
@@ -159,7 +156,7 @@ public class FinanceController : ControllerBase
         if (!string.Equals(category.Type, request.Type, StringComparison.OrdinalIgnoreCase))
             return BadRequest(ApiResponse.Fail("La categoria no coincide con el tipo seleccionado"));
 
-        existing.BranchId = request.BranchId ?? GetBranchId();
+        existing.BranchId = request.BranchId ?? _tenant.BranchId;
         existing.CategoryId = request.CategoryId;
         existing.Type = request.Type.Trim().ToLowerInvariant();
         existing.Description = request.Description.Trim();
@@ -176,7 +173,7 @@ public class FinanceController : ControllerBase
     [HttpDelete("entries/{id:long}")]
     public async Task<IActionResult> DeleteEntry(long id)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
         await _repository.SoftDeleteEntryAsync(id, companyId);
         return Ok(ApiResponse.Ok("Movimiento eliminado exitosamente"));
     }
@@ -184,8 +181,8 @@ public class FinanceController : ControllerBase
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary([FromQuery] long? branchId, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
     {
-        var companyId = GetCompanyId();
-        var branch = branchId ?? GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var branch = branchId ?? _tenant.BranchId;
         var summary = await _repository.GetSummaryAsync(companyId, branch, startDate, endDate);
         return Ok(ApiResponse<FinancialSummary>.Ok(summary));
     }

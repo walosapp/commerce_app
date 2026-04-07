@@ -37,13 +37,24 @@ public class CreateProductValidator : AbstractValidator<CreateProductRequest>
         RuleFor(x => x.SalePrice)
             .GreaterThanOrEqualTo(0).WithMessage("El precio de venta debe ser mayor o igual a 0");
 
+        RuleFor(x => x.ProductType)
+            .Must(x => x is "simple" or "prepared" or "combo" or "service")
+            .WithMessage("El tipo de producto debe ser: simple, prepared, combo o service");
+
         RuleFor(x => x.MinStock)
-            .GreaterThanOrEqualTo(0).WithMessage("El stock mínimo debe ser mayor o igual a 0");
+            .GreaterThanOrEqualTo(0).WithMessage("El stock mínimo debe ser mayor o igual a 0")
+            .When(x => x.TrackStock);
 
         RuleFor(x => x.MaxStock)
-            .GreaterThanOrEqualTo(0).WithMessage("El stock máximo debe ser mayor o igual a 0");
+            .GreaterThanOrEqualTo(0).WithMessage("El stock máximo debe ser mayor o igual a 0")
+            .When(x => x.TrackStock);
 
         RuleFor(x => x.ReorderPoint)
-            .GreaterThanOrEqualTo(0).WithMessage("El punto de reorden debe ser mayor o igual a 0");
+            .GreaterThanOrEqualTo(0).WithMessage("El punto de reorden debe ser mayor o igual a 0")
+            .When(x => x.TrackStock);
+
+        RuleFor(x => x.ShelfLifeDays)
+            .GreaterThan(0).WithMessage("Los días de vida útil deben ser mayores a 0")
+            .When(x => x.IsPerishable && x.ShelfLifeDays.HasValue);
     }
 }

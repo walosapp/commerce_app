@@ -15,6 +15,10 @@ public class Product : BaseEntity
     public decimal MaxStock { get; set; }
     public decimal ReorderPoint { get; set; }
     public bool IsPerishable { get; set; }
+    public int? ShelfLifeDays { get; set; }
+    public string ProductType { get; set; } = "simple";
+    public bool TrackStock { get; set; } = true;
+    public bool IsForSale { get; set; } = true;
     public string? ImageUrl { get; set; }
     public bool IsActive { get; set; } = true;
     public long? CreatedBy { get; set; }

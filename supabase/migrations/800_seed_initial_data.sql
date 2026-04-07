@@ -96,18 +96,20 @@ DO $$
 DECLARE
     v_company_id BIGINT;
     v_role_id BIGINT;
+    v_branch_id BIGINT;
 BEGIN
     SELECT id INTO v_company_id FROM core.companies WHERE tax_id = 'DEMO123456789';
     SELECT id INTO v_role_id FROM core.roles WHERE company_id = v_company_id AND code = 'super_admin';
+    SELECT id INTO v_branch_id FROM core.branches WHERE company_id = v_company_id AND is_main = TRUE;
 
     INSERT INTO core.users (
         company_id, branch_id, role_id,
         first_name, last_name, email, phone,
         password_hash, language, is_active, email_verified
     ) VALUES (
-        v_company_id, NULL, v_role_id,
+        v_company_id, v_branch_id, v_role_id,
         'Admin', 'Sistema', 'admin@mibar.com', '+57 300 123 4567',
-        '$2a$10$YourHashHere',
+        '$2a$11$x32tilCh/RfpNOyZFp69Ken8XYjZXSQjRgoLOyoQWtx1pE3pCPt96', -- admin123
         'es', TRUE, TRUE
     ) ON CONFLICT (email) DO NOTHING;
 END $$;

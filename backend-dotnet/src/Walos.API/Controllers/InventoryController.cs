@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Walos.API.Middleware;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Inventory;
 using Walos.Application.Services;
@@ -16,27 +15,20 @@ public class InventoryController : ControllerBase
 {
     private readonly IInventoryRepository _repository;
     private readonly IInventoryService _service;
+    private readonly ITenantContext _tenant;
     private readonly ILogger<InventoryController> _logger;
 
     public InventoryController(
         IInventoryRepository repository,
         IInventoryService service,
+        ITenantContext tenant,
         ILogger<InventoryController> logger)
     {
         _repository = repository;
         _service = service;
+        _tenant = tenant;
         _logger = logger;
     }
-
-    private long GetCompanyId() =>
-        long.Parse(User.FindFirst("companyId")?.Value ?? "0");
-
-    private long GetUserId() =>
-        long.Parse(User.FindFirst("userId")?.Value ?? "0");
-
-    private long? GetBranchId() =>
-        HttpContext.GetBranchId()
-        ?? (long.TryParse(User.FindFirst("branchId")?.Value, out var b) ? b : null);
 
     /// <summary>
     /// GET /api/v1/inventory/products - Listar productos
@@ -47,7 +39,7 @@ public class InventoryController : ControllerBase
         [FromQuery] bool? isActive,
         [FromQuery] string? search)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
         var filters = new ProductFilter
         {
             CategoryId = categoryId,
@@ -67,7 +59,7 @@ public class InventoryController : ControllerBase
     [HttpGet("products/{id:long}")]
     public async Task<IActionResult> GetProductById(long id)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
         var product = await _repository.GetProductByIdAsync(id, companyId);
 
         if (product is null)
@@ -82,8 +74,8 @@ public class InventoryController : ControllerBase
     [HttpPost("products")]
     public async Task<IActionResult> CreateProduct([FromBody] CreateProductRequest request)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
 
         var product = new Product
         {
@@ -100,6 +92,10 @@ public class InventoryController : ControllerBase
             MaxStock = request.MaxStock,
             ReorderPoint = request.ReorderPoint,
             IsPerishable = request.IsPerishable,
+            ShelfLifeDays = request.ShelfLifeDays,
+            ProductType = request.ProductType,
+            TrackStock = request.TrackStock,
+            IsForSale = request.IsForSale,
             CreatedBy = userId
         };
 
@@ -118,8 +114,8 @@ public class InventoryController : ControllerBase
     [HttpPut("products/{id:long}")]
     public async Task<IActionResult> UpdateProduct(long id, [FromBody] UpdateProductRequest request)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
 
         var existing = await _repository.GetProductByIdAsync(id, companyId);
         if (existing is null)
@@ -138,6 +134,10 @@ public class InventoryController : ControllerBase
         existing.MaxStock = request.MaxStock;
         existing.ReorderPoint = request.ReorderPoint;
         existing.IsPerishable = request.IsPerishable;
+        existing.ShelfLifeDays = request.ShelfLifeDays;
+        existing.ProductType = request.ProductType;
+        existing.TrackStock = request.TrackStock;
+        existing.IsForSale = request.IsForSale;
 
         var updated = await _repository.UpdateProductAsync(existing);
 
@@ -154,7 +154,7 @@ public class InventoryController : ControllerBase
     [RequestSizeLimit(2 * 1024 * 1024)] // 2MB
     public async Task<IActionResult> UploadProductImage(long id, IFormFile file)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
 
         if (file is null || file.Length == 0)
             return BadRequest(ApiResponse.Fail("No se proporcionó archivo"));
@@ -193,8 +193,8 @@ public class InventoryController : ControllerBase
     [HttpDelete("products/{id:long}")]
     public async Task<IActionResult> DeleteProduct(long id)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
 
         await _repository.SoftDeleteProductAsync(id, companyId, userId);
 
@@ -209,7 +209,7 @@ public class InventoryController : ControllerBase
     [HttpGet("categories")]
     public async Task<IActionResult> GetCategories()
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
         var categories = await _repository.GetCategoriesAsync(companyId);
         var list = categories.ToList();
         return Ok(ApiResponse<List<CategoryInfo>>.Ok(list, count: list.Count));
@@ -221,7 +221,7 @@ public class InventoryController : ControllerBase
     [HttpGet("units")]
     public async Task<IActionResult> GetUnits()
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
         var units = await _repository.GetUnitsAsync(companyId);
         var list = units.ToList();
         return Ok(ApiResponse<List<UnitInfo>>.Ok(list, count: list.Count));
@@ -233,8 +233,8 @@ public class InventoryController : ControllerBase
     [HttpGet("stock")]
     public async Task<IActionResult> GetStock([FromQuery] long? branchId)
     {
-        var companyId = GetCompanyId();
-        var branch = branchId ?? GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var branch = branchId ?? _tenant.BranchId;
 
         if (branch is null)
             return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
@@ -251,8 +251,8 @@ public class InventoryController : ControllerBase
     [HttpGet("stock/low")]
     public async Task<IActionResult> GetLowStock([FromQuery] long? branchId)
     {
-        var companyId = GetCompanyId();
-        var branch = branchId ?? GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var branch = branchId ?? _tenant.BranchId;
 
         if (branch is null)
             return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
@@ -269,9 +269,9 @@ public class InventoryController : ControllerBase
     [HttpPost("stock/add")]
     public async Task<IActionResult> AddStock([FromBody] AddStockRequest request)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
-        var branchId = request.BranchId ?? GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
+        var branchId = request.BranchId ?? _tenant.BranchId;
 
         if (branchId is null)
             return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
@@ -335,9 +335,9 @@ public class InventoryController : ControllerBase
     [HttpPost("ai/process")]
     public async Task<IActionResult> ProcessAIInput([FromBody] AiInputRequest request)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
-        var branchId = GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
+        var branchId = _tenant.BranchId;
 
         var context = new AiInputContext
         {
@@ -359,8 +359,8 @@ public class InventoryController : ControllerBase
     [HttpPost("ai/confirm/{interactionId:long}")]
     public async Task<IActionResult> ConfirmAIAction(long interactionId)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
 
         var result = await _service.ConfirmAiActionAsync(interactionId, userId, companyId);
 
@@ -373,8 +373,8 @@ public class InventoryController : ControllerBase
     [HttpGet("alerts")]
     public async Task<IActionResult> GetAlerts([FromQuery] long? branchId)
     {
-        var companyId = GetCompanyId();
-        var branch = branchId ?? GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var branch = branchId ?? _tenant.BranchId;
 
         var alerts = await _repository.GetActiveAlertsAsync(companyId, branch);
         var list = alerts.ToList();
@@ -391,8 +391,8 @@ public class InventoryController : ControllerBase
         [FromQuery] DateTime? startDate,
         [FromQuery] DateTime? endDate)
     {
-        var companyId = GetCompanyId();
-        var branch = branchId ?? GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var branch = branchId ?? _tenant.BranchId;
 
         if (branch is null)
             return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));

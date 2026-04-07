@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Walos.API.Middleware;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Sales;
 using Walos.Domain.Entities;
@@ -16,29 +15,22 @@ public class SalesController : ControllerBase
     private readonly ISalesRepository _salesRepo;
     private readonly IInventoryRepository _inventoryRepo;
     private readonly ICompanyRepository _companyRepo;
+    private readonly ITenantContext _tenant;
     private readonly ILogger<SalesController> _logger;
 
     public SalesController(
         ISalesRepository salesRepo,
         IInventoryRepository inventoryRepo,
         ICompanyRepository companyRepo,
+        ITenantContext tenant,
         ILogger<SalesController> logger)
     {
         _salesRepo = salesRepo;
         _inventoryRepo = inventoryRepo;
         _companyRepo = companyRepo;
+        _tenant = tenant;
         _logger = logger;
     }
-
-    private long GetCompanyId() =>
-        long.Parse(User.FindFirst("companyId")?.Value ?? "0");
-
-    private long GetUserId() =>
-        long.Parse(User.FindFirst("userId")?.Value ?? "0");
-
-    private long? GetBranchId() =>
-        HttpContext.GetBranchId()
-        ?? (long.TryParse(User.FindFirst("branchId")?.Value, out var b) ? b : null);
 
     private async Task<string?> ValidateItemAvailabilityAsync(
         long companyId,
@@ -47,15 +39,25 @@ public class SalesController : ControllerBase
     {
         foreach (var requestedItem in requestedItems)
         {
+            var product = await _inventoryRepo.GetProductByIdAsync(requestedItem.ProductId, companyId);
+            if (product is null)
+                return $"El producto {requestedItem.ProductId} no existe.";
+
+            if (!product.IsActive)
+                return $"El producto {product.Name} no esta activo.";
+
+            if (!product.TrackStock)
+                continue;
+
             var stock = await _inventoryRepo.GetStockByProductAsync(branchId, requestedItem.ProductId, companyId);
             if (stock is null)
             {
-                return $"El producto {requestedItem.ProductId} no tiene stock configurado en esta sucursal.";
+                return $"El producto {product.Name} no tiene stock configurado en esta sucursal.";
             }
 
             if (requestedItem.Quantity > stock.AvailableQuantity)
             {
-                return $"Stock insuficiente para {stock.ProductName ?? $"producto {requestedItem.ProductId}"}. Disponible: {stock.AvailableQuantity:N2}. Comprometido: {stock.ReservedQuantity:N2}.";
+                return $"Stock insuficiente para {stock.ProductName ?? product.Name}. Disponible: {stock.AvailableQuantity:N2}. Comprometido: {stock.ReservedQuantity:N2}.";
             }
         }
 
@@ -65,8 +67,8 @@ public class SalesController : ControllerBase
     [HttpGet("tables")]
     public async Task<IActionResult> GetTables([FromQuery] long? branchId)
     {
-        var companyId = GetCompanyId();
-        var branch = branchId ?? GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var branch = branchId ?? _tenant.BranchId;
 
         if (branch is null)
             return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
@@ -80,9 +82,9 @@ public class SalesController : ControllerBase
     [HttpPost("tables")]
     public async Task<IActionResult> CreateTable([FromBody] CreateTableRequest request)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
-        var branchId = GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
+        var branchId = _tenant.BranchId;
 
         if (branchId is null)
             return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
@@ -154,9 +156,9 @@ public class SalesController : ControllerBase
     [HttpPost("tables/{id:long}/invoice")]
     public async Task<IActionResult> InvoiceTable(long id, [FromBody] InvoiceTableRequest? request)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
-        var branchId = GetBranchId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
+        var branchId = _tenant.BranchId;
         request ??= new InvoiceTableRequest();
 
         var table = await _salesRepo.GetTableByIdAsync(id, companyId);
@@ -278,7 +280,7 @@ public class SalesController : ControllerBase
     [HttpDelete("tables/{id:long}")]
     public async Task<IActionResult> CancelTable(long id)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
 
         var table = await _salesRepo.GetTableByIdAsync(id, companyId);
         if (table is null)
@@ -298,7 +300,7 @@ public class SalesController : ControllerBase
     [HttpPatch("items/{itemId:long}/quantity")]
     public async Task<IActionResult> UpdateItemQuantity(long itemId, [FromBody] UpdateItemQuantityRequest request)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
 
         if (request.Quantity < 0)
             return BadRequest(ApiResponse.Fail("La cantidad no puede ser negativa"));
@@ -341,7 +343,7 @@ public class SalesController : ControllerBase
     [HttpPost("tables/{id:long}/items")]
     public async Task<IActionResult> AddItemsToTable(long id, [FromBody] List<CreateTableItemDto> items)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
 
         var table = await _salesRepo.GetTableByIdAsync(id, companyId);
         if (table is null)

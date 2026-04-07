@@ -14,4 +14,8 @@ public class CreateProductRequest
     public decimal MaxStock { get; set; }
     public decimal ReorderPoint { get; set; }
     public bool IsPerishable { get; set; }
+    public int? ShelfLifeDays { get; set; }
+    public string ProductType { get; set; } = "simple";
+    public bool TrackStock { get; set; } = true;
+    public bool IsForSale { get; set; } = true;
 }

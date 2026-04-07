@@ -14,6 +14,13 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
   const isEdit = !!product;
 
+  const PRODUCT_TYPES = [
+    { value: 'simple', label: 'Simple (insumo/botella)', trackStock: true },
+    { value: 'prepared', label: 'Preparación (plato/bebida)', trackStock: false },
+    { value: 'combo', label: 'Combo', trackStock: false },
+    { value: 'service', label: 'Servicio', trackStock: false },
+  ];
+
   const [form, setForm] = useState({
     name: '',
     sku: '',
@@ -28,6 +35,10 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
     maxStock: '0',
     reorderPoint: '0',
     isPerishable: false,
+    shelfLifeDays: '',
+    productType: 'simple',
+    trackStock: true,
+    isForSale: true,
   });
 
   const [saving, setSaving] = useState(false);
@@ -67,6 +78,10 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
         maxStock: product.maxStock ?? '0',
         reorderPoint: product.reorderPoint ?? '0',
         isPerishable: product.isPerishable || false,
+        shelfLifeDays: product.shelfLifeDays ?? '',
+        productType: product.productType || 'simple',
+        trackStock: product.trackStock ?? true,
+        isForSale: product.isForSale ?? true,
       });
       setImagePreview(product.imageUrl ? `${API_BASE}${product.imageUrl}` : null);
     } else {
@@ -84,6 +99,10 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
         maxStock: '0',
         reorderPoint: '0',
         isPerishable: false,
+        shelfLifeDays: '',
+        productType: 'simple',
+        trackStock: true,
+        isForSale: true,
       });
       setImagePreview(null);
     }
@@ -151,8 +170,12 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
         marginPercentage: form.marginPercentage ? Number(form.marginPercentage) : null,
         minStock: Number(form.minStock),
         maxStock: Number(form.maxStock),
-        reorderPoint: Number(form.reorderPoint),
+        reorderPoint: form.trackStock ? Number(form.reorderPoint) : 0,
         isPerishable: form.isPerishable,
+        shelfLifeDays: form.isPerishable && form.shelfLifeDays ? Number(form.shelfLifeDays) : null,
+        productType: form.productType,
+        trackStock: form.trackStock,
+        isForSale: form.isForSale,
       };
       await onSave(payload, imageFile);
       onClose();
@@ -359,39 +382,95 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
             </p>
           </div>
 
-          {/* Stock */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Stock Mínimo</label>
-              <input
-                type="number"
-                min="0"
-                value={form.minStock}
-                onChange={(e) => handleChange('minStock', e.target.value)}
-                className="input"
-              />
+          {/* Tipo de Producto */}
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-4">
+            <label className="block text-sm font-medium text-gray-700">Tipo de producto</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {PRODUCT_TYPES.map((pt) => (
+                <button
+                  key={pt.value}
+                  type="button"
+                  onClick={() => {
+                    setForm(prev => ({ ...prev, productType: pt.value, trackStock: pt.trackStock }));
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                    form.productType === pt.value
+                      ? 'border-primary-500 bg-primary-50 text-primary-700'
+                      : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {pt.label}
+                </button>
+              ))}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Stock Máximo</label>
+
+            {!form.trackStock && (
+              <p className="text-xs text-amber-600 bg-amber-50 rounded-md px-3 py-2">
+                Este producto no requiere control de stock. Siempre estará disponible para venta mientras esté activo.
+              </p>
+            )}
+
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
-                type="number"
-                min="0"
-                value={form.maxStock}
-                onChange={(e) => handleChange('maxStock', e.target.value)}
-                className="input"
+                type="checkbox"
+                checked={form.trackStock}
+                onChange={(e) => handleChange('trackStock', e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Punto Reorden</label>
+              <span className="text-sm text-gray-700">Controlar stock</span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
-                type="number"
-                min="0"
-                value={form.reorderPoint}
-                onChange={(e) => handleChange('reorderPoint', e.target.value)}
-                className="input"
+                type="checkbox"
+                checked={form.isForSale}
+                onChange={(e) => handleChange('isForSale', e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
               />
-            </div>
+              <span className="text-sm text-gray-700">Disponible para venta</span>
+            </label>
           </div>
+
+          {/* Stock (solo si trackStock) */}
+          {form.trackStock && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Stock Mínimo</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.minStock}
+                  onChange={(e) => handleChange('minStock', e.target.value)}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Stock Máximo</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.maxStock}
+                  onChange={(e) => handleChange('maxStock', e.target.value)}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Punto Reorden
+                  <span className="ml-1 text-xs text-gray-400 font-normal" title="Cuando el stock baje a este nivel, se generará una alerta">
+                    (alerta de reabastecimiento)
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.reorderPoint}
+                  onChange={(e) => handleChange('reorderPoint', e.target.value)}
+                  className="input"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Barcode y Descripción */}
           <div>
@@ -415,15 +494,30 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
           </div>
 
           {/* Perishable */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.isPerishable}
-              onChange={(e) => handleChange('isPerishable', e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-            />
-            <span className="text-sm text-gray-700">Producto perecedero</span>
-          </label>
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.isPerishable}
+                onChange={(e) => handleChange('isPerishable', e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span className="text-sm text-gray-700">Producto perecedero</span>
+            </label>
+            {form.isPerishable && (
+              <div className="ml-6">
+                <label className="block text-sm text-gray-600 mb-1">Días de vida útil</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={form.shelfLifeDays}
+                  onChange={(e) => handleChange('shelfLifeDays', e.target.value)}
+                  className="input w-32"
+                  placeholder="Ej: 7"
+                />
+              </div>
+            )}
+          </div>
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t">

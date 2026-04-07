@@ -23,24 +23,20 @@ public class CompanyController : ControllerBase
     };
 
     private readonly ICompanyRepository _repository;
+    private readonly ITenantContext _tenant;
     private readonly ILogger<CompanyController> _logger;
 
-    public CompanyController(ICompanyRepository repository, ILogger<CompanyController> logger)
+    public CompanyController(ICompanyRepository repository, ITenantContext tenant, ILogger<CompanyController> logger)
     {
         _repository = repository;
+        _tenant = tenant;
         _logger = logger;
     }
-
-    private long GetCompanyId() =>
-        long.Parse(User.FindFirst("companyId")?.Value ?? "0");
-
-    private long GetUserId() =>
-        long.Parse(User.FindFirst("userId")?.Value ?? "0");
 
     [HttpGet("settings")]
     public async Task<IActionResult> GetSettings()
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
         var settings = await _repository.GetCompanySettingsAsync(companyId);
 
         if (settings is null)
@@ -56,8 +52,8 @@ public class CompanyController : ControllerBase
     [HttpPut("settings")]
     public async Task<IActionResult> UpdateSettings([FromBody] UpdateCompanySettingsRequest request)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
 
         var settings = await _repository.GetCompanySettingsAsync(companyId);
         if (settings is null)
@@ -86,7 +82,7 @@ public class CompanyController : ControllerBase
     [HttpGet("settings/operations")]
     public async Task<IActionResult> GetOperationsSettings()
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
         var settings = await _repository.GetCompanyOperationsSettingsAsync(companyId);
 
         if (settings is null)
@@ -98,7 +94,7 @@ public class CompanyController : ControllerBase
     [HttpPut("settings/operations")]
     public async Task<IActionResult> UpdateOperationsSettings([FromBody] UpdateCompanyOperationsSettingsRequest request)
     {
-        var companyId = GetCompanyId();
+        var companyId = _tenant.CompanyId;
 
         if (request.MaxDiscountPercent < 0 || request.MaxDiscountPercent > 100)
             return BadRequest(ApiResponse.Fail("El porcentaje maximo debe estar entre 0 y 100"));
@@ -128,8 +124,8 @@ public class CompanyController : ControllerBase
     [RequestSizeLimit(2 * 1024 * 1024)]
     public async Task<IActionResult> UploadLogo(IFormFile file)
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
 
         if (file is null || file.Length == 0)
             return BadRequest(ApiResponse.Fail("No se proporciono archivo"));

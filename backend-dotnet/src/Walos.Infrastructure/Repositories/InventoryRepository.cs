@@ -35,6 +35,12 @@ public class InventoryRepository : IInventoryRepository
                     p.margin_percentage AS MarginPercentage,
                     p.min_stock AS MinStock,
                     p.max_stock AS MaxStock,
+                    p.reorder_point AS ReorderPoint,
+                    p.is_perishable AS IsPerishable,
+                    p.shelf_life_days AS ShelfLifeDays,
+                    p.product_type AS ProductType,
+                    p.track_stock AS TrackStock,
+                    p.is_for_sale AS IsForSale,
                     p.is_active AS IsActive,
                     c.name AS CategoryName,
                     u.abbreviation AS UnitAbbreviation,
@@ -101,6 +107,10 @@ public class InventoryRepository : IInventoryRepository
                     p.max_stock AS MaxStock,
                     p.reorder_point AS ReorderPoint,
                     p.is_perishable AS IsPerishable,
+                    p.shelf_life_days AS ShelfLifeDays,
+                    p.product_type AS ProductType,
+                    p.track_stock AS TrackStock,
+                    p.is_for_sale AS IsForSale,
                     p.is_active AS IsActive,
                     p.created_by AS CreatedBy,
                     p.created_at AS CreatedAt,
@@ -135,11 +145,13 @@ public class InventoryRepository : IInventoryRepository
                     company_id, name, sku, barcode, description,
                     category_id, unit_id, cost_price, sale_price,
                     min_stock, max_stock, reorder_point, is_perishable,
+                    shelf_life_days, product_type, track_stock, is_for_sale,
                     created_by
                 ) VALUES (
                     @CompanyId, @Name, @Sku, @Barcode, @Description,
                     @CategoryId, @UnitId, @CostPrice, @SalePrice,
                     @MinStock, @MaxStock, @ReorderPoint, @IsPerishable,
+                    @ShelfLifeDays, @ProductType, @TrackStock, @IsForSale,
                     @CreatedBy
                 )
                 RETURNING id AS Id, company_id AS CompanyId,
@@ -151,6 +163,10 @@ public class InventoryRepository : IInventoryRepository
                        min_stock AS MinStock, max_stock AS MaxStock,
                        reorder_point AS ReorderPoint,
                        is_perishable AS IsPerishable,
+                       shelf_life_days AS ShelfLifeDays,
+                       product_type AS ProductType,
+                       track_stock AS TrackStock,
+                       is_for_sale AS IsForSale,
                        is_active AS IsActive,
                        created_by AS CreatedBy,
                        created_at AS CreatedAt";
@@ -206,9 +222,13 @@ public class InventoryRepository : IInventoryRepository
                     p.cost_price AS CostPrice,
                     p.sale_price AS SalePrice,
                     p.image_url AS ImageUrl,
+                    p.product_type AS ProductType,
+                    p.track_stock AS TrackStock,
+                    p.is_perishable AS IsPerishable,
                     CASE 
                         WHEN s.quantity - COALESCE(committed.committed_quantity, 0) <= 0 THEN 'out'
                         WHEN s.quantity - COALESCE(committed.committed_quantity, 0) <= p.min_stock THEN 'low'
+                        WHEN p.reorder_point > 0 AND s.quantity - COALESCE(committed.committed_quantity, 0) <= p.reorder_point THEN 'low'
                         ELSE 'ok'
                     END AS StockStatus
                 FROM inventory.stock s
@@ -740,6 +760,10 @@ public class InventoryRepository : IInventoryRepository
                     max_stock = @MaxStock,
                     reorder_point = @ReorderPoint,
                     is_perishable = @IsPerishable,
+                    shelf_life_days = @ShelfLifeDays,
+                    product_type = @ProductType,
+                    track_stock = @TrackStock,
+                    is_for_sale = @IsForSale,
                     updated_at = NOW()
                 WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL;
 
@@ -760,7 +784,11 @@ public class InventoryRepository : IInventoryRepository
                 product.MinStock,
                 product.MaxStock,
                 product.ReorderPoint,
-                product.IsPerishable
+                product.IsPerishable,
+                product.ShelfLifeDays,
+                product.ProductType,
+                product.TrackStock,
+                product.IsForSale
             });
 
             return updated ?? throw new Exception("Producto no encontrado para actualizar");

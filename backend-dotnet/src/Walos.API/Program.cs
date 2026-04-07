@@ -9,7 +9,9 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Walos.API.Middleware;
+using Walos.API.Services;
 using Walos.Application;
+using Walos.Domain.Interfaces;
 using Walos.Infrastructure;
 
 // =============================================
@@ -174,6 +176,9 @@ try
     // Response Compression
     builder.Services.AddResponseCompression();
 
+    // Tenant Context (scoped per request)
+    builder.Services.AddScoped<ITenantContext, TenantContext>();
+
     // Application & Infrastructure layers (DI)
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
@@ -201,15 +206,15 @@ try
     app.UseCors();
     app.UseRateLimiter();
 
-    // Tenant context
-    app.UseMiddleware<TenantContextMiddleware>();
-
     // Static files (product images, uploads)
     app.UseStaticFiles();
 
     // Auth
     app.UseAuthentication();
     app.UseAuthorization();
+
+    // Tenant context (MUST be after auth so JWT claims are available)
+    app.UseMiddleware<TenantContextMiddleware>();
 
     // Map controllers
     app.MapControllers();

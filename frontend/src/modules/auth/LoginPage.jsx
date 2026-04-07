@@ -132,7 +132,7 @@ const LoginPage = () => {
           {/* Dev hint */}
           <div className="mt-6 rounded-lg bg-gray-50 p-3 text-center text-xs text-gray-400">
             <p className="font-medium text-gray-500">Credenciales de desarrollo</p>
-            <p className="mt-1">Usuario: <span className="font-mono text-gray-600">dev</span> | Contraseña: <span className="font-mono text-gray-600">1234</span></p>
+            <p className="mt-1">Usuario: <span className="font-mono text-gray-600">admin@mibar.com</span> | Contraseña: <span className="font-mono text-gray-600">admin123</span></p>
           </div>
         </div>
       </div>

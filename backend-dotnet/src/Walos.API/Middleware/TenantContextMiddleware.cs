@@ -1,3 +1,7 @@
+using System.Security.Claims;
+using Walos.API.Services;
+using Walos.Domain.Interfaces;
+
 namespace Walos.API.Middleware;
 
 public class TenantContextMiddleware
@@ -9,16 +13,30 @@ public class TenantContextMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(HttpContext context, ITenantContext tenantContext)
     {
-        var tenantIdHeader = context.Request.Headers["X-Tenant-ID"].FirstOrDefault();
-        var branchIdHeader = context.Request.Headers["X-Branch-ID"].FirstOrDefault();
+        var tenant = (TenantContext)tenantContext;
 
-        if (long.TryParse(tenantIdHeader, out var tenantId))
-            context.Items["TenantId"] = tenantId;
+        if (context.User.Identity?.IsAuthenticated == true)
+        {
+            tenant.IsAuthenticated = true;
 
-        if (long.TryParse(branchIdHeader, out var branchId))
-            context.Items["BranchId"] = branchId;
+            if (long.TryParse(context.User.FindFirst("companyId")?.Value, out var companyId))
+                tenant.CompanyId = companyId;
+
+            if (long.TryParse(context.User.FindFirst("userId")?.Value, out var userId))
+                tenant.UserId = userId;
+
+            // BranchId: header > JWT claim
+            var branchHeader = context.Request.Headers["X-Branch-ID"].FirstOrDefault();
+            if (long.TryParse(branchHeader, out var headerBranch))
+                tenant.BranchId = headerBranch;
+            else if (long.TryParse(context.User.FindFirst("branchId")?.Value, out var claimBranch))
+                tenant.BranchId = claimBranch;
+
+            tenant.Role = context.User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+            tenant.Email = context.User.FindFirst(ClaimTypes.Email)?.Value ?? string.Empty;
+        }
 
         await _next(context);
     }
@@ -26,9 +44,9 @@ public class TenantContextMiddleware
 
 public static class HttpContextExtensions
 {
-    public static long? GetTenantId(this HttpContext context)
-        => context.Items.TryGetValue("TenantId", out var val) ? val as long? : null;
-
     public static long? GetBranchId(this HttpContext context)
-        => context.Items.TryGetValue("BranchId", out var val) ? val as long? : null;
+    {
+        var tenant = context.RequestServices.GetService<ITenantContext>();
+        return tenant?.BranchId;
+    }
 }

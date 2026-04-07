@@ -28,6 +28,8 @@
 | 13 | Configuracion (reglas operativas y descuentos) | `[x]` Completado | P1 |
 | 9 | Proveedores (CRUD, WhatsApp/email, IA pedidos) | `[ ]` Pendiente | P2 |
 | 14 | Multi-tenant SaaS por company_id | `[~]` En progreso | P0 |
+| 16 | Panel Onboarding Tenant (crear comercio) | `[ ]` Pendiente | P0 |
+| 17 | Tipos de producto y control de stock inteligente | `[x]` Completado | P0 |
 | 15 | Pedidos y Domicilios (plataformas + IA + estados) | `[ ]` Pendiente | P1 |
 
 ---
@@ -322,25 +324,37 @@ Se auditaron todas las tablas, queries y repositories. Se identifico que `sales.
 | `is_active = 1/0` | `is_active = TRUE/FALSE` |
 | `CAST(0 AS DECIMAL)` | `0::DECIMAL` |
 
-### Fase 3 — Contexto de tenant en backend `[ ]` Pendiente
+### Fase 3 — Contexto de tenant en backend `[x]` Completado
 
 **Meta**: Tenant seguro en todo request.
 
-**Que hacer**:
-1. Crear `TenantContextMiddleware.cs` que:
-   - Extrae `companyId` del claim JWT
-   - Valida que `branchId` (si viene en header/query) pertenezca a la empresa
-   - Bloquea request si no hay tenant valido
-   - Expone `ITenantContext` inyectable con `CompanyId`, `BranchId`, `UserId`
-2. Registrar middleware en `Program.cs` despues de auth
-3. Refactorizar controllers para usar `ITenantContext` en vez de `GetCompanyId()` manual
+**Completado**:
+1. `ITenantContext` — interface en Domain con `CompanyId`, `UserId`, `BranchId`, `Role`, `Email`, `IsAuthenticated`, `IsDev`
+2. `TenantContext` — implementacion scoped en API/Services
+3. `TenantContextMiddleware` — reescrito: extrae claims JWT + header `X-Branch-ID`, hidrata `ITenantContext`
+4. Middleware registrado en `Program.cs` despues de `UseAuthentication()`
+5. 4 Controllers refactorizados — inyectan `ITenantContext` en vez de `GetCompanyId()`/`GetUserId()`/`GetBranchId()` duplicados
+6. **Login real contra DB** — `AuthController` reescrito con BCrypt, lockout (5 intentos → 15min), refresh tokens
+7. `IAuthRepository` + `AuthRepository` — queries contra `core.users` con JOINs a roles, branches, companies
+8. Seed actualizado con hash BCrypt real (password: `admin123`)
+9. Frontend login hint actualizado
 
-**Archivos a crear**:
-- `Walos.API/Middleware/TenantContextMiddleware.cs`
-- `Walos.Domain/Interfaces/ITenantContext.cs`
-- `Walos.API/Services/TenantContext.cs`
+**Archivos creados/modificados**:
+- `Walos.Domain/Interfaces/ITenantContext.cs` (nuevo)
+- `Walos.Domain/Interfaces/IAuthRepository.cs` (nuevo)
+- `Walos.Domain/Entities/User.cs` (nuevo)
+- `Walos.API/Services/TenantContext.cs` (nuevo)
+- `Walos.Infrastructure/Repositories/AuthRepository.cs` (nuevo)
+- `Walos.API/Middleware/TenantContextMiddleware.cs` (reescrito)
+- `Walos.API/Controllers/AuthController.cs` (reescrito — login real + refresh)
+- `Walos.API/Controllers/InventoryController.cs` (refactorizado)
+- `Walos.API/Controllers/SalesController.cs` (refactorizado)
+- `Walos.API/Controllers/FinanceController.cs` (refactorizado)
+- `Walos.API/Controllers/CompanyController.cs` (refactorizado)
+- `Walos.API/Program.cs` (registro DI + orden middleware)
+- `Walos.Infrastructure/DependencyInjection.cs` (registro IAuthRepository)
 
-**Criterios**: Todo request resuelve tenant consistentemente, no se puede operar sucursal ajena
+**Criterios**: ✅ Todo request resuelve tenant desde JWT, login real contra DB con BCrypt verificado
 
 ### Fase 4 — Hardening de repositorios
 
@@ -375,7 +389,160 @@ Se auditaron todas las tablas, queries y repositories. Se identifico que `sales.
 
 **Criterios**: Frontend siempre opera con tenant activo, no hay caches compartidos
 
-### Fase 6 — Seguridad y observabilidad
+### Fase 6 — Tipos de Producto y Control de Stock Inteligente `[x]` Completado
+
+**Meta**: Productos tipo preparacion (platos, bebidas mezcladas) no requieren stock y siempre estan disponibles. Campos como `reorder_point` y `is_perishable` tienen logica real.
+
+**Contexto**: Actualmente todos los productos se tratan como `simple` y el sistema exige stock para vender. Un plato como "Bandeja Paisa" no se maneja por unidades en inventario — se prepara al momento. Necesita poder venderse sin tener stock configurado.
+
+#### 6a. Modelo de datos
+
+**Campo nuevo**: `track_stock BOOLEAN DEFAULT TRUE` en `inventory.products`
+- `TRUE` → producto fisico (botella, insumo, etc.) — requiere stock para vender
+- `FALSE` → preparacion/servicio — siempre disponible si esta activo
+
+**Aprovechar campos existentes**:
+- `product_type` (ya existe, sin uso): `simple` | `prepared` | `combo` | `service`
+- `reorder_point`: genera alerta cuando stock <= este valor
+- `is_perishable` + `shelf_life_days`: alerta de caducidad proxima
+
+#### 6b. Migracion SQL
+
+```sql
+ALTER TABLE inventory.products ADD COLUMN IF NOT EXISTS track_stock BOOLEAN DEFAULT TRUE;
+-- Productos tipo prepared/service no trackean stock
+UPDATE inventory.products SET track_stock = FALSE WHERE product_type IN ('prepared', 'service');
+```
+
+#### 6c. Backend
+
+**Archivos a modificar**:
+- `Product.cs` — agregar `TrackStock`, `ProductType`, `ShelfLifeDays`, `IsForSale`
+- `CreateProductRequest.cs` / `UpdateProductRequest.cs` — agregar campos
+- `CreateProductValidator.cs` — reglas condicionales (si `trackStock=false`, min/max/reorder son opcionales)
+- `InventoryRepository.cs` — incluir nuevos campos en queries
+- `SalesController.ValidateItemAvailabilityAsync()` — **saltar validacion de stock** si `track_stock = FALSE`
+- `InventoryController` — incluir campos en respuestas
+
+**Logica de `ValidateItemAvailabilityAsync`**:
+```
+foreach item in requestedItems:
+    product = getProduct(item.ProductId)
+    if product.TrackStock == false:
+        continue  // preparacion, siempre disponible
+    stock = getStock(branchId, item.ProductId)
+    if stock is null or stock < requested:
+        return error
+```
+
+**Logica de `reorder_point`**:
+- En `GetStockAsync`, calcular `StockStatus`:
+  - `"critical"` si `quantity <= reorder_point * 0.5`
+  - `"low"` si `quantity <= reorder_point`
+  - `"ok"` si `quantity > reorder_point`
+- Exponer en endpoint de alertas
+
+**Logica de `is_perishable`**:
+- Si `is_perishable = TRUE` y `shelf_life_days > 0`, el frontend muestra badge "Perecedero" y en futuro se podra rastrear lotes con fecha de vencimiento
+
+#### 6d. Frontend
+
+**`ProductFormModal.jsx`**:
+- Agregar selector de **Tipo de producto**: Simple | Preparacion | Combo | Servicio
+- Check **"Controlar stock"** (auto OFF para Preparacion/Servicio)
+- Si `trackStock = false`: ocultar campos Min Stock, Max Stock, Punto Reorden
+- Label descriptivo: "Los productos sin control de stock siempre estaran disponibles para venta"
+
+**`InventoryPage.jsx`**:
+- Mostrar badge de tipo de producto en la tabla
+- Filtro por tipo de producto en stat cards
+
+#### Criterios de aceptacion
+- [ ] Producto tipo "prepared" se puede vender sin stock configurado
+- [ ] Producto tipo "simple" sigue requiriendo stock como antes
+- [ ] `reorder_point` genera estado `low`/`critical` en stock
+- [ ] `is_perishable` muestra badge visual
+- [ ] Formulario adapta campos segun tipo de producto
+- [ ] Migracion SQL no rompe datos existentes
+
+### Fase 7 — Panel de Onboarding de Tenant (Nuevo Comercio) `[ ]` Pendiente
+
+**Meta**: Un usuario con rol `dev` puede crear un nuevo comercio (tenant) desde la app, con todos sus datos base inicializados.
+
+**Acceso**: Solo usuarios con rol `dev` (despues se refinara con sistema de roles completo).
+
+#### 7a. Backend
+
+**Endpoint**: `POST /api/v1/admin/tenants`
+
+**Que crea automaticamente**:
+1. Registro en `core.companies` (nombre, legal_name, tax_id, email, telefono, etc.)
+2. Sucursal principal en `core.branches` (con `is_main = TRUE`)
+3. Roles base en `core.roles` (super_admin, manager, cashier, waiter)
+4. Usuario administrador del comercio en `core.users` (con password temporal)
+5. Categorias de inventario por defecto en `inventory.categories`
+6. Unidades de medida por defecto en `inventory.units`
+7. Categorias financieras por defecto en `finance.categories`
+
+**Endpoint adicional**: `GET /api/v1/admin/tenants` — listar comercios existentes (solo dev)
+
+**Archivos a crear**:
+- `Walos.API/Controllers/AdminController.cs` — protegido por rol `dev`
+- `Walos.Application/DTOs/Admin/CreateTenantRequest.cs`
+- `Walos.Application/DTOs/Admin/TenantResponse.cs`
+- `Walos.Domain/Interfaces/IAdminRepository.cs`
+- `Walos.Infrastructure/Repositories/AdminRepository.cs`
+
+**Request DTO**:
+```
+CreateTenantRequest:
+  CompanyName, LegalName, TaxId, Email, Phone,
+  Address, City, State, Country, PostalCode,
+  Currency, Timezone, Language,
+  AdminFirstName, AdminLastName, AdminEmail, AdminPassword,
+  BranchName, BranchType (bar|restaurant|store|warehouse)
+```
+
+**Logica**:
+- Todo dentro de una transaccion (si falla algo, rollback completo)
+- Validar que `tax_id` y `admin_email` no existan ya
+- Generar datos base (categorias, unidades, roles, categorias financieras)
+- Devolver: company creada + usuario admin + sucursal + JWT para el nuevo admin
+
+#### 7b. Frontend
+
+**Ruta**: `/admin/tenants` (solo visible para usuario dev)
+
+**Componentes a crear**:
+
+| Archivo | Descripcion |
+|---------|-------------|
+| `modules/admin/TenantsPage.jsx` | Pagina con tabla de comercios + boton "Nuevo Comercio" |
+| `modules/admin/components/CreateTenantModal.jsx` | Modal multi-step para crear comercio |
+| `modules/admin/components/TenantCard.jsx` | Card de resumen por comercio (nombre, sucursales, usuarios, estado) |
+
+**Flujo UX del modal**:
+1. **Paso 1 — Datos del negocio**: nombre, razon social, NIT/RUT, email, telefono, direccion, pais, moneda
+2. **Paso 2 — Sucursal principal**: nombre de sucursal, tipo (bar/restaurante/tienda), capacidad
+3. **Paso 3 — Admin del comercio**: nombre, apellido, email, password temporal
+4. **Paso 4 — Confirmacion**: resumen de todo, boton "Crear Comercio"
+
+**Vista de tabla**:
+- Columnas: Nombre, NIT, Sucursales (#), Usuarios (#), Estado, Fecha creacion, Acciones
+- Filtro rapido por nombre/NIT
+- Accion: ver detalle, desactivar
+
+**Ruta en App.jsx**: agregar `/admin/tenants` protegida por rol dev
+
+#### Criterios de aceptacion
+- [ ] Endpoint `POST /api/v1/admin/tenants` crea empresa + sucursal + roles + admin + seeds en una transaccion
+- [ ] Endpoint `GET /api/v1/admin/tenants` lista comercios existentes
+- [ ] Solo accesible con rol `dev`
+- [ ] Panel frontend con tabla de comercios y modal de creacion
+- [ ] Validaciones: tax_id unico, email unico, campos requeridos
+- [ ] El nuevo admin puede hacer login inmediatamente despues de ser creado
+
+### Fase 8 — Seguridad y observabilidad
 
 **Meta**: Multi-tenant seguro y mantenible en produccion.
 
@@ -384,13 +551,10 @@ Se auditaron todas las tablas, queries y repositories. Se identifico que `sales.
 2. Auditoria para acciones sensibles (eliminar, facturar, cambiar config)
 3. Rate limit por tenant
 4. Estrategia de backups y restore por tenant
-5. Seed de datos por empresa nueva (onboarding)
-
-**Archivo a crear**: `docs/multitenant-onboarding.md`
 
 **Criterios**: Logs con contexto, proceso de onboarding documentado, estrategia de backup
 
-### Fase 7 — Preparacion para escalar
+### Fase 9 — Preparacion para escalar
 
 **Meta**: No cerrarse el camino.
 

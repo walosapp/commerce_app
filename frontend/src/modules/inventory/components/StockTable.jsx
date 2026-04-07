@@ -51,7 +51,7 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
   const getStatusBadge = (status) => {
     switch (status) {
       case 'ok':
-        return <span className="badge badge-success">Normal</span>;
+        return <span className="badge badge-success">OK</span>;
       case 'low':
         return <span className="badge badge-warning">Bajo</span>;
       case 'out':
@@ -59,6 +59,17 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
       default:
         return <span className="badge badge-info">{status}</span>;
     }
+  };
+
+  const getTypeBadge = (type) => {
+    const map = {
+      simple: { label: 'Simple', cls: 'bg-gray-100 text-gray-600' },
+      prepared: { label: 'Preparación', cls: 'bg-blue-100 text-blue-700' },
+      combo: { label: 'Combo', cls: 'bg-purple-100 text-purple-700' },
+      service: { label: 'Servicio', cls: 'bg-teal-100 text-teal-700' },
+    };
+    const t = map[type] || map.simple;
+    return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${t.cls}`}>{t.label}</span>;
   };
 
   if (isLoading) {
@@ -161,7 +172,15 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
                           <ImageIcon className="h-4 w-4 text-gray-400" />
                         </div>
                       )}
-                      <span className="font-medium text-gray-900">{item.productName}</span>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-gray-900">{item.productName}</span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          {getTypeBadge(item.productType)}
+                          {item.isPerishable && (
+                            <span className="inline-flex items-center rounded-full bg-orange-100 text-orange-700 px-2 py-0.5 text-[10px] font-medium">Perecedero</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-500 font-mono text-xs">
