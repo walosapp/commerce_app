@@ -1,0 +1,11 @@
+{
+  "name": "Walos - Gestion Comercial",
+  "short_name": "Walos",
+  "description": "Sistema de gestion para bar y restaurante con IA",
+  "theme_color": "#1a73e8",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "start_url": "/"
+}
