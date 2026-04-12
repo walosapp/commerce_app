@@ -80,10 +80,10 @@ localStorage.setItem('branchId', '1');
 
 ## Base de Datos
 
-- **Motor**: SQL Server
-- **Nombre**: `SCM_App_Track_Me`
-- **Esquemas**: `core` (empresas, usuarios), `inventory` (productos, stock, IA)
-- **Scripts SQL**: `backend-dotnet/sql/` (ejecutar en orden numérico 001→800)
+- **Motor**: PostgreSQL (Supabase)
+- **Esquemas**: `core` (empresas, usuarios, roles), `inventory` (productos, stock, IA), `sales` (mesas, pedidos), `finance` (gastos/ingresos), `suppliers`, `delivery`
+- **Migraciones**: `supabase/migrations/` (ejecutar en orden numérico 001→800)
+- **Cleanup SQL Server (legacy)**: `backend-dotnet/sql/999_cleanup_all.sql` — elimina todo lo creado en WalosDB y SCM_App_Track_Me
 
 ## Comandos Rápidos
 
@@ -96,3 +96,5 @@ dotnet run --project src/Walos.API
 cd frontend
 npm run dev
 ```
+# para cambiar usuario git ejecutar este comando: git config user.name "Walos App"
+git config user.email "walosaap@gmail.com"
