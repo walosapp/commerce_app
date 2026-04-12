@@ -87,9 +87,15 @@ const InventoryPage = () => {
     refetchAll();
   };
 
-  const openEdit = (item) => {
-    setEditProduct(item);
-    setShowProductModal(true);
+  const openEdit = async (item) => {
+    try {
+      const res = await inventoryService.getProductById(item.productId);
+      setEditProduct({ ...res.data, productId: item.productId });
+      setShowProductModal(true);
+    } catch (err) {
+      console.error('Error cargando producto:', err);
+      toast.error('Error cargando datos del producto');
+    }
   };
 
   const openCreate = () => {

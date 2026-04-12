@@ -52,6 +52,8 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
     switch (status) {
       case 'ok':
         return <span className="badge badge-success">OK</span>;
+      case 'reorder':
+        return <span className="badge badge-info">Reordenar</span>;
       case 'low':
         return <span className="badge badge-warning">Bajo</span>;
       case 'out':
