@@ -10,7 +10,6 @@ import { formatCurrency } from '../../../utils/formatCurrency';
 import ProductGrid from './ProductGrid';
 
 const DEFAULT_DESKTOP_WIDTH = 560;
-const HOVER_EXPANDED_WIDTH = 720;
 const MIN_DESKTOP_WIDTH = 480;
 
 const AddTablePanel = ({
@@ -25,9 +24,7 @@ const AddTablePanel = ({
   const [selectedItems, setSelectedItems] = useState([]);
   const [saving, setSaving] = useState(false);
   const [desktopWidth, setDesktopWidth] = useState(DEFAULT_DESKTOP_WIDTH);
-  const [isHovering, setIsHovering] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  const [hasManualResize, setHasManualResize] = useState(false);
   const resizeStateRef = useRef({ startX: 0, startWidth: DEFAULT_DESKTOP_WIDTH });
 
   const handleUpdateItem = useCallback((item) => {
@@ -52,18 +49,11 @@ const AddTablePanel = ({
     if (typeof window === 'undefined') return desktopWidth;
 
     const maxWidth = Math.floor(window.innerWidth * 0.78);
-    const autoExpandedWidth = Math.min(HOVER_EXPANDED_WIDTH, maxWidth);
-
-    if (!hasManualResize && isHovering) {
-      return Math.max(MIN_DESKTOP_WIDTH, autoExpandedWidth);
-    }
-
     return Math.max(MIN_DESKTOP_WIDTH, Math.min(desktopWidth, maxWidth));
-  }, [desktopWidth, hasManualResize, isHovering]);
+  }, [desktopWidth]);
 
   useEffect(() => {
     if (!isOpen) {
-      setIsHovering(false);
       setIsResizing(false);
     }
   }, [isOpen]);
@@ -94,11 +84,15 @@ const AddTablePanel = ({
 
   const handleResizeStart = (event) => {
     if (window.innerWidth < 1024) return;
+
+    if (event.pointerId != null) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
     resizeStateRef.current = {
       startX: event.clientX,
       startWidth: effectiveDesktopWidth,
     };
-    setHasManualResize(true);
     setIsResizing(true);
   };
 
@@ -135,14 +129,12 @@ const AddTablePanel = ({
       <div
         className={`fixed inset-y-0 right-0 z-[70] w-full bg-white shadow-2xl transition-transform duration-300 ease-in-out lg:w-auto ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
         style={{ width: typeof window !== 'undefined' && window.innerWidth >= 1024 ? effectiveDesktopWidth : '100%' }}
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
       >
         <div className="flex h-full flex-col overflow-hidden">
           <button
             type="button"
             onPointerDown={handleResizeStart}
-            className="absolute left-0 top-0 hidden h-full w-4 -translate-x-1/2 cursor-col-resize items-center justify-center text-gray-300 transition-colors hover:text-primary-500 lg:flex"
+            className="absolute left-0 top-0 hidden h-full w-4 cursor-col-resize items-center justify-center text-gray-300 transition-colors hover:text-primary-600 lg:flex select-none touch-none"
             title="Arrastra para expandir el panel"
           >
             <GripVertical className="h-5 w-5" />
@@ -153,7 +145,7 @@ const AddTablePanel = ({
               <h2 className="text-lg font-bold text-gray-900">{title}</h2>
               <p className="text-xs text-gray-500">
                 Selecciona productos para la mesa
-                <span className="hidden lg:inline">. Puedes expandir este panel al pasar el cursor o arrastrando su borde.</span>
+                <span className="hidden lg:inline">. Puedes ajustar el ancho arrastrando su borde.</span>
               </p>
             </div>
             <button onClick={handleClose} className="rounded-lg p-1.5 hover:bg-gray-100 transition-colors">

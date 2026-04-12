@@ -22,7 +22,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Walos.API\Walos.API.csproj" />
     <ProjectReference Include="..\..\src\Walos.Application\Walos.Application.csproj" />
     <ProjectReference Include="..\..\src\Walos.Domain\Walos.Domain.csproj" />
     <ProjectReference Include="..\..\src\Walos.Infrastructure\Walos.Infrastructure.csproj" />

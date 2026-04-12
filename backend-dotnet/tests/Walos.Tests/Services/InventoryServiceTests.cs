@@ -23,13 +23,13 @@ public class InventoryServiceTests
     }
 
     [Fact]
-    public async Task GetLowStockProducts_ReturnsOnlyLowAndOutStock()
+    public async Task GetLowStockProducts_ReturnsOnlyLowAndReorderStock()
     {
         var stockList = new List<Stock>
         {
             new() { ProductId = 1, ProductName = "Ron", Quantity = 2, StockStatus = "low" },
             new() { ProductId = 2, ProductName = "Vodka", Quantity = 50, StockStatus = "ok" },
-            new() { ProductId = 3, ProductName = "Whisky", Quantity = 0, StockStatus = "out" }
+            new() { ProductId = 3, ProductName = "Whisky", Quantity = 8, StockStatus = "reorder" }
         };
 
         _repoMock.Setup(r => r.GetStockByBranchAsync(1, 1))
@@ -56,10 +56,13 @@ public class InventoryServiceTests
     [Fact]
     public async Task ProcessAiInventoryInput_CallsAiServiceAndSavesInteraction()
     {
-        _repoMock.Setup(r => r.GetAllProductsAsync(1, null))
+        _repoMock.Setup(r => r.GetAllProductsAsync(1, It.Is<ProductFilter?>(f => f == null)))
             .ReturnsAsync(new List<Product> { new() { Id = 1, Name = "Ron" } });
 
-        _aiMock.Setup(a => a.ProcessInventoryInputAsync(It.IsAny<string>(), It.IsAny<AiContext>()))
+        _aiMock.Setup(a => a.ProcessInventoryInputAsync(
+                It.IsAny<string>(),
+                It.IsAny<AiContext>(),
+                It.IsAny<List<AiConversationMessage>?>()))
             .ReturnsAsync(new AiInventoryResponse
             {
                 Action = "add_stock",

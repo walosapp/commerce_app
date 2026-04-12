@@ -44,8 +44,8 @@ public class SalesRepository : ISalesRepository
                        oi.unit_price AS UnitPrice, oi.subtotal AS Subtotal,
                        p.image_url AS ImageUrl
                 FROM sales.order_items oi
-                INNER JOIN sales.orders o ON oi.order_id = o.id
-                LEFT JOIN inventory.products p ON oi.product_id = p.id
+                INNER JOIN sales.orders o ON oi.order_id = o.id AND o.company_id = oi.company_id
+                LEFT JOIN inventory.products p ON oi.product_id = p.id AND p.company_id = oi.company_id
                 WHERE o.table_id = ANY(@TableIds) AND o.company_id = @CompanyId AND o.status = 'pending'";
 
             var allItems = (await connection.QueryAsync<OrderItem>(itemsSql, new { TableIds = tableIds, CompanyId = companyId })).ToList();
@@ -256,7 +256,7 @@ public class SalesRepository : ISalesRepository
                        oi.unit_price AS UnitPrice, oi.subtotal AS Subtotal,
                        p.image_url AS ImageUrl
                 FROM sales.order_items oi
-                LEFT JOIN inventory.products p ON oi.product_id = p.id
+                LEFT JOIN inventory.products p ON oi.product_id = p.id AND p.company_id = oi.company_id
                 WHERE oi.order_id = @OrderId AND oi.company_id = @CompanyId";
 
             return await connection.QueryAsync<OrderItem>(sql, new { OrderId = orderId, CompanyId = companyId });
@@ -280,7 +280,7 @@ public class SalesRepository : ISalesRepository
                        oi.unit_price AS UnitPrice, oi.subtotal AS Subtotal,
                        p.image_url AS ImageUrl
                 FROM sales.order_items oi
-                LEFT JOIN inventory.products p ON oi.product_id = p.id
+                LEFT JOIN inventory.products p ON oi.product_id = p.id AND p.company_id = oi.company_id
                 WHERE oi.id = @ItemId AND oi.company_id = @CompanyId";
 
             return await connection.QueryFirstOrDefaultAsync<OrderItem>(sql, new { ItemId = itemId, CompanyId = companyId });

@@ -193,8 +193,8 @@ public class InventoryRepository : IInventoryRepository
                         oi.product_id,
                         SUM(oi.quantity) AS committed_quantity
                     FROM sales.orders o
-                    INNER JOIN sales.tables t ON o.table_id = t.id
-                    INNER JOIN sales.order_items oi ON oi.order_id = o.id
+                    INNER JOIN sales.tables t ON o.table_id = t.id AND t.company_id = o.company_id
+                    INNER JOIN sales.order_items oi ON oi.order_id = o.id AND oi.company_id = o.company_id
                     WHERE o.company_id = @CompanyId
                       AND o.branch_id = @BranchId
                       AND o.status = 'pending'
@@ -705,8 +705,8 @@ public class InventoryRepository : IInventoryRepository
                         oi.product_id,
                         SUM(oi.quantity) AS committed_quantity
                     FROM sales.orders o
-                    INNER JOIN sales.tables t ON o.table_id = t.id
-                    INNER JOIN sales.order_items oi ON oi.order_id = o.id
+                    INNER JOIN sales.tables t ON o.table_id = t.id AND t.company_id = o.company_id
+                    INNER JOIN sales.order_items oi ON oi.order_id = o.id AND oi.company_id = o.company_id
                     WHERE o.company_id = @CompanyId
                       AND o.branch_id = @BranchId
                       AND o.status = 'pending'

@@ -180,8 +180,8 @@ public class FinanceRepository : IFinanceRepository
                     e.updated_at AS UpdatedAt,
                     e.deleted_at AS DeletedAt
                 FROM finance.entries e
-                INNER JOIN finance.categories c ON c.id = e.category_id
-                LEFT JOIN core.branches b ON b.id = e.branch_id
+                INNER JOIN finance.categories c ON c.id = e.category_id AND c.company_id = e.company_id
+                LEFT JOIN core.branches b ON b.id = e.branch_id AND b.company_id = e.company_id
                 WHERE e.company_id = @CompanyId
                   AND e.deleted_at IS NULL";
 
@@ -340,7 +340,7 @@ public class FinanceRepository : IFinanceRepository
             using var connection = await _connectionFactory.CreateConnectionAsync();
             var financeFilters = @"
                 FROM finance.entries e
-                INNER JOIN finance.categories c ON c.id = e.category_id
+                INNER JOIN finance.categories c ON c.id = e.category_id AND c.company_id = e.company_id
                 WHERE e.company_id = @CompanyId
                   AND e.deleted_at IS NULL";
 
@@ -417,4 +417,3 @@ public class FinanceRepository : IFinanceRepository
         }
     }
 }
-
