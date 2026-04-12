@@ -44,6 +44,13 @@
 - "WALOS" en pie de sidebar
 - Formato de moneda consistente via `formatCurrency()`
 - Botones con estilo uniforme (ver `docs/STYLE_GUIDE.md`)
+- Ajuste UI pendiente de validacion manual: sidebar usa branding fijo de `Walos`; header externo mantiene logo/nombre configurables del comercio; logo principal del sidebar agrandado; footer del sidebar reemplazado por logo Walos sin fondo
+
+**Test manual pendiente**
+- Verificar en desktop que el sidebar muestre logo fijo de `Walos` arriba y abajo, sin tomar el logo del comercio
+- Verificar que el header externo siga mostrando el logo y nombre configurados por el usuario para su negocio
+- Verificar comportamiento visual con sidebar expandido y colapsado
+- Verificar que el logo inferior del sidebar se mezcle bien con el fondo y no se vea recortado
 
 ### #1. Sidebar Colapsable y Responsivo `[x]`
 - Toggle colapsar/expandir en desktop con persistencia en localStorage

@@ -61,6 +61,407 @@ public class FinanceRepository : IFinanceRepository
         }
     }
 
+    public async Task<IEnumerable<FinancialRecurringTemplate>> GetRecurringTemplatesAsync(long companyId, long? branchId = null, string? type = null)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            var sql = @"
+                SELECT
+                    t.id AS Id,
+                    t.company_id AS CompanyId,
+                    t.branch_id AS BranchId,
+                    t.category_id AS CategoryId,
+                    c.name AS CategoryName,
+                    t.type AS Type,
+                    t.description AS Description,
+                    t.default_amount AS DefaultAmount,
+                    t.day_of_month AS DayOfMonth,
+                    t.nature AS Nature,
+                    t.frequency AS Frequency,
+                    t.biweekly_day_1 AS BiweeklyDay1,
+                    t.biweekly_day_2 AS BiweeklyDay2,
+                    t.is_active AS IsActive,
+                    t.created_by AS CreatedBy,
+                    t.created_at AS CreatedAt,
+                    t.updated_at AS UpdatedAt,
+                    t.deleted_at AS DeletedAt
+                FROM finance.recurring_templates t
+                INNER JOIN finance.categories c ON c.id = t.category_id
+                WHERE t.company_id = @CompanyId
+                  AND t.deleted_at IS NULL";
+
+            var parameters = new DynamicParameters(new { CompanyId = companyId });
+
+            if (branchId.HasValue)
+            {
+                sql += " AND (t.branch_id = @BranchId OR t.branch_id IS NULL)";
+                parameters.Add("BranchId", branchId.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(type))
+            {
+                sql += " AND t.type = @Type";
+                parameters.Add("Type", type);
+            }
+
+            sql += " ORDER BY t.type ASC, t.description ASC";
+
+            return await connection.QueryAsync<FinancialRecurringTemplate>(sql, parameters);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error obteniendo plantillas recurrentes");
+            throw;
+        }
+    }
+
+    public async Task<FinancialRecurringTemplate?> GetRecurringTemplateByIdAsync(long id, long companyId)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            const string sql = @"
+                SELECT
+                    t.id AS Id,
+                    t.company_id AS CompanyId,
+                    t.branch_id AS BranchId,
+                    t.category_id AS CategoryId,
+                    c.name AS CategoryName,
+                    t.type AS Type,
+                    t.description AS Description,
+                    t.default_amount AS DefaultAmount,
+                    t.day_of_month AS DayOfMonth,
+                    t.is_active AS IsActive,
+                    t.created_by AS CreatedBy,
+                    t.created_at AS CreatedAt,
+                    t.updated_at AS UpdatedAt,
+                    t.deleted_at AS DeletedAt
+                FROM finance.recurring_templates t
+                INNER JOIN finance.categories c ON c.id = t.category_id
+                WHERE t.id = @Id AND t.company_id = @CompanyId AND t.deleted_at IS NULL";
+
+            return await connection.QueryFirstOrDefaultAsync<FinancialRecurringTemplate>(sql, new { Id = id, CompanyId = companyId });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error obteniendo plantilla recurrente {TemplateId}", id);
+            throw;
+        }
+    }
+
+    public async Task<FinancialRecurringTemplate> CreateRecurringTemplateAsync(FinancialRecurringTemplate template)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            const string sql = @"
+                INSERT INTO finance.recurring_templates (
+                    company_id, branch_id, category_id, type, description, default_amount,
+                    day_of_month, nature, frequency, biweekly_day_1, biweekly_day_2, is_active, created_by
+                ) VALUES (
+                    @CompanyId, @BranchId, @CategoryId, @Type, @Description, @DefaultAmount,
+                    @DayOfMonth, @Nature, @Frequency, @BiweeklyDay1, @BiweeklyDay2, @IsActive, @CreatedBy
+                )
+                RETURNING id AS Id, company_id AS CompanyId, branch_id AS BranchId, category_id AS CategoryId,
+                       type AS Type, description AS Description, default_amount AS DefaultAmount,
+                       day_of_month AS DayOfMonth, nature AS Nature, frequency AS Frequency,
+                       biweekly_day_1 AS BiweeklyDay1, biweekly_day_2 AS BiweeklyDay2,
+                       is_active AS IsActive, created_by AS CreatedBy,
+                       created_at AS CreatedAt, updated_at AS UpdatedAt";
+
+            return await connection.QuerySingleAsync<FinancialRecurringTemplate>(sql, template);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creando plantilla recurrente");
+            throw;
+        }
+    }
+
+    public async Task<FinancialRecurringTemplate> UpdateRecurringTemplateAsync(FinancialRecurringTemplate template)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            const string sql = @"
+                UPDATE finance.recurring_templates
+                SET branch_id = @BranchId,
+                    category_id = @CategoryId,
+                    type = @Type,
+                    description = @Description,
+                    default_amount = @DefaultAmount,
+                    day_of_month = @DayOfMonth,
+                    nature = @Nature,
+                    frequency = @Frequency,
+                    biweekly_day_1 = @BiweeklyDay1,
+                    biweekly_day_2 = @BiweeklyDay2,
+                    is_active = @IsActive,
+                    updated_at = NOW()
+                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL;
+
+                SELECT
+                    t.id AS Id,
+                    t.company_id AS CompanyId,
+                    t.branch_id AS BranchId,
+                    t.category_id AS CategoryId,
+                    c.name AS CategoryName,
+                    t.type AS Type,
+                    t.description AS Description,
+                    t.default_amount AS DefaultAmount,
+                    t.day_of_month AS DayOfMonth,
+                    t.is_active AS IsActive,
+                    t.created_by AS CreatedBy,
+                    t.created_at AS CreatedAt,
+                    t.updated_at AS UpdatedAt,
+                    t.deleted_at AS DeletedAt
+                FROM finance.recurring_templates t
+                INNER JOIN finance.categories c ON c.id = t.category_id
+                WHERE t.id = @Id AND t.company_id = @CompanyId AND t.deleted_at IS NULL;";
+
+            return await connection.QuerySingleAsync<FinancialRecurringTemplate>(sql, template);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error actualizando plantilla recurrente {TemplateId}", template.Id);
+            throw;
+        }
+    }
+
+    public async Task SoftDeleteRecurringTemplateAsync(long id, long companyId)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            const string sql = @"
+                UPDATE finance.recurring_templates
+                SET deleted_at = NOW(),
+                    is_active = FALSE,
+                    updated_at = NOW()
+                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL";
+
+            await connection.ExecuteAsync(sql, new { Id = id, CompanyId = companyId });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error eliminando plantilla recurrente {TemplateId}", id);
+            throw;
+        }
+    }
+
+    public async Task<int> InitMonthFromRecurringTemplatesAsync(long companyId, long? branchId, DateTime monthStart, long? userId)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            var sql = @"
+                WITH ctx AS (
+                    SELECT
+                        CAST(date_trunc('month', CAST(@MonthStart AS timestamptz)) AS timestamptz) AS month_start,
+                        CAST((date_trunc('month', CAST(@MonthStart AS timestamptz)) + interval '1 month - 1 day') AS timestamptz) AS month_end,
+                        CAST((NOW() AT TIME ZONE 'UTC') AS date) AS today_utc,
+                        CAST(date_trunc('week', date_trunc('month', CAST(@MonthStart AS timestamptz))) AS date) AS week1_start
+                ), templates AS (
+                    SELECT
+                        t.id,
+                        t.company_id,
+                        t.branch_id,
+                        t.category_id,
+                        t.type,
+                        t.description,
+                        t.default_amount,
+                        t.day_of_month,
+                        t.nature,
+                        t.frequency,
+                        t.biweekly_day_1,
+                        t.biweekly_day_2
+                    FROM finance.recurring_templates t
+                    WHERE t.company_id = @CompanyId
+                      AND t.deleted_at IS NULL
+                      AND t.is_active = TRUE
+                      AND (t.nature IS NULL OR t.nature <> 'variable')
+                      AND (
+                          @BranchId IS NULL
+                          OR t.branch_id = @BranchId
+                          OR t.branch_id IS NULL
+                      )
+                ), expanded AS (
+                    -- Monthly / Unique => 1 occurrence
+                    SELECT
+                        templates.id AS recurring_template_id,
+                        templates.category_id,
+                        templates.type,
+                        templates.description,
+                        templates.default_amount AS amount,
+                        templates.nature,
+                        templates.frequency,
+                        1 AS occurrence_in_month,
+                        CAST(
+                            (
+                                date_trunc('month', CAST(@MonthStart AS timestamptz))
+                                + make_interval(days => LEAST(
+                                    GREATEST(templates.day_of_month, 1),
+                                    CAST(EXTRACT(DAY FROM (date_trunc('month', CAST(@MonthStart AS timestamptz)) + interval '1 month - 1 day')) AS int)
+                                ) - 1)
+                            )
+                            AS timestamptz
+                        ) AS entry_date
+                    FROM templates
+                    WHERE templates.frequency IN ('monthly', 'unique')
+
+                    UNION ALL
+
+                    -- Biweekly => 2 occurrences, configurable days
+                    SELECT
+                        templates.id,
+                        templates.category_id,
+                        templates.type,
+                        templates.description,
+                        templates.default_amount,
+                        templates.nature,
+                        templates.frequency,
+                        1 AS occurrence_in_month,
+                        CAST(
+                            (
+                                date_trunc('month', CAST(@MonthStart AS timestamptz))
+                                + make_interval(days => LEAST(
+                                    GREATEST(COALESCE(templates.biweekly_day_1, 1), 1),
+                                    CAST(EXTRACT(DAY FROM (date_trunc('month', CAST(@MonthStart AS timestamptz)) + interval '1 month - 1 day')) AS int)
+                                ) - 1)
+                            )
+                            AS timestamptz
+                        )
+                    FROM templates
+                    WHERE templates.frequency IN ('biweekly', 'quincenal')
+
+                    UNION ALL
+
+                    SELECT
+                        templates.id,
+                        templates.category_id,
+                        templates.type,
+                        templates.description,
+                        templates.default_amount,
+                        templates.nature,
+                        templates.frequency,
+                        2 AS occurrence_in_month,
+                        CAST(
+                            (
+                                date_trunc('month', CAST(@MonthStart AS timestamptz))
+                                + make_interval(days => LEAST(
+                                    GREATEST(COALESCE(templates.biweekly_day_2, 15), 1),
+                                    CAST(EXTRACT(DAY FROM (date_trunc('month', CAST(@MonthStart AS timestamptz)) + interval '1 month - 1 day')) AS int)
+                                ) - 1)
+                            )
+                            AS timestamptz
+                        )
+                    FROM templates
+                    WHERE templates.frequency IN ('biweekly', 'quincenal')
+
+                    UNION ALL
+
+                    -- Weekly => occurrences per calendar week (1..5). We attach Monday of that calendar week as entry_date.
+                    SELECT
+                        templates.id,
+                        templates.category_id,
+                        templates.type,
+                        templates.description,
+                        templates.default_amount,
+                        templates.nature,
+                        templates.frequency,
+                        w.week_of_month AS occurrence_in_month,
+                        w.week_anchor AS entry_date
+                    FROM templates
+                    CROSS JOIN LATERAL (
+                        SELECT
+                            week_of_month,
+                            week_anchor
+                        FROM (
+                            SELECT 1 AS week_of_month, CAST(date_trunc('week', date_trunc('month', CAST(@MonthStart AS timestamptz))) AS timestamptz) AS week_anchor
+                            UNION ALL
+                            SELECT 2, CAST((date_trunc('week', date_trunc('month', CAST(@MonthStart AS timestamptz))) + interval '7 days') AS timestamptz)
+                            UNION ALL
+                            SELECT 3, CAST((date_trunc('week', date_trunc('month', CAST(@MonthStart AS timestamptz))) + interval '14 days') AS timestamptz)
+                            UNION ALL
+                            SELECT 4, CAST((date_trunc('week', date_trunc('month', CAST(@MonthStart AS timestamptz))) + interval '21 days') AS timestamptz)
+                            UNION ALL
+                            SELECT 5, CAST((date_trunc('week', date_trunc('month', CAST(@MonthStart AS timestamptz))) + interval '28 days') AS timestamptz)
+                        ) weeks
+                        WHERE weeks.week_anchor < (date_trunc('month', CAST(@MonthStart AS timestamptz)) + interval '1 month')
+                    ) w
+                    WHERE templates.frequency = 'weekly'
+                ), current_week AS (
+                    SELECT
+                        CASE
+                            WHEN date_trunc('month', (NOW() AT TIME ZONE 'UTC')) = date_trunc('month', CAST(@MonthStart AS timestamptz))
+                            THEN (
+                                ((CAST(date_trunc('week', (NOW() AT TIME ZONE 'UTC')) AS date) - (SELECT week1_start FROM ctx)) / 7) + 1
+                            )
+                            ELSE 1
+                        END AS current_week_of_month
+                ), filtered AS (
+                    SELECT e.*
+                    FROM expanded e
+                    WHERE (
+                        date_trunc('month', CAST(@MonthStart AS timestamptz)) <> date_trunc('month', (NOW() AT TIME ZONE 'UTC'))
+                        OR (
+                            e.frequency = 'weekly'
+                            AND e.occurrence_in_month >= (SELECT current_week_of_month FROM current_week)
+                        )
+                        OR (
+                            e.frequency <> 'weekly'
+                            AND CAST(e.entry_date AS date) >= (SELECT today_utc FROM ctx)
+                        )
+                    )
+                ), inserted AS (
+                    INSERT INTO finance.entries (
+                        company_id, branch_id, category_id, type, description,
+                        amount, entry_date, nature, frequency,
+                        status, occurrence_in_month, is_manual,
+                        recurring_template_id, created_by
+                    )
+                    SELECT
+                        @CompanyId,
+                        @BranchId,
+                        filtered.category_id,
+                        filtered.type,
+                        filtered.description,
+                        filtered.amount,
+                        filtered.entry_date,
+                        filtered.nature,
+                        filtered.frequency,
+                        'pending',
+                        filtered.occurrence_in_month,
+                        FALSE,
+                        filtered.recurring_template_id,
+                        @UserId
+                    FROM filtered
+                    ON CONFLICT DO NOTHING
+                    RETURNING 1
+                )
+                SELECT COUNT(*) FROM inserted;";
+
+            return await connection.ExecuteScalarAsync<int>(sql, new
+            {
+                CompanyId = companyId,
+                BranchId = branchId,
+                MonthStart = monthStart,
+                UserId = userId
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error iniciando mes financiero desde plantillas");
+            throw;
+        }
+    }
+
     public async Task<FinancialCategory?> GetCategoryByIdAsync(long id, long companyId)
     {
         try
@@ -166,6 +567,10 @@ public class FinanceRepository : IFinanceRepository
                     e.company_id AS CompanyId,
                     e.branch_id AS BranchId,
                     e.category_id AS CategoryId,
+                    e.recurring_template_id AS RecurringTemplateId,
+                    e.status AS Status,
+                    e.occurrence_in_month AS OccurrenceInMonth,
+                    e.is_manual AS IsManual,
                     c.name AS CategoryName,
                     b.name AS BranchName,
                     e.type AS Type,
@@ -235,6 +640,8 @@ public class FinanceRepository : IFinanceRepository
             using var connection = await _connectionFactory.CreateConnectionAsync();
             const string sql = @"
                 SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId, category_id AS CategoryId,
+                       recurring_template_id AS RecurringTemplateId,
+                       status AS Status, occurrence_in_month AS OccurrenceInMonth, is_manual AS IsManual,
                        type AS Type, description AS Description, amount AS Amount, entry_date AS EntryDate,
                        nature AS Nature, frequency AS Frequency, notes AS Notes, created_by AS CreatedBy,
                        created_at AS CreatedAt, updated_at AS UpdatedAt, deleted_at AS DeletedAt
@@ -258,13 +665,21 @@ public class FinanceRepository : IFinanceRepository
             const string sql = @"
                 INSERT INTO finance.entries (
                     company_id, branch_id, category_id, type, description,
-                    amount, entry_date, nature, frequency, notes, created_by
+                    amount, entry_date, nature, frequency, notes,
+                    status, occurrence_in_month, is_manual,
+                    recurring_template_id,
+                    created_by
                 ) VALUES (
                     @CompanyId, @BranchId, @CategoryId, @Type, @Description,
-                    @Amount, @EntryDate, @Nature, @Frequency, @Notes, @CreatedBy
+                    @Amount, @EntryDate, @Nature, @Frequency, @Notes,
+                    @Status, @OccurrenceInMonth, @IsManual,
+                    @RecurringTemplateId,
+                    @CreatedBy
                 )
                 RETURNING id AS Id, company_id AS CompanyId, branch_id AS BranchId,
-                       category_id AS CategoryId, type AS Type, description AS Description,
+                       category_id AS CategoryId, recurring_template_id AS RecurringTemplateId,
+                       status AS Status, occurrence_in_month AS OccurrenceInMonth, is_manual AS IsManual,
+                       type AS Type, description AS Description,
                        amount AS Amount, entry_date AS EntryDate, nature AS Nature,
                        frequency AS Frequency, notes AS Notes, created_by AS CreatedBy,
                        created_at AS CreatedAt, updated_at AS UpdatedAt";
@@ -294,10 +709,15 @@ public class FinanceRepository : IFinanceRepository
                     nature = @Nature,
                     frequency = @Frequency,
                     notes = @Notes,
+                    status = @Status,
+                    occurrence_in_month = @OccurrenceInMonth,
+                    is_manual = @IsManual,
                     updated_at = NOW()
                 WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL;
 
                 SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId, category_id AS CategoryId,
+                       recurring_template_id AS RecurringTemplateId,
+                       status AS Status, occurrence_in_month AS OccurrenceInMonth, is_manual AS IsManual,
                        type AS Type, description AS Description, amount AS Amount, entry_date AS EntryDate,
                        nature AS Nature, frequency AS Frequency, notes AS Notes, created_by AS CreatedBy,
                        created_at AS CreatedAt, updated_at AS UpdatedAt, deleted_at AS DeletedAt

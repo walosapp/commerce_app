@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarRange, PlusCircle, SlidersHorizontal, Tags } from 'lucide-react';
+import { CalendarRange, PlayCircle, PlusCircle, Repeat, SlidersHorizontal, Tags } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAuthStore from '../../stores/authStore';
 import financeService from '../../services/financeService';
-import FinancialSummaryCards from './components/FinancialSummaryCards';
 import FinancialEntryTable from './components/FinancialEntryTable';
 import FinancialEntryFormModal from './components/FinancialEntryFormModal';
 import FinancialCategoryModal from './components/FinancialCategoryModal';
-import { formatCurrency } from '../../utils/formatCurrency';
+import MonthInitPanelModal from './components/MonthInitPanelModal';
+import RecurringTemplatesModal from './components/RecurringTemplatesModal';
 
 const getMonthValue = (date) => {
   const year = date.getFullYear();
@@ -46,6 +46,8 @@ const FinancePage = () => {
   });
   const [entryModalOpen, setEntryModalOpen] = useState(false);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [monthPanelOpen, setMonthPanelOpen] = useState(false);
+  const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
 
@@ -70,21 +72,21 @@ const FinancePage = () => {
     queryFn: () => financeService.getCategories(),
   });
 
-  const { data: summaryData } = useQuery({
-    queryKey: ['finance-summary', branchId, monthRange.startDate, monthRange.endDate],
-    queryFn: () => financeService.getSummary({ branchId, startDate: monthRange.startDate, endDate: monthRange.endDate }),
+  const { data: templatesData } = useQuery({
+    queryKey: ['finance-templates', branchId],
+    queryFn: () => financeService.getTemplates({ branchId }),
     enabled: !!branchId,
   });
 
   const entries = entriesData?.data || [];
   const categories = categoriesData?.data || [];
-  const summary = summaryData?.data || {};
+  const templates = templatesData?.data || [];
   const monthLabel = getMonthLabel(filters.selectedMonth);
 
   const refreshAll = () => {
     queryClient.invalidateQueries({ queryKey: ['finance-entries'] });
     queryClient.invalidateQueries({ queryKey: ['finance-categories'] });
-    queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['finance-templates'] });
   };
 
   const handleSaveEntry = async (payload) => {
@@ -129,6 +131,19 @@ const FinancePage = () => {
     refreshAll();
   };
 
+  const handleInitMonth = async () => {
+    if (!filters.selectedMonth) return;
+    try {
+      const res = await financeService.initMonth({ month: filters.selectedMonth, branchId });
+      const inserted = res?.data ?? 0;
+      toast.success(inserted > 0 ? `Mes iniciado. ${inserted} item(s) generados` : 'Mes ya estaba iniciado');
+      refreshAll();
+      setMonthPanelOpen(true);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'No fue posible iniciar el mes');
+    }
+  };
+
   const applyRelativeMonth = (offset) => {
     const today = new Date();
     const monthDate = new Date(today.getFullYear(), today.getMonth() + offset, 1);
@@ -140,12 +155,20 @@ const FinancePage = () => {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Finanzas</h1>
-          <p className="mt-1 text-sm text-gray-500">Controla el resultado del negocio por mes cruzando ventas facturadas, ingresos manuales y gastos operativos.</p>
+          <p className="mt-1 text-sm text-gray-500">Configura categorias y plantillas fijas, inicia el mes y ajusta los valores reales cuando sea necesario.</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <button onClick={() => { setEditingCategory(null); setCategoryModalOpen(true); }} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
             <Tags className="h-4 w-4" />
             Categorias
+          </button>
+          <button onClick={() => setTemplatesModalOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <Repeat className="h-4 w-4" />
+            Plantillas
+          </button>
+          <button onClick={handleInitMonth} className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-medium text-primary-700 hover:bg-primary-100">
+            <PlayCircle className="h-4 w-4" />
+            Iniciar mes
           </button>
           <button onClick={() => { setEditingEntry(null); setEntryModalOpen(true); }} className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700">
             <PlusCircle className="h-4 w-4" />
@@ -162,30 +185,13 @@ const FinancePage = () => {
               <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">Control mensual</h2>
             </div>
             <p className="mt-2 text-lg font-semibold text-gray-900">{monthLabel}</p>
-            <p className="mt-1 text-sm text-gray-500">Resultado del periodo = ventas facturadas + ingresos manuales - gastos operativos.</p>
+            <p className="mt-1 text-sm text-gray-500">Inicia el mes para generar automaticamente los items fijos configurados (arriendo, nomina, etc.).</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => applyRelativeMonth(-1)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Mes anterior</button>
             <button onClick={() => applyRelativeMonth(0)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Mes actual</button>
             <input type="month" className="input w-[180px]" value={filters.selectedMonth} onChange={(e) => setFilters((prev) => ({ ...prev, selectedMonth: e.target.value }))} />
           </div>
-        </div>
-      </div>
-
-      <FinancialSummaryCards summary={summary} />
-
-      <div className="card grid gap-4 md:grid-cols-3">
-        <div>
-          <p className="text-sm text-gray-500">Ventas + ingresos manuales</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900">{formatCurrency(summary.totalBusinessIncome || 0)}</p>
-        </div>
-        <div>
-          <p className="text-sm text-gray-500">Gastos del periodo</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900">{formatCurrency(summary.totalExpense || 0)}</p>
-        </div>
-        <div>
-          <p className="text-sm text-gray-500">Lectura del mes</p>
-          <p className="mt-2 text-sm leading-6 text-gray-600">Registra en este modulo solo los gastos e ingresos variables o adicionales del mes. Las ventas del sistema se incorporan automaticamente al resumen.</p>
         </div>
       </div>
 
@@ -234,6 +240,24 @@ const FinancePage = () => {
         onSave={handleSaveCategory}
         onDelete={handleDeleteCategory}
         category={editingCategory}
+      />
+
+      <MonthInitPanelModal
+        isOpen={monthPanelOpen}
+        onClose={() => setMonthPanelOpen(false)}
+        entries={entries}
+        categories={categories}
+        monthLabel={monthLabel}
+        onUpdated={refreshAll}
+      />
+
+      <RecurringTemplatesModal
+        isOpen={templatesModalOpen}
+        onClose={() => setTemplatesModalOpen(false)}
+        templates={templates}
+        categories={categories}
+        branchId={branchId}
+        onUpdated={refreshAll}
       />
 
       {!categoryModalOpen && categories.length > 0 && (

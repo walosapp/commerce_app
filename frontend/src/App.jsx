@@ -14,6 +14,7 @@ import AiAssistantPage from './modules/ai-assistant/AiAssistantPage';
 import LoginPage from './modules/auth/LoginPage';
 import useAuthStore from './stores/authStore';
 import useUiStore from './stores/uiStore';
+import DashboardPage from './modules/dashboard/DashboardPage';
 import SettingsPage from './modules/settings/SettingsPage';
 import AlertsPage from './modules/alerts/AlertsPage';
 import FinancePage from './modules/finance/FinancePage';
@@ -54,7 +55,7 @@ function App() {
       <ThemeSync />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<ProtectedRoute><div className="text-center"><h1 className="text-3xl font-bold">Dashboard</h1><p className="mt-4 text-gray-500">Proximamente...</p></div></ProtectedRoute>} />
+          <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/inventory" element={<ProtectedRoute><InventoryPage /></ProtectedRoute>} />
           <Route path="/ai-assistant" element={<ProtectedRoute><AiAssistantPage /></ProtectedRoute>} />
           <Route path="/sales" element={<ProtectedRoute><SalesPage /></ProtectedRoute>} />

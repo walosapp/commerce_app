@@ -130,7 +130,7 @@
   }
 
   * {
-    @apply border-gray-200;
+    border-color: rgb(var(--border-subtle));
   }
 
   html,
@@ -286,9 +286,150 @@
     border-color: rgb(var(--border-strong)) !important;
   }
 
+  [data-theme] .text-gray-600 {
+    color: rgb(var(--text-muted)) !important;
+  }
+
+  [data-theme] .text-gray-800 {
+    color: rgb(var(--text-strong)) !important;
+  }
+
+  [data-theme] .bg-gray-200 {
+    background-color: rgb(var(--surface-soft)) !important;
+  }
+
+  [data-theme] .bg-gray-300 {
+    background-color: rgb(var(--border-subtle)) !important;
+  }
+
   [data-theme] .hover\:bg-gray-50:hover,
   [data-theme] .hover\:bg-gray-100:hover {
     background-color: rgb(var(--surface-soft)) !important;
+  }
+
+  [data-theme] .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgb(var(--border-subtle)) !important;
+  }
+
+  [data-theme] .ring-gray-200 {
+    --tw-ring-color: rgb(var(--border-subtle)) !important;
+  }
+
+  [data-theme] .ring-gray-300 {
+    --tw-ring-color: rgb(var(--border-strong)) !important;
+  }
+
+  [data-theme] .placeholder\:text-gray-400::placeholder {
+    color: rgb(var(--text-muted)) !important;
+  }
+
+  /* ───── Dark themes: tooltip / bg-gray-900 ───── */
+  :is([data-theme='dark'], [data-theme='neon']) .bg-gray-900 {
+    background-color: rgb(var(--border-strong)) !important;
+  }
+
+  /* ───── Dark themes: semantic GREEN ───── */
+  :is([data-theme='dark'], [data-theme='neon']) .bg-green-50,
+  :is([data-theme='dark'], [data-theme='neon']) .bg-green-50\/50 {
+    background-color: rgba(16, 185, 129, 0.1) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .bg-green-100 {
+    background-color: rgba(16, 185, 129, 0.18) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .text-green-600,
+  :is([data-theme='dark'], [data-theme='neon']) .text-green-700,
+  :is([data-theme='dark'], [data-theme='neon']) .text-green-800 {
+    color: #6ee7b7 !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .border-green-200 {
+    border-color: rgba(16, 185, 129, 0.3) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .hover\:bg-green-50:hover {
+    background-color: rgba(16, 185, 129, 0.15) !important;
+  }
+
+  /* ───── Dark themes: semantic YELLOW ───── */
+  :is([data-theme='dark'], [data-theme='neon']) .bg-yellow-50,
+  :is([data-theme='dark'], [data-theme='neon']) .bg-yellow-50\/50 {
+    background-color: rgba(245, 158, 11, 0.1) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .bg-yellow-100 {
+    background-color: rgba(245, 158, 11, 0.18) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .text-yellow-600,
+  :is([data-theme='dark'], [data-theme='neon']) .text-yellow-700,
+  :is([data-theme='dark'], [data-theme='neon']) .text-yellow-800 {
+    color: #fcd34d !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .border-yellow-200 {
+    border-color: rgba(245, 158, 11, 0.3) !important;
+  }
+
+  /* ───── Dark themes: semantic RED ───── */
+  :is([data-theme='dark'], [data-theme='neon']) .bg-red-50,
+  :is([data-theme='dark'], [data-theme='neon']) .bg-red-50\/50 {
+    background-color: rgba(239, 68, 68, 0.1) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .bg-red-100 {
+    background-color: rgba(239, 68, 68, 0.18) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .text-red-600,
+  :is([data-theme='dark'], [data-theme='neon']) .text-red-700,
+  :is([data-theme='dark'], [data-theme='neon']) .text-red-800 {
+    color: #fca5a5 !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .border-red-200 {
+    border-color: rgba(239, 68, 68, 0.3) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .hover\:bg-red-50:hover {
+    background-color: rgba(239, 68, 68, 0.15) !important;
+  }
+
+  /* ───── Dark themes: semantic BLUE ───── */
+  :is([data-theme='dark'], [data-theme='neon']) .bg-blue-50,
+  :is([data-theme='dark'], [data-theme='neon']) .bg-blue-50\/50 {
+    background-color: rgba(59, 130, 246, 0.1) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .bg-blue-100 {
+    background-color: rgba(59, 130, 246, 0.18) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .text-blue-600,
+  :is([data-theme='dark'], [data-theme='neon']) .text-blue-700,
+  :is([data-theme='dark'], [data-theme='neon']) .text-blue-800 {
+    color: #93c5fd !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .border-blue-200 {
+    border-color: rgba(59, 130, 246, 0.3) !important;
+  }
+
+  /* ───── Dark themes: semantic ORANGE ───── */
+  :is([data-theme='dark'], [data-theme='neon']) .bg-orange-50 {
+    background-color: rgba(249, 115, 22, 0.1) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .bg-orange-100 {
+    background-color: rgba(249, 115, 22, 0.18) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .text-orange-600,
+  :is([data-theme='dark'], [data-theme='neon']) .text-orange-700,
+  :is([data-theme='dark'], [data-theme='neon']) .text-orange-800 {
+    color: #fdba74 !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .border-orange-200 {
+    border-color: rgba(249, 115, 22, 0.3) !important;
+  }
+
+  /* ───── Dark themes: shadows → subtle border replacement ───── */
+  :is([data-theme='dark'], [data-theme='neon']) .shadow-sm {
+    box-shadow: 0 0 0 1px rgb(var(--border-subtle)), 0 1px 2px 0 rgba(0,0,0,.3) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .shadow-md {
+    box-shadow: 0 0 0 1px rgb(var(--border-subtle)), 0 2px 6px rgba(0,0,0,.35) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .shadow-lg {
+    box-shadow: 0 0 0 1px rgb(var(--border-subtle)), 0 4px 12px rgba(0,0,0,.4) !important;
+  }
+  :is([data-theme='dark'], [data-theme='neon']) .shadow-2xl {
+    box-shadow: 0 0 0 1px rgb(var(--border-strong)), 0 8px 24px rgba(0,0,0,.5) !important;
   }
 
   .scrollbar-hide {

@@ -1,7 +1,7 @@
 /**
  * Layout Principal
- * ¿Qué es? Estructura base de la aplicacion
- * ¿Para qué? Header, sidebar y contenido principal
+ * ï¿½Quï¿½ es? Estructura base de la aplicacion
+ * ï¿½Para quï¿½? Header, sidebar y contenido principal
  */
 
 import { useEffect, useState } from 'react';
@@ -100,6 +100,7 @@ const Layout = ({ children }) => {
 
   const displayName = companyName || 'Walos';
   const logoSrc = companyLogoUrl ? `${API_BASE}${companyLogoUrl}` : null;
+  const walosLogoSrc = '/walos-logo.png';
   const alertsCount = alertsData?.count || alertsData?.data?.length || 0;
   const userDisplayName = user?.first_name
     ? `${user.first_name} ${user?.last_name || ''}`.trim()
@@ -171,27 +172,34 @@ const Layout = ({ children }) => {
               collapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'
             }`}
           >
-            {logoSrc ? (
-              <img
-                src={logoSrc}
-                alt={displayName}
-                className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 object-cover"
-              />
-            ) : (
-              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-500 text-sm font-bold text-white">
-                {displayName.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <h1 className="truncate whitespace-nowrap text-lg font-bold text-gray-900">{displayName}</h1>
+            <img
+              src={walosLogoSrc}
+              alt="Walos"
+              className="h-10 w-10 flex-shrink-0 rounded-lg border border-gray-200 bg-white object-contain p-1"
+            />
           </div>
 
-          <button
-            onClick={() => setSidebarCollapsed(!collapsed)}
-            className="ml-auto hidden flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 lg:flex"
-            title={collapsed ? 'Abrir barra lateral' : 'Cerrar barra lateral'}
-          >
-            {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
-          </button>
+          {collapsed ? (
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              className="mx-auto hidden flex-shrink-0 items-center justify-center lg:flex"
+              title="Abrir barra lateral"
+            >
+              <img
+                src={walosLogoSrc}
+                alt="Walos"
+                className="h-10 w-10 rounded-lg object-contain"
+              />
+            </button>
+          ) : (
+            <button
+              onClick={() => setSidebarCollapsed(true)}
+              className="ml-auto hidden flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 lg:flex"
+              title="Cerrar barra lateral"
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </button>
+          )}
 
           <button onClick={() => setSidebarOpen(false)} className="ml-auto lg:hidden">
             <X className="h-6 w-6" />
@@ -238,10 +246,16 @@ const Layout = ({ children }) => {
           </div>
         </div>
 
-        <div className="border-t px-4 py-3 text-center">
-          <span className={`font-bold tracking-widest text-gray-400 transition-all duration-300 ${collapsed ? 'text-[10px]' : 'text-xs'}`}>
-            {collapsed ? 'W' : 'WALOS'}
-          </span>
+        <div className="border-t px-4 py-3">
+          <div className="flex justify-center">
+            <img
+              src={walosLogoSrc}
+              alt="Walos"
+              className={`object-contain transition-all duration-300 ${
+                collapsed ? 'h-6 w-6' : 'h-8 w-auto'
+              }`}
+            />
+          </div>
         </div>
       </aside>
 
@@ -257,16 +271,16 @@ const Layout = ({ children }) => {
                 <img
                   src={logoSrc}
                   alt={displayName}
-                  className="h-9 w-9 rounded-xl border border-gray-200 object-cover"
+                  className="h-9 w-9 rounded-xl border border-gray-200 bg-white object-contain p-1"
                 />
               ) : (
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-sm font-bold text-primary-700">
                   {displayName.charAt(0).toUpperCase()}
                 </div>
               )}
+
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-gray-900">{displayName}</p>
-                <p className="truncate text-xs text-gray-500">Panel de operacion</p>
               </div>
             </div>
           </div>

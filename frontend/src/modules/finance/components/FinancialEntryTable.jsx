@@ -6,6 +6,12 @@ const typeStyles = {
   expense: 'bg-red-100 text-red-700',
 };
 
+const statusStyles = {
+  pending: 'bg-yellow-100 text-yellow-800',
+  posted: 'bg-green-100 text-green-800',
+  skipped: 'bg-gray-100 text-gray-600',
+};
+
 const FinancialEntryTable = ({ entries, isLoading, onEdit, onDelete }) => {
   if (isLoading) {
     return (
@@ -31,10 +37,12 @@ const FinancialEntryTable = ({ entries, isLoading, onEdit, onDelete }) => {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Fecha</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">Estado</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Tipo</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Categoria</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Descripcion</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Sucursal</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">Ocurr.</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Naturaleza</th>
               <th className="px-4 py-3 text-right font-medium text-gray-500">Monto</th>
               <th className="px-4 py-3 text-right font-medium text-gray-500">Acciones</th>
@@ -44,6 +52,11 @@ const FinancialEntryTable = ({ entries, isLoading, onEdit, onDelete }) => {
             {entries.map((entry) => (
               <tr key={entry.id}>
                 <td className="px-4 py-3 text-gray-700">{new Date(entry.entryDate).toLocaleDateString('es-CO')}</td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusStyles[entry.status] || 'bg-gray-100 text-gray-700'}`}>
+                    {entry.status || 'posted'}
+                  </span>
+                </td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${typeStyles[entry.type] || 'bg-gray-100 text-gray-700'}`}>
                     {entry.type === 'income' ? 'Ingreso' : 'Gasto'}
@@ -55,14 +68,23 @@ const FinancialEntryTable = ({ entries, isLoading, onEdit, onDelete }) => {
                   {entry.notes && <p className="mt-1 text-xs text-gray-500">{entry.notes}</p>}
                 </td>
                 <td className="px-4 py-3 text-gray-700">{entry.branchName || 'General'}</td>
+                <td className="px-4 py-3 text-gray-700">{entry.occurrenceInMonth || 1}</td>
                 <td className="px-4 py-3 text-gray-700">{entry.nature || '-'}</td>
                 <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(entry.amount)}</td>
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => onEdit(entry)} className="rounded-lg border border-gray-200 p-2 text-gray-600 transition-colors hover:bg-gray-50">
+                    <button
+                      onClick={() => onEdit(entry)}
+                      disabled={entry.status === 'skipped'}
+                      className="rounded-lg border border-gray-200 p-2 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                    >
                       <Edit3 className="h-4 w-4" />
                     </button>
-                    <button onClick={() => onDelete(entry)} className="rounded-lg border border-gray-200 p-2 text-red-600 transition-colors hover:bg-red-50">
+                    <button
+                      onClick={() => onDelete(entry)}
+                      disabled={entry.status === 'skipped'}
+                      className="rounded-lg border border-gray-200 p-2 text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                    >
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>

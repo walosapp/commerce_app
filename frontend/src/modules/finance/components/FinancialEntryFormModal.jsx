@@ -6,8 +6,8 @@ const typeOptions = [
   { value: 'income', label: 'Ingreso' },
 ];
 
-const natureOptions = ['fixed', 'variable'];
-const frequencyOptions = ['one_time', 'daily', 'weekly', 'monthly'];
+const natureOptions = ['fixed', 'variable', 'unique'];
+const frequencyOptions = ['one_time', 'weekly', 'biweekly', 'monthly', 'unique'];
 
 const FinancialEntryFormModal = ({ isOpen, onClose, onSave, entry, categories, branchId }) => {
   const [form, setForm] = React.useState({
