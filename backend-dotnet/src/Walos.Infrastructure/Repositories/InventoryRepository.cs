@@ -226,9 +226,10 @@ public class InventoryRepository : IInventoryRepository
                     p.track_stock AS TrackStock,
                     p.is_perishable AS IsPerishable,
                     CASE 
+                        WHEN p.track_stock = FALSE THEN 'ok'
                         WHEN s.quantity - COALESCE(committed.committed_quantity, 0) <= 0 THEN 'out'
-                        WHEN s.quantity - COALESCE(committed.committed_quantity, 0) <= p.min_stock THEN 'low'
-                        WHEN p.reorder_point > 0 AND s.quantity - COALESCE(committed.committed_quantity, 0) <= p.reorder_point THEN 'low'
+                        WHEN p.min_stock > 0 AND s.quantity - COALESCE(committed.committed_quantity, 0) <= p.min_stock THEN 'low'
+                        WHEN p.reorder_point > 0 AND s.quantity - COALESCE(committed.committed_quantity, 0) <= p.reorder_point THEN 'reorder'
                         ELSE 'ok'
                     END AS StockStatus
                 FROM inventory.stock s
@@ -258,9 +259,9 @@ public class InventoryRepository : IInventoryRepository
 
             var checkSql = @"
                 SELECT id FROM inventory.stock
-                WHERE branch_id = @BranchId AND product_id = @ProductId";
+                WHERE branch_id = @BranchId AND product_id = @ProductId AND company_id = @CompanyId";
 
-            var existing = await connection.QueryFirstOrDefaultAsync<long?>(checkSql, new { BranchId = branchId, ProductId = productId });
+            var existing = await connection.QueryFirstOrDefaultAsync<long?>(checkSql, new { BranchId = branchId, ProductId = productId, CompanyId = companyId });
 
             if (existing is null)
             {
@@ -280,13 +281,13 @@ public class InventoryRepository : IInventoryRepository
                     UPDATE inventory.stock
                     SET quantity = quantity + @Quantity,
                         updated_at = NOW()
-                    WHERE branch_id = @BranchId AND product_id = @ProductId
+                    WHERE branch_id = @BranchId AND product_id = @ProductId AND company_id = @CompanyId
                     RETURNING id AS Id, company_id AS CompanyId,
                            branch_id AS BranchId, product_id AS ProductId,
                            quantity AS Quantity";
 
                 return await connection.QuerySingleAsync<Stock>(updateSql,
-                    new { BranchId = branchId, ProductId = productId, Quantity = quantity });
+                    new { BranchId = branchId, ProductId = productId, Quantity = quantity, CompanyId = companyId });
             }
         }
         catch (Exception ex)
@@ -434,7 +435,7 @@ public class InventoryRepository : IInventoryRepository
         }
     }
 
-    public async Task UpdateAiInteractionStatusAsync(long id, string status, bool confirmedByUser)
+    public async Task UpdateAiInteractionStatusAsync(long id, string status, bool confirmedByUser, long companyId)
     {
         try
         {
@@ -445,9 +446,9 @@ public class InventoryRepository : IInventoryRepository
                 SET action_status = @Status,
                     confirmed_by_user = @ConfirmedByUser,
                     confirmed_at = NOW()
-                WHERE id = @Id";
+                WHERE id = @Id AND company_id = @CompanyId";
 
-            await connection.ExecuteAsync(sql, new { Id = id, Status = status, ConfirmedByUser = confirmedByUser });
+            await connection.ExecuteAsync(sql, new { Id = id, Status = status, ConfirmedByUser = confirmedByUser, CompanyId = companyId });
         }
         catch (Exception ex)
         {
@@ -485,8 +486,8 @@ public class InventoryRepository : IInventoryRepository
             }
 
             return stock
-                .Where(item => item.StockStatus is "low" or "out")
-                .OrderBy(item => item.StockStatus == "out" ? 0 : 1)
+                .Where(item => item.StockStatus is "low" or "out" or "reorder")
+                .OrderBy(item => item.StockStatus == "out" ? 0 : item.StockStatus == "low" ? 1 : 2)
                 .ThenBy(item => item.AvailableQuantity)
                 .Select(item => new Alert
                 {
@@ -494,8 +495,8 @@ public class InventoryRepository : IInventoryRepository
                     CompanyId = companyId,
                     BranchId = item.BranchId,
                     ProductId = item.ProductId,
-                    AlertType = item.StockStatus == "out" ? "out_of_stock" : "low_stock",
-                    Severity = item.StockStatus == "out" ? "critical" : "high",
+                    AlertType = item.StockStatus == "out" ? "out_of_stock" : item.StockStatus == "low" ? "low_stock" : "reorder",
+                    Severity = item.StockStatus == "out" ? "critical" : item.StockStatus == "low" ? "high" : "medium",
                     Status = "active",
                     CreatedAt = DateTime.UtcNow,
                     ProductName = item.ProductName,
@@ -767,7 +768,19 @@ public class InventoryRepository : IInventoryRepository
                     updated_at = NOW()
                 WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL;
 
-                SELECT * FROM inventory.products WHERE id = @Id;";
+                SELECT id AS Id, company_id AS CompanyId, name AS Name, sku AS Sku,
+                       barcode AS Barcode, description AS Description,
+                       category_id AS CategoryId, unit_id AS UnitId,
+                       cost_price AS CostPrice, sale_price AS SalePrice,
+                       margin_percentage AS MarginPercentage,
+                       min_stock AS MinStock, max_stock AS MaxStock,
+                       reorder_point AS ReorderPoint,
+                       is_perishable AS IsPerishable, shelf_life_days AS ShelfLifeDays,
+                       product_type AS ProductType, track_stock AS TrackStock,
+                       is_for_sale AS IsForSale, is_active AS IsActive,
+                       image_url AS ImageUrl,
+                       created_by AS CreatedBy, created_at AS CreatedAt, updated_at AS UpdatedAt
+                FROM inventory.products WHERE id = @Id AND company_id = @CompanyId;";
 
             var updated = await connection.QueryFirstOrDefaultAsync<Product>(sql, new
             {

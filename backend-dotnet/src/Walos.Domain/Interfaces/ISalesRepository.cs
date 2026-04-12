@@ -10,14 +10,14 @@ public interface ISalesRepository
     Task<Order> CreateOrderAsync(Order order, List<OrderItem> items);
     Task<Order?> GetOrderByIdAsync(long orderId, long companyId);
     Task<Order?> GetOrderByTableIdAsync(long tableId, long companyId);
-    Task<IEnumerable<OrderItem>> GetOrderItemsAsync(long orderId);
-    Task<OrderItem?> GetOrderItemByIdAsync(long itemId);
+    Task<IEnumerable<OrderItem>> GetOrderItemsAsync(long orderId, long companyId);
+    Task<OrderItem?> GetOrderItemByIdAsync(long itemId, long companyId);
     Task UpdateTableStatusAsync(long tableId, long companyId, string status);
-    Task UpdateOrderStatusAsync(long orderId, string status);
+    Task UpdateOrderStatusAsync(long orderId, long companyId, string status);
     Task<int> GetNextTableNumberAsync(long companyId, long branchId);
-    Task UpdateOrderItemQuantityAsync(long orderItemId, decimal quantity);
-    Task DeleteOrderItemAsync(long orderItemId);
+    Task UpdateOrderItemQuantityAsync(long orderItemId, long companyId, decimal quantity);
+    Task DeleteOrderItemAsync(long orderItemId, long companyId);
     Task AddOrderItemAsync(OrderItem item);
-    Task RecalculateOrderTotalAsync(long orderId);
-    Task UpdateOrderInvoiceSummaryAsync(long orderId, string? discountType, decimal discountValue, decimal discountAmount, decimal finalTotalPaid, int splitReferenceCount);
+    Task RecalculateOrderTotalAsync(long orderId, long companyId);
+    Task UpdateOrderInvoiceSummaryAsync(long orderId, long companyId, string? discountType, decimal discountValue, decimal discountAmount, decimal finalTotalPaid, int splitReferenceCount);
 }

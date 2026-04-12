@@ -46,16 +46,16 @@ public class SalesRepository : ISalesRepository
                 FROM sales.order_items oi
                 INNER JOIN sales.orders o ON oi.order_id = o.id
                 LEFT JOIN inventory.products p ON oi.product_id = p.id
-                WHERE o.table_id = ANY(@TableIds) AND o.status = 'pending'";
+                WHERE o.table_id = ANY(@TableIds) AND o.company_id = @CompanyId AND o.status = 'pending'";
 
-            var allItems = (await connection.QueryAsync<OrderItem>(itemsSql, new { TableIds = tableIds })).ToList();
+            var allItems = (await connection.QueryAsync<OrderItem>(itemsSql, new { TableIds = tableIds, CompanyId = companyId })).ToList();
 
             const string ordersSql = @"
                 SELECT id AS Id, table_id AS TableId, total AS Total
                 FROM sales.orders
-                WHERE table_id = ANY(@TableIds) AND status = 'pending'";
+                WHERE table_id = ANY(@TableIds) AND company_id = @CompanyId AND status = 'pending'";
 
-            var orders = (await connection.QueryAsync<dynamic>(ordersSql, new { TableIds = tableIds })).ToList();
+            var orders = (await connection.QueryAsync<dynamic>(ordersSql, new { TableIds = tableIds, CompanyId = companyId })).ToList();
 
             foreach (var table in tables)
             {
@@ -244,7 +244,7 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task<IEnumerable<OrderItem>> GetOrderItemsAsync(long orderId)
+    public async Task<IEnumerable<OrderItem>> GetOrderItemsAsync(long orderId, long companyId)
     {
         try
         {
@@ -257,9 +257,9 @@ public class SalesRepository : ISalesRepository
                        p.image_url AS ImageUrl
                 FROM sales.order_items oi
                 LEFT JOIN inventory.products p ON oi.product_id = p.id
-                WHERE oi.order_id = @OrderId";
+                WHERE oi.order_id = @OrderId AND oi.company_id = @CompanyId";
 
-            return await connection.QueryAsync<OrderItem>(sql, new { OrderId = orderId });
+            return await connection.QueryAsync<OrderItem>(sql, new { OrderId = orderId, CompanyId = companyId });
         }
         catch (Exception ex)
         {
@@ -268,7 +268,7 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task<OrderItem?> GetOrderItemByIdAsync(long itemId)
+    public async Task<OrderItem?> GetOrderItemByIdAsync(long itemId, long companyId)
     {
         try
         {
@@ -281,9 +281,9 @@ public class SalesRepository : ISalesRepository
                        p.image_url AS ImageUrl
                 FROM sales.order_items oi
                 LEFT JOIN inventory.products p ON oi.product_id = p.id
-                WHERE oi.id = @ItemId";
+                WHERE oi.id = @ItemId AND oi.company_id = @CompanyId";
 
-            return await connection.QueryFirstOrDefaultAsync<OrderItem>(sql, new { ItemId = itemId });
+            return await connection.QueryFirstOrDefaultAsync<OrderItem>(sql, new { ItemId = itemId, CompanyId = companyId });
         }
         catch (Exception ex)
         {
@@ -312,7 +312,7 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task UpdateOrderStatusAsync(long orderId, string status)
+    public async Task UpdateOrderStatusAsync(long orderId, long companyId, string status)
     {
         try
         {
@@ -321,9 +321,9 @@ public class SalesRepository : ISalesRepository
             const string sql = @"
                 UPDATE sales.orders
                 SET status = @Status, updated_at = NOW()
-                WHERE id = @OrderId";
+                WHERE id = @OrderId AND company_id = @CompanyId";
 
-            await connection.ExecuteAsync(sql, new { OrderId = orderId, Status = status });
+            await connection.ExecuteAsync(sql, new { OrderId = orderId, CompanyId = companyId, Status = status });
         }
         catch (Exception ex)
         {
@@ -353,13 +353,13 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task UpdateOrderItemQuantityAsync(long orderItemId, decimal quantity)
+    public async Task UpdateOrderItemQuantityAsync(long orderItemId, long companyId, decimal quantity)
     {
         try
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
-            const string sql = @"UPDATE sales.order_items SET quantity = @Quantity WHERE id = @Id";
-            await connection.ExecuteAsync(sql, new { Id = orderItemId, Quantity = quantity });
+            const string sql = @"UPDATE sales.order_items SET quantity = @Quantity WHERE id = @Id AND company_id = @CompanyId";
+            await connection.ExecuteAsync(sql, new { Id = orderItemId, CompanyId = companyId, Quantity = quantity });
         }
         catch (Exception ex)
         {
@@ -368,13 +368,13 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task DeleteOrderItemAsync(long orderItemId)
+    public async Task DeleteOrderItemAsync(long orderItemId, long companyId)
     {
         try
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
-            const string sql = @"DELETE FROM sales.order_items WHERE id = @Id";
-            await connection.ExecuteAsync(sql, new { Id = orderItemId });
+            const string sql = @"DELETE FROM sales.order_items WHERE id = @Id AND company_id = @CompanyId";
+            await connection.ExecuteAsync(sql, new { Id = orderItemId, CompanyId = companyId });
         }
         catch (Exception ex)
         {
@@ -409,18 +409,18 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task RecalculateOrderTotalAsync(long orderId)
+    public async Task RecalculateOrderTotalAsync(long orderId, long companyId)
     {
         try
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
             const string sql = @"
                 UPDATE sales.orders
-                SET subtotal = COALESCE((SELECT SUM(subtotal) FROM sales.order_items WHERE order_id = @OrderId), 0),
-                    total = COALESCE((SELECT SUM(subtotal) FROM sales.order_items WHERE order_id = @OrderId), 0),
+                SET subtotal = COALESCE((SELECT SUM(subtotal) FROM sales.order_items WHERE order_id = @OrderId AND company_id = @CompanyId), 0),
+                    total = COALESCE((SELECT SUM(subtotal) FROM sales.order_items WHERE order_id = @OrderId AND company_id = @CompanyId), 0),
                     updated_at = NOW()
-                WHERE id = @OrderId";
-            await connection.ExecuteAsync(sql, new { OrderId = orderId });
+                WHERE id = @OrderId AND company_id = @CompanyId";
+            await connection.ExecuteAsync(sql, new { OrderId = orderId, CompanyId = companyId });
         }
         catch (Exception ex)
         {
@@ -428,7 +428,7 @@ public class SalesRepository : ISalesRepository
             throw;
         }
     }
-    public async Task UpdateOrderInvoiceSummaryAsync(long orderId, string? discountType, decimal discountValue, decimal discountAmount, decimal finalTotalPaid, int splitReferenceCount)
+    public async Task UpdateOrderInvoiceSummaryAsync(long orderId, long companyId, string? discountType, decimal discountValue, decimal discountAmount, decimal finalTotalPaid, int splitReferenceCount)
     {
         try
         {
@@ -442,11 +442,12 @@ public class SalesRepository : ISalesRepository
                     split_reference_count = @SplitReferenceCount,
                     total = @FinalTotalPaid,
                     updated_at = NOW()
-                WHERE id = @OrderId";
+                WHERE id = @OrderId AND company_id = @CompanyId";
 
             await connection.ExecuteAsync(sql, new
             {
                 OrderId = orderId,
+                CompanyId = companyId,
                 DiscountType = discountType,
                 DiscountValue = discountValue,
                 DiscountAmount = discountAmount,

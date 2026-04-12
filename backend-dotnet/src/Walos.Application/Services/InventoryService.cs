@@ -218,7 +218,7 @@ public class InventoryService : IInventoryService
                     movements.Add(movement);
                 }
 
-                await _repository.UpdateAiInteractionStatusAsync(interactionId, "success", true);
+                await _repository.UpdateAiInteractionStatusAsync(interactionId, "success", true, companyId);
 
                 var msg = createdProducts.Any()
                     ? $"{movements.Count} producto(s) procesado(s). Nuevos creados: {string.Join(", ", createdProducts)}"
@@ -246,7 +246,7 @@ public class InventoryService : IInventoryService
         try
         {
             var stock = await _repository.GetStockByBranchAsync(branchId, companyId);
-            return stock.Where(s => s.StockStatus == "low");
+            return stock.Where(s => s.StockStatus is "low" or "reorder");
         }
         catch (Exception ex)
         {

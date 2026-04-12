@@ -172,7 +172,7 @@ public class SalesController : ControllerBase
         if (order is null)
             return BadRequest(ApiResponse.Fail("No hay orden asociada a esta mesa"));
 
-        var items = (await _salesRepo.GetOrderItemsAsync(order.Id)).ToList();
+        var items = (await _salesRepo.GetOrderItemsAsync(order.Id, companyId)).ToList();
         var operations = await _companyRepo.GetCompanyOperationsSettingsAsync(companyId);
         var subtotal = order.Subtotal > 0 ? order.Subtotal : items.Sum(i => i.Quantity * i.UnitPrice);
         var discountType = (request.DiscountType ?? "none").Trim().ToLowerInvariant();
@@ -250,12 +250,13 @@ public class SalesController : ControllerBase
 
         await _salesRepo.UpdateOrderInvoiceSummaryAsync(
             order.Id,
+            companyId,
             discountType == "none" ? null : discountType,
             discountType == "none" ? 0 : discountValue,
             discountAmount,
             finalTotalPaid,
             Math.Max(1, request.SplitCount));
-        await _salesRepo.UpdateOrderStatusAsync(order.Id, "completed");
+        await _salesRepo.UpdateOrderStatusAsync(order.Id, companyId, "completed");
         await _salesRepo.UpdateTableStatusAsync(id, companyId, "invoiced");
 
         _logger.LogInformation("Mesa {TableNumber} facturada. Order: {OrderNumber}, Total: {Total}",
@@ -288,7 +289,7 @@ public class SalesController : ControllerBase
 
         var order = await _salesRepo.GetOrderByTableIdAsync(id, companyId);
         if (order != null)
-            await _salesRepo.UpdateOrderStatusAsync(order.Id, "cancelled");
+            await _salesRepo.UpdateOrderStatusAsync(order.Id, companyId, "cancelled");
 
         await _salesRepo.UpdateTableStatusAsync(id, companyId, "cancelled");
 
@@ -305,7 +306,7 @@ public class SalesController : ControllerBase
         if (request.Quantity < 0)
             return BadRequest(ApiResponse.Fail("La cantidad no puede ser negativa"));
 
-        var existingItem = await _salesRepo.GetOrderItemByIdAsync(itemId);
+        var existingItem = await _salesRepo.GetOrderItemByIdAsync(itemId, companyId);
         if (existingItem is null)
             return NotFound(ApiResponse.Fail("Item no encontrado"));
 
@@ -327,15 +328,15 @@ public class SalesController : ControllerBase
 
         if (request.Quantity == 0)
         {
-            await _salesRepo.DeleteOrderItemAsync(itemId);
+            await _salesRepo.DeleteOrderItemAsync(itemId, companyId);
         }
         else
         {
-            await _salesRepo.UpdateOrderItemQuantityAsync(itemId, request.Quantity);
+            await _salesRepo.UpdateOrderItemQuantityAsync(itemId, companyId, request.Quantity);
         }
 
         if (request.OrderId > 0)
-            await _salesRepo.RecalculateOrderTotalAsync(request.OrderId);
+            await _salesRepo.RecalculateOrderTotalAsync(request.OrderId, companyId);
 
         return Ok(ApiResponse.Ok("Cantidad actualizada"));
     }
@@ -366,7 +367,7 @@ public class SalesController : ControllerBase
         if (availabilityError is not null)
             return BadRequest(ApiResponse.Fail(availabilityError));
 
-        var existingItems = (await _salesRepo.GetOrderItemsAsync(order.Id)).ToList();
+        var existingItems = (await _salesRepo.GetOrderItemsAsync(order.Id, companyId)).ToList();
 
         foreach (var item in items)
         {
@@ -374,7 +375,7 @@ public class SalesController : ControllerBase
 
             if (existingItem is not null)
             {
-                await _salesRepo.UpdateOrderItemQuantityAsync(existingItem.Id, existingItem.Quantity + item.Quantity);
+                await _salesRepo.UpdateOrderItemQuantityAsync(existingItem.Id, companyId, existingItem.Quantity + item.Quantity);
                 existingItem.Quantity += item.Quantity;
                 continue;
             }
@@ -392,7 +393,7 @@ public class SalesController : ControllerBase
             existingItems.Add(newItem);
         }
 
-        await _salesRepo.RecalculateOrderTotalAsync(order.Id);
+        await _salesRepo.RecalculateOrderTotalAsync(order.Id, companyId);
 
         _logger.LogInformation("Agregados {Count} productos a Mesa {TableNumber}", items.Count, table.TableNumber);
 

@@ -1,162 +1,146 @@
 -- =============================================
--- Script: 999_cleanup_all.sql
--- Descripcion: Elimina TODOS los objetos creados por los scripts de Walos
---              en la base de datos SCM_App_Track_Me.
---              Usar SOLO para limpiar despues de pruebas.
+-- Script: 999_cleanup_sqlserver.sql
+-- Descripcion: Elimina TODOS los objetos creados por Walos en SQL Server.
+--              Cubre ambas bases: WalosDB y SCM_App_Track_Me.
+--              Usar para limpiar SQL Server ya que el proyecto
+--              migro a PostgreSQL (Supabase).
 -- ADVERTENCIA: Este script es DESTRUCTIVO e IRREVERSIBLE.
+-- Fecha: 2026-04-08
 -- =============================================
 
-USE SCM_App_Track_Me;
-GO
-
-PRINT '========================================';
-PRINT '  LIMPIEZA COMPLETA - SCM_App_Track_Me';
-PRINT '========================================';
-PRINT '';
-PRINT 'ADVERTENCIA: Se eliminaran TODAS las tablas y esquemas de Walos.';
-PRINT '';
-
 -- =============================================
--- PASO 1: Eliminar tablas del modulo INVENTORY
--- (orden inverso por dependencias / foreign keys)
+-- PARTE A: Limpiar base WalosDB (si existe)
 -- =============================================
-PRINT '--- Eliminando tablas de [inventory] ---';
-
-IF OBJECT_ID('[inventory].[alerts]', 'U') IS NOT NULL
+IF EXISTS (SELECT name FROM sys.databases WHERE name = 'WalosDB')
 BEGIN
-    DROP TABLE [inventory].[alerts];
-    PRINT '  x Tabla [inventory].[alerts] eliminada';
+    PRINT '========================================';
+    PRINT '  LIMPIANDO WalosDB';
+    PRINT '========================================';
 END
 GO
 
-IF OBJECT_ID('[inventory].[ai_interactions]', 'U') IS NOT NULL
-BEGIN
-    DROP TABLE [inventory].[ai_interactions];
-    PRINT '  x Tabla [inventory].[ai_interactions] eliminada';
-END
+USE WalosDB;
 GO
 
-IF OBJECT_ID('[inventory].[movements]', 'U') IS NOT NULL
-BEGIN
-    DROP TABLE [inventory].[movements];
-    PRINT '  x Tabla [inventory].[movements] eliminada';
-END
+-- ------- FINANCE -------
+IF OBJECT_ID('[finance].[entries]', 'U') IS NOT NULL DROP TABLE [finance].[entries];
+IF OBJECT_ID('[finance].[categories]', 'U') IS NOT NULL DROP TABLE [finance].[categories];
+PRINT '  x Tablas [finance] eliminadas';
 GO
 
-IF OBJECT_ID('[inventory].[stock]', 'U') IS NOT NULL
-BEGIN
-    DROP TABLE [inventory].[stock];
-    PRINT '  x Tabla [inventory].[stock] eliminada';
-END
+-- ------- SALES (orden inverso por FK) -------
+IF OBJECT_ID('[sales].[order_items]', 'U') IS NOT NULL DROP TABLE [sales].[order_items];
+IF OBJECT_ID('[sales].[orders]', 'U') IS NOT NULL DROP TABLE [sales].[orders];
+IF OBJECT_ID('[sales].[tables]', 'U') IS NOT NULL DROP TABLE [sales].[tables];
+PRINT '  x Tablas [sales] eliminadas';
 GO
 
-IF OBJECT_ID('[inventory].[products]', 'U') IS NOT NULL
-BEGIN
-    DROP TABLE [inventory].[products];
-    PRINT '  x Tabla [inventory].[products] eliminada';
-END
+-- ------- INVENTORY (orden inverso por FK) -------
+IF OBJECT_ID('[inventory].[alerts]', 'U') IS NOT NULL DROP TABLE [inventory].[alerts];
+IF OBJECT_ID('[inventory].[ai_interactions]', 'U') IS NOT NULL DROP TABLE [inventory].[ai_interactions];
+IF OBJECT_ID('[inventory].[movements]', 'U') IS NOT NULL DROP TABLE [inventory].[movements];
+IF OBJECT_ID('[inventory].[stock]', 'U') IS NOT NULL DROP TABLE [inventory].[stock];
+IF OBJECT_ID('[inventory].[products]', 'U') IS NOT NULL DROP TABLE [inventory].[products];
+IF OBJECT_ID('[inventory].[units]', 'U') IS NOT NULL DROP TABLE [inventory].[units];
+IF OBJECT_ID('[inventory].[categories]', 'U') IS NOT NULL DROP TABLE [inventory].[categories];
+PRINT '  x Tablas [inventory] eliminadas';
 GO
 
-IF OBJECT_ID('[inventory].[units]', 'U') IS NOT NULL
-BEGIN
-    DROP TABLE [inventory].[units];
-    PRINT '  x Tabla [inventory].[units] eliminada';
-END
+-- ------- CORE (orden inverso por FK) -------
+IF OBJECT_ID('[core].[users]', 'U') IS NOT NULL DROP TABLE [core].[users];
+IF OBJECT_ID('[core].[roles]', 'U') IS NOT NULL DROP TABLE [core].[roles];
+IF OBJECT_ID('[core].[branches]', 'U') IS NOT NULL DROP TABLE [core].[branches];
+IF OBJECT_ID('[core].[companies]', 'U') IS NOT NULL DROP TABLE [core].[companies];
+PRINT '  x Tablas [core] eliminadas';
 GO
 
-IF OBJECT_ID('[inventory].[categories]', 'U') IS NOT NULL
-BEGIN
-    DROP TABLE [inventory].[categories];
-    PRINT '  x Tabla [inventory].[categories] eliminada';
-END
+-- ------- SCHEMAS -------
+IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'finance') EXEC('DROP SCHEMA [finance]');
+IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'sales') EXEC('DROP SCHEMA [sales]');
+IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'inventory') EXEC('DROP SCHEMA [inventory]');
+IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'core') EXEC('DROP SCHEMA [core]');
+IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'suppliers') EXEC('DROP SCHEMA [suppliers]');
+IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'catalogs') EXEC('DROP SCHEMA [catalogs]');
+IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'audit') EXEC('DROP SCHEMA [audit]');
+PRINT '  x Schemas eliminados en WalosDB';
+GO
+
+USE master;
 GO
 
 -- =============================================
--- PASO 2: Eliminar tablas del modulo CORE
--- (orden inverso por dependencias / foreign keys)
+-- PARTE B: Limpiar base SCM_App_Track_Me (si existe)
 -- =============================================
-PRINT '--- Eliminando tablas de [core] ---';
-
-IF OBJECT_ID('[core].[users]', 'U') IS NOT NULL
+IF EXISTS (SELECT name FROM sys.databases WHERE name = 'SCM_App_Track_Me')
 BEGIN
-    DROP TABLE [core].[users];
-    PRINT '  x Tabla [core].[users] eliminada';
+    PRINT '';
+    PRINT '========================================';
+    PRINT '  LIMPIANDO SCM_App_Track_Me';
+    PRINT '========================================';
 END
 GO
 
-IF OBJECT_ID('[core].[roles]', 'U') IS NOT NULL
+IF EXISTS (SELECT name FROM sys.databases WHERE name = 'SCM_App_Track_Me')
 BEGIN
-    DROP TABLE [core].[roles];
-    PRINT '  x Tabla [core].[roles] eliminada';
-END
-GO
+    EXEC('
+        USE [SCM_App_Track_Me];
 
-IF OBJECT_ID('[core].[branches]', 'U') IS NOT NULL
-BEGIN
-    DROP TABLE [core].[branches];
-    PRINT '  x Tabla [core].[branches] eliminada';
-END
-GO
+        IF OBJECT_ID(''[finance].[entries]'', ''U'') IS NOT NULL DROP TABLE [finance].[entries];
+        IF OBJECT_ID(''[finance].[categories]'', ''U'') IS NOT NULL DROP TABLE [finance].[categories];
 
-IF OBJECT_ID('[core].[companies]', 'U') IS NOT NULL
-BEGIN
-    DROP TABLE [core].[companies];
-    PRINT '  x Tabla [core].[companies] eliminada';
+        IF OBJECT_ID(''[sales].[order_items]'', ''U'') IS NOT NULL DROP TABLE [sales].[order_items];
+        IF OBJECT_ID(''[sales].[orders]'', ''U'') IS NOT NULL DROP TABLE [sales].[orders];
+        IF OBJECT_ID(''[sales].[tables]'', ''U'') IS NOT NULL DROP TABLE [sales].[tables];
+
+        IF OBJECT_ID(''[inventory].[alerts]'', ''U'') IS NOT NULL DROP TABLE [inventory].[alerts];
+        IF OBJECT_ID(''[inventory].[ai_interactions]'', ''U'') IS NOT NULL DROP TABLE [inventory].[ai_interactions];
+        IF OBJECT_ID(''[inventory].[movements]'', ''U'') IS NOT NULL DROP TABLE [inventory].[movements];
+        IF OBJECT_ID(''[inventory].[stock]'', ''U'') IS NOT NULL DROP TABLE [inventory].[stock];
+        IF OBJECT_ID(''[inventory].[products]'', ''U'') IS NOT NULL DROP TABLE [inventory].[products];
+        IF OBJECT_ID(''[inventory].[units]'', ''U'') IS NOT NULL DROP TABLE [inventory].[units];
+        IF OBJECT_ID(''[inventory].[categories]'', ''U'') IS NOT NULL DROP TABLE [inventory].[categories];
+
+        IF OBJECT_ID(''[core].[users]'', ''U'') IS NOT NULL DROP TABLE [core].[users];
+        IF OBJECT_ID(''[core].[roles]'', ''U'') IS NOT NULL DROP TABLE [core].[roles];
+        IF OBJECT_ID(''[core].[branches]'', ''U'') IS NOT NULL DROP TABLE [core].[branches];
+        IF OBJECT_ID(''[core].[companies]'', ''U'') IS NOT NULL DROP TABLE [core].[companies];
+
+        IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = ''finance'') EXEC(''DROP SCHEMA [finance]'');
+        IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = ''sales'') EXEC(''DROP SCHEMA [sales]'');
+        IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = ''inventory'') EXEC(''DROP SCHEMA [inventory]'');
+        IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = ''core'') EXEC(''DROP SCHEMA [core]'');
+        IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = ''suppliers'') EXEC(''DROP SCHEMA [suppliers]'');
+        IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = ''catalogs'') EXEC(''DROP SCHEMA [catalogs]'');
+        IF EXISTS (SELECT 1 FROM sys.schemas WHERE name = ''audit'') EXEC(''DROP SCHEMA [audit]'');
+    ');
+    PRINT '  x Tablas y schemas eliminados en SCM_App_Track_Me';
 END
 GO
 
 -- =============================================
--- PASO 3: Eliminar esquemas
--- (solo si estan vacios, es decir, sin tablas)
+-- PARTE C (OPCIONAL): Eliminar las bases de datos completas
+-- Descomentar las lineas si deseas eliminar las bases por completo.
 -- =============================================
-PRINT '--- Eliminando esquemas ---';
-
-IF EXISTS (SELECT * FROM sys.schemas WHERE name = 'inventory')
-BEGIN
-    DROP SCHEMA [inventory];
-    PRINT '  x Schema [inventory] eliminado';
-END
-GO
-
-IF EXISTS (SELECT * FROM sys.schemas WHERE name = 'core')
-BEGIN
-    DROP SCHEMA [core];
-    PRINT '  x Schema [core] eliminado';
-END
-GO
-
-IF EXISTS (SELECT * FROM sys.schemas WHERE name = 'sales')
-BEGIN
-    DROP SCHEMA [sales];
-    PRINT '  x Schema [sales] eliminado';
-END
-GO
-
-IF EXISTS (SELECT * FROM sys.schemas WHERE name = 'suppliers')
-BEGIN
-    DROP SCHEMA [suppliers];
-    PRINT '  x Schema [suppliers] eliminado';
-END
-GO
-
-IF EXISTS (SELECT * FROM sys.schemas WHERE name = 'catalogs')
-BEGIN
-    DROP SCHEMA [catalogs];
-    PRINT '  x Schema [catalogs] eliminado';
-END
-GO
-
-IF EXISTS (SELECT * FROM sys.schemas WHERE name = 'audit')
-BEGIN
-    DROP SCHEMA [audit];
-    PRINT '  x Schema [audit] eliminado';
-END
-GO
+-- USE master;
+-- GO
+-- IF EXISTS (SELECT name FROM sys.databases WHERE name = 'WalosDB')
+-- BEGIN
+--     ALTER DATABASE WalosDB SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+--     DROP DATABASE WalosDB;
+--     PRINT '  x Base WalosDB eliminada';
+-- END
+-- GO
+-- IF EXISTS (SELECT name FROM sys.databases WHERE name = 'SCM_App_Track_Me')
+-- BEGIN
+--     ALTER DATABASE SCM_App_Track_Me SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+--     DROP DATABASE SCM_App_Track_Me;
+--     PRINT '  x Base SCM_App_Track_Me eliminada';
+-- END
+-- GO
 
 PRINT '';
 PRINT '========================================';
-PRINT '  LIMPIEZA COMPLETADA';
-PRINT '  Base de datos: SCM_App_Track_Me';
-PRINT '  Todas las tablas y esquemas de Walos';
-PRINT '  han sido eliminados.';
+PRINT '  LIMPIEZA SQL SERVER COMPLETADA';
+PRINT '  Proyecto migrado a PostgreSQL/Supabase';
+PRINT '  Los scripts SQL Server ya no se usan.';
 PRINT '========================================';

@@ -12,7 +12,7 @@ public interface IInventoryRepository
     Task<Movement> CreateMovementAsync(Movement movement);
     Task<AiInteraction> SaveAiInteractionAsync(AiInteraction interaction);
     Task<AiInteraction?> GetAiInteractionByIdAsync(long id, long companyId);
-    Task UpdateAiInteractionStatusAsync(long id, string status, bool confirmedByUser);
+    Task UpdateAiInteractionStatusAsync(long id, string status, bool confirmedByUser, long companyId);
     Task<IEnumerable<Alert>> GetActiveAlertsAsync(long companyId, long? branchId = null);
     Task<IEnumerable<Product>> FindProductsByNameAsync(long companyId, string name);
     Task<IEnumerable<ProfitReportRow>> GetProductProfitsAsync(long companyId, long branchId, DateTime? startDate = null, DateTime? endDate = null);
