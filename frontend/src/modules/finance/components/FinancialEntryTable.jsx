@@ -1,4 +1,4 @@
-import { Edit3, Trash2 } from 'lucide-react';
+import { CircleSlash2, Edit3, Repeat, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatCurrency';
 
 const typeStyles = {
@@ -11,6 +11,8 @@ const statusStyles = {
   posted: 'bg-green-100 text-green-800',
   skipped: 'bg-gray-100 text-gray-600',
 };
+
+const isFromTemplate = (entry) => !!entry.recurringTemplateId;
 
 const FinancialEntryTable = ({ entries, isLoading, onEdit, onDelete }) => {
   if (isLoading) {
@@ -64,7 +66,10 @@ const FinancialEntryTable = ({ entries, isLoading, onEdit, onDelete }) => {
                 </td>
                 <td className="px-4 py-3 text-gray-700">{entry.categoryName}</td>
                 <td className="px-4 py-3">
-                  <p className="font-medium text-gray-900">{entry.description}</p>
+                  <div className="flex items-center gap-1.5">
+                    {isFromTemplate(entry) && <Repeat className="h-3.5 w-3.5 flex-shrink-0 text-primary-500" title="Generado desde plantilla" />}
+                    <p className="font-medium text-gray-900">{entry.description}</p>
+                  </div>
                   {entry.notes && <p className="mt-1 text-xs text-gray-500">{entry.notes}</p>}
                 </td>
                 <td className="px-4 py-3 text-gray-700">{entry.branchName || 'General'}</td>
@@ -83,9 +88,14 @@ const FinancialEntryTable = ({ entries, isLoading, onEdit, onDelete }) => {
                     <button
                       onClick={() => onDelete(entry)}
                       disabled={entry.status === 'skipped'}
-                      className="rounded-lg border border-gray-200 p-2 text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                      title={isFromTemplate(entry) ? 'Omitir del mes' : 'Eliminar'}
+                      className={`rounded-lg border border-gray-200 p-2 transition-colors disabled:opacity-50 ${
+                        isFromTemplate(entry)
+                          ? 'text-gray-600 hover:bg-gray-50'
+                          : 'text-red-600 hover:bg-red-50'
+                      }`}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      {isFromTemplate(entry) ? <CircleSlash2 className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
                     </button>
                   </div>
                 </td>

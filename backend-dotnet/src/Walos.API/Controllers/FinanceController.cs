@@ -323,6 +323,17 @@ public class FinanceController : ControllerBase
     public async Task<IActionResult> DeleteEntry(long id)
     {
         var companyId = _tenant.CompanyId;
+        var existing = await _repository.GetEntryByIdAsync(id, companyId);
+        if (existing is null)
+            return NotFound(ApiResponse.Fail("Movimiento no encontrado"));
+
+        if (existing.RecurringTemplateId.HasValue && existing.RecurringTemplateId.Value > 0)
+        {
+            existing.Status = "skipped";
+            await _repository.UpdateEntryAsync(existing);
+            return Ok(ApiResponse.Ok("Item omitido del mes (se puede reactivar desde el panel mensual)"));
+        }
+
         await _repository.SoftDeleteEntryAsync(id, companyId);
         return Ok(ApiResponse.Ok("Movimiento eliminado exitosamente"));
     }
