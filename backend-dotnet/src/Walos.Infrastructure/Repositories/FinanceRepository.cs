@@ -25,9 +25,17 @@ public class FinanceRepository : IFinanceRepository
                 SELECT
                     c.id AS Id,
                     c.company_id AS CompanyId,
+                    c.branch_id AS BranchId,
                     c.name AS Name,
                     c.type AS Type,
                     c.color_hex AS ColorHex,
+                    c.default_amount AS DefaultAmount,
+                    c.day_of_month AS DayOfMonth,
+                    c.nature AS Nature,
+                    c.frequency AS Frequency,
+                    c.biweekly_day_1 AS BiweeklyDay1,
+                    c.biweekly_day_2 AS BiweeklyDay2,
+                    c.auto_include_in_month AS AutoIncludeInMonth,
                     c.is_system AS IsSystem,
                     c.is_active AS IsActive,
                     c.created_by AS CreatedBy,
@@ -49,7 +57,7 @@ public class FinanceRepository : IFinanceRepository
             }
 
             sql += @"
-                GROUP BY c.id, c.company_id, c.name, c.type, c.color_hex, c.is_system, c.is_active, c.created_by, c.created_at, c.updated_at
+                GROUP BY c.id, c.company_id, c.branch_id, c.name, c.type, c.color_hex, c.default_amount, c.day_of_month, c.nature, c.frequency, c.biweekly_day_1, c.biweekly_day_2, c.auto_include_in_month, c.is_system, c.is_active, c.created_by, c.created_at, c.updated_at
                 ORDER BY c.type ASC, c.name ASC";
 
             return await connection.QueryAsync<FinancialCategory>(sql, parameters);
@@ -61,204 +69,12 @@ public class FinanceRepository : IFinanceRepository
         }
     }
 
-    public async Task<IEnumerable<FinancialRecurringTemplate>> GetRecurringTemplatesAsync(long companyId, long? branchId = null, string? type = null)
+    public async Task<int> InitMonthFromFinancialItemsAsync(long companyId, long? branchId, DateTime monthStart, long? userId, IReadOnlyCollection<long>? selectedCategoryIds = null)
     {
         try
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
-
-            var sql = @"
-                SELECT
-                    t.id AS Id,
-                    t.company_id AS CompanyId,
-                    t.branch_id AS BranchId,
-                    t.category_id AS CategoryId,
-                    c.name AS CategoryName,
-                    t.type AS Type,
-                    t.description AS Description,
-                    t.default_amount AS DefaultAmount,
-                    t.day_of_month AS DayOfMonth,
-                    t.nature AS Nature,
-                    t.frequency AS Frequency,
-                    t.biweekly_day_1 AS BiweeklyDay1,
-                    t.biweekly_day_2 AS BiweeklyDay2,
-                    t.is_active AS IsActive,
-                    t.created_by AS CreatedBy,
-                    t.created_at AS CreatedAt,
-                    t.updated_at AS UpdatedAt,
-                    t.deleted_at AS DeletedAt
-                FROM finance.recurring_templates t
-                INNER JOIN finance.categories c ON c.id = t.category_id
-                WHERE t.company_id = @CompanyId
-                  AND t.deleted_at IS NULL";
-
-            var parameters = new DynamicParameters(new { CompanyId = companyId });
-
-            if (branchId.HasValue)
-            {
-                sql += " AND (t.branch_id = @BranchId OR t.branch_id IS NULL)";
-                parameters.Add("BranchId", branchId.Value);
-            }
-
-            if (!string.IsNullOrWhiteSpace(type))
-            {
-                sql += " AND t.type = @Type";
-                parameters.Add("Type", type);
-            }
-
-            sql += " ORDER BY t.type ASC, t.description ASC";
-
-            return await connection.QueryAsync<FinancialRecurringTemplate>(sql, parameters);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error obteniendo plantillas recurrentes");
-            throw;
-        }
-    }
-
-    public async Task<FinancialRecurringTemplate?> GetRecurringTemplateByIdAsync(long id, long companyId)
-    {
-        try
-        {
-            using var connection = await _connectionFactory.CreateConnectionAsync();
-
-            const string sql = @"
-                SELECT
-                    t.id AS Id,
-                    t.company_id AS CompanyId,
-                    t.branch_id AS BranchId,
-                    t.category_id AS CategoryId,
-                    c.name AS CategoryName,
-                    t.type AS Type,
-                    t.description AS Description,
-                    t.default_amount AS DefaultAmount,
-                    t.day_of_month AS DayOfMonth,
-                    t.is_active AS IsActive,
-                    t.created_by AS CreatedBy,
-                    t.created_at AS CreatedAt,
-                    t.updated_at AS UpdatedAt,
-                    t.deleted_at AS DeletedAt
-                FROM finance.recurring_templates t
-                INNER JOIN finance.categories c ON c.id = t.category_id
-                WHERE t.id = @Id AND t.company_id = @CompanyId AND t.deleted_at IS NULL";
-
-            return await connection.QueryFirstOrDefaultAsync<FinancialRecurringTemplate>(sql, new { Id = id, CompanyId = companyId });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error obteniendo plantilla recurrente {TemplateId}", id);
-            throw;
-        }
-    }
-
-    public async Task<FinancialRecurringTemplate> CreateRecurringTemplateAsync(FinancialRecurringTemplate template)
-    {
-        try
-        {
-            using var connection = await _connectionFactory.CreateConnectionAsync();
-
-            const string sql = @"
-                INSERT INTO finance.recurring_templates (
-                    company_id, branch_id, category_id, type, description, default_amount,
-                    day_of_month, nature, frequency, biweekly_day_1, biweekly_day_2, is_active, created_by
-                ) VALUES (
-                    @CompanyId, @BranchId, @CategoryId, @Type, @Description, @DefaultAmount,
-                    @DayOfMonth, @Nature, @Frequency, @BiweeklyDay1, @BiweeklyDay2, @IsActive, @CreatedBy
-                )
-                RETURNING id AS Id, company_id AS CompanyId, branch_id AS BranchId, category_id AS CategoryId,
-                       type AS Type, description AS Description, default_amount AS DefaultAmount,
-                       day_of_month AS DayOfMonth, nature AS Nature, frequency AS Frequency,
-                       biweekly_day_1 AS BiweeklyDay1, biweekly_day_2 AS BiweeklyDay2,
-                       is_active AS IsActive, created_by AS CreatedBy,
-                       created_at AS CreatedAt, updated_at AS UpdatedAt";
-
-            return await connection.QuerySingleAsync<FinancialRecurringTemplate>(sql, template);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error creando plantilla recurrente");
-            throw;
-        }
-    }
-
-    public async Task<FinancialRecurringTemplate> UpdateRecurringTemplateAsync(FinancialRecurringTemplate template)
-    {
-        try
-        {
-            using var connection = await _connectionFactory.CreateConnectionAsync();
-
-            const string sql = @"
-                UPDATE finance.recurring_templates
-                SET branch_id = @BranchId,
-                    category_id = @CategoryId,
-                    type = @Type,
-                    description = @Description,
-                    default_amount = @DefaultAmount,
-                    day_of_month = @DayOfMonth,
-                    nature = @Nature,
-                    frequency = @Frequency,
-                    biweekly_day_1 = @BiweeklyDay1,
-                    biweekly_day_2 = @BiweeklyDay2,
-                    is_active = @IsActive,
-                    updated_at = NOW()
-                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL;
-
-                SELECT
-                    t.id AS Id,
-                    t.company_id AS CompanyId,
-                    t.branch_id AS BranchId,
-                    t.category_id AS CategoryId,
-                    c.name AS CategoryName,
-                    t.type AS Type,
-                    t.description AS Description,
-                    t.default_amount AS DefaultAmount,
-                    t.day_of_month AS DayOfMonth,
-                    t.is_active AS IsActive,
-                    t.created_by AS CreatedBy,
-                    t.created_at AS CreatedAt,
-                    t.updated_at AS UpdatedAt,
-                    t.deleted_at AS DeletedAt
-                FROM finance.recurring_templates t
-                INNER JOIN finance.categories c ON c.id = t.category_id
-                WHERE t.id = @Id AND t.company_id = @CompanyId AND t.deleted_at IS NULL;";
-
-            return await connection.QuerySingleAsync<FinancialRecurringTemplate>(sql, template);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error actualizando plantilla recurrente {TemplateId}", template.Id);
-            throw;
-        }
-    }
-
-    public async Task SoftDeleteRecurringTemplateAsync(long id, long companyId)
-    {
-        try
-        {
-            using var connection = await _connectionFactory.CreateConnectionAsync();
-
-            const string sql = @"
-                UPDATE finance.recurring_templates
-                SET deleted_at = NOW(),
-                    is_active = FALSE,
-                    updated_at = NOW()
-                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL";
-
-            await connection.ExecuteAsync(sql, new { Id = id, CompanyId = companyId });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error eliminando plantilla recurrente {TemplateId}", id);
-            throw;
-        }
-    }
-
-    public async Task<int> InitMonthFromRecurringTemplatesAsync(long companyId, long? branchId, DateTime monthStart, long? userId)
-    {
-        try
-        {
-            using var connection = await _connectionFactory.CreateConnectionAsync();
+            var selectedCategoryIdsArray = selectedCategoryIds?.Where(id => id > 0).Distinct().ToArray() ?? Array.Empty<long>();
 
             var sql = @"
                 WITH ctx AS (
@@ -267,117 +83,118 @@ public class FinanceRepository : IFinanceRepository
                         CAST((date_trunc('month', CAST(@MonthStart AS timestamptz)) + interval '1 month - 1 day') AS timestamptz) AS month_end,
                         CAST((NOW() AT TIME ZONE 'UTC') AS date) AS today_utc,
                         CAST(date_trunc('week', date_trunc('month', CAST(@MonthStart AS timestamptz))) AS date) AS week1_start
-                ), templates AS (
+                ), items AS (
                     SELECT
-                        t.id,
-                        t.company_id,
-                        t.branch_id,
-                        t.category_id,
-                        t.type,
-                        t.description,
-                        t.default_amount,
-                        t.day_of_month,
-                        t.nature,
-                        t.frequency,
-                        t.biweekly_day_1,
-                        t.biweekly_day_2
-                    FROM finance.recurring_templates t
-                    WHERE t.company_id = @CompanyId
-                      AND t.deleted_at IS NULL
-                      AND t.is_active = TRUE
-                      AND (t.nature IS NULL OR t.nature <> 'variable')
+                        c.id,
+                        c.company_id,
+                        c.branch_id,
+                        c.id AS category_id,
+                        c.type,
+                        c.name AS description,
+                        c.default_amount,
+                        c.day_of_month,
+                        c.nature,
+                        c.frequency,
+                        c.biweekly_day_1,
+                        c.biweekly_day_2
+                    FROM finance.categories c
+                    WHERE c.company_id = @CompanyId
+                      AND c.deleted_at IS NULL
+                      AND c.is_active = TRUE
+                      AND (c.nature IS NULL OR c.nature <> 'variable')
+                      AND (
+                          (@HasCategoryFilter = TRUE AND c.id = ANY(@SelectedCategoryIds))
+                          OR (@HasCategoryFilter = FALSE AND COALESCE(c.auto_include_in_month, TRUE) = TRUE)
+                      )
                       AND (
                           @BranchId IS NULL
-                          OR t.branch_id = @BranchId
-                          OR t.branch_id IS NULL
+                          OR c.branch_id = @BranchId
+                          OR c.branch_id IS NULL
                       )
                 ), expanded AS (
-                    -- Monthly / Unique => 1 occurrence
                     SELECT
-                        templates.id AS recurring_template_id,
-                        templates.category_id,
-                        templates.type,
-                        templates.description,
-                        templates.default_amount AS amount,
-                        templates.nature,
-                        templates.frequency,
+                        items.id AS financial_item_id,
+                        items.category_id,
+                        items.type,
+                        items.description,
+                        items.default_amount AS amount,
+                        items.nature,
+                        items.frequency,
                         1 AS occurrence_in_month,
                         CAST(
                             (
                                 date_trunc('month', CAST(@MonthStart AS timestamptz))
                                 + make_interval(days => LEAST(
-                                    GREATEST(templates.day_of_month, 1),
+                                    GREATEST(items.day_of_month, 1),
                                     CAST(EXTRACT(DAY FROM (date_trunc('month', CAST(@MonthStart AS timestamptz)) + interval '1 month - 1 day')) AS int)
                                 ) - 1)
                             )
                             AS timestamptz
                         ) AS entry_date
-                    FROM templates
-                    WHERE templates.frequency IN ('monthly', 'unique')
+                    FROM items
+                    WHERE items.frequency IN ('monthly', 'unique')
 
                     UNION ALL
 
-                    -- Biweekly => 2 occurrences, configurable days
                     SELECT
-                        templates.id,
-                        templates.category_id,
-                        templates.type,
-                        templates.description,
-                        templates.default_amount,
-                        templates.nature,
-                        templates.frequency,
+                        items.id,
+                        items.category_id,
+                        items.type,
+                        items.description,
+                        items.default_amount,
+                        items.nature,
+                        items.frequency,
                         1 AS occurrence_in_month,
                         CAST(
                             (
                                 date_trunc('month', CAST(@MonthStart AS timestamptz))
                                 + make_interval(days => LEAST(
-                                    GREATEST(COALESCE(templates.biweekly_day_1, 1), 1),
+                                    GREATEST(COALESCE(items.biweekly_day_1, 1), 1),
                                     CAST(EXTRACT(DAY FROM (date_trunc('month', CAST(@MonthStart AS timestamptz)) + interval '1 month - 1 day')) AS int)
                                 ) - 1)
                             )
                             AS timestamptz
                         )
-                    FROM templates
-                    WHERE templates.frequency IN ('biweekly', 'quincenal')
+                    FROM items
+                    WHERE items.frequency IN ('biweekly', 'quincenal')
 
                     UNION ALL
 
                     SELECT
-                        templates.id,
-                        templates.category_id,
-                        templates.type,
-                        templates.description,
-                        templates.default_amount,
-                        templates.nature,
-                        templates.frequency,
+                        items.id,
+                        items.category_id,
+                        items.type,
+                        items.description,
+                        items.default_amount,
+                        items.nature,
+                        items.frequency,
                         2 AS occurrence_in_month,
                         CAST(
                             (
                                 date_trunc('month', CAST(@MonthStart AS timestamptz))
                                 + make_interval(days => LEAST(
-                                    GREATEST(COALESCE(templates.biweekly_day_2, 15), 1),
+                                    GREATEST(COALESCE(items.biweekly_day_2, 15), 1),
                                     CAST(EXTRACT(DAY FROM (date_trunc('month', CAST(@MonthStart AS timestamptz)) + interval '1 month - 1 day')) AS int)
                                 ) - 1)
                             )
                             AS timestamptz
                         )
-                    FROM templates
-                    WHERE templates.frequency IN ('biweekly', 'quincenal')
+                    FROM items
+                    WHERE items.frequency IN ('biweekly', 'quincenal')
 
                     UNION ALL
 
-                    -- Weekly => occurrences per calendar week (1..5). We attach Monday of that calendar week as entry_date.
                     SELECT
-                        templates.id,
-                        templates.category_id,
-                        templates.type,
-                        templates.description,
-                        templates.default_amount,
-                        templates.nature,
-                        templates.frequency,
+                        items.id,
+                        items.category_id,
+                        items.type,
+                        items.description,
+                        items.default_amount,
+                        items.nature,
+                        items.frequency,
                         w.week_of_month AS occurrence_in_month,
                         w.week_anchor AS entry_date
-                    FROM templates
+                    FROM items
                     CROSS JOIN LATERAL (
                         SELECT
                             week_of_month,
@@ -395,7 +212,7 @@ public class FinanceRepository : IFinanceRepository
                         ) weeks
                         WHERE weeks.week_anchor < (date_trunc('month', CAST(@MonthStart AS timestamptz)) + interval '1 month')
                     ) w
-                    WHERE templates.frequency = 'weekly'
+                    WHERE items.frequency = 'weekly'
                 ), current_week AS (
                     SELECT
                         CASE
@@ -423,8 +240,7 @@ public class FinanceRepository : IFinanceRepository
                     INSERT INTO finance.entries (
                         company_id, branch_id, category_id, type, description,
                         amount, entry_date, nature, frequency,
-                        status, occurrence_in_month, is_manual,
-                        recurring_template_id, created_by
+                        status, occurrence_in_month, is_manual, financial_item_id, created_by
                     )
                     SELECT
                         @CompanyId,
@@ -439,7 +255,7 @@ public class FinanceRepository : IFinanceRepository
                         'pending',
                         filtered.occurrence_in_month,
                         FALSE,
-                        filtered.recurring_template_id,
+                        filtered.financial_item_id,
                         @UserId
                     FROM filtered
                     ON CONFLICT DO NOTHING
@@ -452,7 +268,9 @@ public class FinanceRepository : IFinanceRepository
                 CompanyId = companyId,
                 BranchId = branchId,
                 MonthStart = monthStart,
-                UserId = userId
+                UserId = userId,
+                HasCategoryFilter = selectedCategoryIds is not null,
+                SelectedCategoryIds = selectedCategoryIdsArray
             });
         }
         catch (Exception ex)
@@ -469,7 +287,11 @@ public class FinanceRepository : IFinanceRepository
             using var connection = await _connectionFactory.CreateConnectionAsync();
             const string sql = @"
                 SELECT id AS Id, company_id AS CompanyId, name AS Name, type AS Type,
-                       color_hex AS ColorHex, is_system AS IsSystem, is_active AS IsActive,
+                       branch_id AS BranchId, color_hex AS ColorHex, default_amount AS DefaultAmount,
+                       day_of_month AS DayOfMonth, nature AS Nature, frequency AS Frequency,
+                       biweekly_day_1 AS BiweeklyDay1, biweekly_day_2 AS BiweeklyDay2,
+                       auto_include_in_month AS AutoIncludeInMonth,
+                       is_system AS IsSystem, is_active AS IsActive,
                        created_by AS CreatedBy, created_at AS CreatedAt, updated_at AS UpdatedAt,
                        deleted_at AS DeletedAt
                 FROM finance.categories
@@ -490,10 +312,13 @@ public class FinanceRepository : IFinanceRepository
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
             const string sql = @"
-                INSERT INTO finance.categories (company_id, name, type, color_hex, is_system, is_active, created_by)
-                VALUES (@CompanyId, @Name, @Type, @ColorHex, @IsSystem, @IsActive, @CreatedBy)
-                RETURNING id AS Id, company_id AS CompanyId, name AS Name,
-                       type AS Type, color_hex AS ColorHex, is_system AS IsSystem,
+                INSERT INTO finance.categories (company_id, branch_id, name, type, color_hex, default_amount, day_of_month, nature, frequency, biweekly_day_1, biweekly_day_2, auto_include_in_month, is_system, is_active, created_by)
+                VALUES (@CompanyId, @BranchId, @Name, @Type, @ColorHex, @DefaultAmount, @DayOfMonth, @Nature, @Frequency, @BiweeklyDay1, @BiweeklyDay2, @AutoIncludeInMonth, @IsSystem, @IsActive, @CreatedBy)
+                RETURNING id AS Id, company_id AS CompanyId, branch_id AS BranchId, name AS Name,
+                       type AS Type, color_hex AS ColorHex, default_amount AS DefaultAmount,
+                       day_of_month AS DayOfMonth, nature AS Nature, frequency AS Frequency,
+                       biweekly_day_1 AS BiweeklyDay1, biweekly_day_2 AS BiweeklyDay2,
+                       auto_include_in_month AS AutoIncludeInMonth, is_system AS IsSystem,
                        is_active AS IsActive, created_by AS CreatedBy,
                        created_at AS CreatedAt, updated_at AS UpdatedAt";
 
@@ -513,14 +338,26 @@ public class FinanceRepository : IFinanceRepository
             using var connection = await _connectionFactory.CreateConnectionAsync();
             const string sql = @"
                 UPDATE finance.categories
-                SET name = @Name,
+                SET branch_id = @BranchId,
+                    name = @Name,
                     type = @Type,
                     color_hex = @ColorHex,
+                    default_amount = @DefaultAmount,
+                    day_of_month = @DayOfMonth,
+                    nature = @Nature,
+                    frequency = @Frequency,
+                    biweekly_day_1 = @BiweeklyDay1,
+                    biweekly_day_2 = @BiweeklyDay2,
+                    auto_include_in_month = @AutoIncludeInMonth,
+                    is_active = @IsActive,
                     updated_at = NOW()
                 WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL;
 
-                SELECT id AS Id, company_id AS CompanyId, name AS Name, type AS Type,
-                       color_hex AS ColorHex, is_system AS IsSystem, is_active AS IsActive,
+                SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId, name AS Name, type AS Type,
+                       color_hex AS ColorHex, default_amount AS DefaultAmount,
+                       day_of_month AS DayOfMonth, nature AS Nature, frequency AS Frequency,
+                       biweekly_day_1 AS BiweeklyDay1, biweekly_day_2 AS BiweeklyDay2,
+                       auto_include_in_month AS AutoIncludeInMonth, is_system AS IsSystem, is_active AS IsActive,
                        created_by AS CreatedBy, created_at AS CreatedAt, updated_at AS UpdatedAt,
                        deleted_at AS DeletedAt
                 FROM finance.categories
@@ -567,7 +404,7 @@ public class FinanceRepository : IFinanceRepository
                     e.company_id AS CompanyId,
                     e.branch_id AS BranchId,
                     e.category_id AS CategoryId,
-                    e.recurring_template_id AS RecurringTemplateId,
+                    e.financial_item_id AS FinancialItemId,
                     e.status AS Status,
                     e.occurrence_in_month AS OccurrenceInMonth,
                     e.is_manual AS IsManual,
@@ -640,7 +477,7 @@ public class FinanceRepository : IFinanceRepository
             using var connection = await _connectionFactory.CreateConnectionAsync();
             const string sql = @"
                 SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId, category_id AS CategoryId,
-                       recurring_template_id AS RecurringTemplateId,
+                       financial_item_id AS FinancialItemId,
                        status AS Status, occurrence_in_month AS OccurrenceInMonth, is_manual AS IsManual,
                        type AS Type, description AS Description, amount AS Amount, entry_date AS EntryDate,
                        nature AS Nature, frequency AS Frequency, notes AS Notes, created_by AS CreatedBy,
@@ -666,18 +503,16 @@ public class FinanceRepository : IFinanceRepository
                 INSERT INTO finance.entries (
                     company_id, branch_id, category_id, type, description,
                     amount, entry_date, nature, frequency, notes,
-                    status, occurrence_in_month, is_manual,
-                    recurring_template_id,
+                    status, occurrence_in_month, is_manual, financial_item_id,
                     created_by
                 ) VALUES (
                     @CompanyId, @BranchId, @CategoryId, @Type, @Description,
                     @Amount, @EntryDate, @Nature, @Frequency, @Notes,
-                    @Status, @OccurrenceInMonth, @IsManual,
-                    @RecurringTemplateId,
+                    @Status, @OccurrenceInMonth, @IsManual, @FinancialItemId,
                     @CreatedBy
                 )
                 RETURNING id AS Id, company_id AS CompanyId, branch_id AS BranchId,
-                       category_id AS CategoryId, recurring_template_id AS RecurringTemplateId,
+                       category_id AS CategoryId, financial_item_id AS FinancialItemId,
                        status AS Status, occurrence_in_month AS OccurrenceInMonth, is_manual AS IsManual,
                        type AS Type, description AS Description,
                        amount AS Amount, entry_date AS EntryDate, nature AS Nature,
@@ -712,11 +547,12 @@ public class FinanceRepository : IFinanceRepository
                     status = @Status,
                     occurrence_in_month = @OccurrenceInMonth,
                     is_manual = @IsManual,
+                    financial_item_id = @FinancialItemId,
                     updated_at = NOW()
                 WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL;
 
                 SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId, category_id AS CategoryId,
-                       recurring_template_id AS RecurringTemplateId,
+                       financial_item_id AS FinancialItemId,
                        status AS Status, occurrence_in_month AS OccurrenceInMonth, is_manual AS IsManual,
                        type AS Type, description AS Description, amount AS Amount, entry_date AS EntryDate,
                        nature AS Nature, frequency AS Frequency, notes AS Notes, created_by AS CreatedBy,

@@ -7,7 +7,13 @@ import { formatCurrency } from '../../../utils/formatCurrency';
 const statusLabels = { pending: 'Pendientes', posted: 'Registrados', skipped: 'Omitidos' };
 const statusOrder = ['pending', 'posted', 'skipped'];
 
-const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], monthLabel, onUpdated }) => {
+const getMonthEntryDate = (selectedMonth) => {
+  if (!selectedMonth) return new Date().toISOString();
+  const [year, month] = selectedMonth.split('-').map(Number);
+  return new Date(year, month - 1, 1, 12, 0, 0).toISOString();
+};
+
+const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], monthLabel, selectedMonth, branchId, onUpdated }) => {
   const grouped = useMemo(() => {
     const map = { pending: [], posted: [], skipped: [] };
     entries.forEach((e) => {
@@ -99,12 +105,12 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
 
     try {
       await financeService.createEntry({
-        branchId: entries[0]?.branchId || null,
+        branchId: branchId ?? entries[0]?.branchId ?? null,
         categoryId,
         type: newItem.type,
         description: newItem.description,
         amount,
-        entryDate: new Date().toISOString(),
+        entryDate: getMonthEntryDate(selectedMonth),
         nature: 'unique',
         frequency: 'unique',
         notes: null,
@@ -365,7 +371,7 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
 
           {entries.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500">
-              No hay items para este mes. Crea plantillas y luego inicia el mes para generar items automaticamente.
+              No hay items para este mes. Crea items financieros y luego inicia el mes para cargarlos rapidamente.
             </div>
           ) : (
             <div className="space-y-6">

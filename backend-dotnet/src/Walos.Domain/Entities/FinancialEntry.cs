@@ -4,7 +4,7 @@ public class FinancialEntry : BaseEntity
 {
     public long? BranchId { get; set; }
     public long CategoryId { get; set; }
-    public long? RecurringTemplateId { get; set; }
+    public long? FinancialItemId { get; set; }
     public string Status { get; set; } = "posted";
     public int OccurrenceInMonth { get; set; } = 1;
     public bool IsManual { get; set; } = true;

@@ -36,24 +36,48 @@ public class FinanceController : ControllerBase
     {
         var companyId = _tenant.CompanyId;
         var userId = _tenant.UserId;
+        var branchId = request.BranchId ?? _tenant.BranchId;
 
         if (string.IsNullOrWhiteSpace(request.Name))
-            return BadRequest(ApiResponse.Fail("El nombre de la categoria es obligatorio"));
+            return BadRequest(ApiResponse.Fail("El nombre del item es obligatorio"));
         if (request.Type is not ("income" or "expense"))
             return BadRequest(ApiResponse.Fail("El tipo debe ser income o expense"));
+        if (request.DefaultAmount <= 0)
+            return BadRequest(ApiResponse.Fail("El monto debe ser mayor a cero"));
+        if (request.DayOfMonth < 1 || request.DayOfMonth > 31)
+            return BadRequest(ApiResponse.Fail("El dia del mes debe estar entre 1 y 31"));
+        if (request.Nature is not ("fixed" or "variable" or "unique"))
+            return BadRequest(ApiResponse.Fail("La naturaleza debe ser fixed, variable o unique"));
+        if (request.Frequency is not ("weekly" or "biweekly" or "quincenal" or "monthly" or "unique"))
+            return BadRequest(ApiResponse.Fail("La periodicidad debe ser weekly, biweekly/quincenal, monthly o unique"));
+        if (request.Frequency is "biweekly" or "quincenal")
+        {
+            if (!request.BiweeklyDay1.HasValue || !request.BiweeklyDay2.HasValue)
+                return BadRequest(ApiResponse.Fail("Para quincenal debes definir dos dias del mes"));
+            if (request.BiweeklyDay1.Value == request.BiweeklyDay2.Value)
+                return BadRequest(ApiResponse.Fail("Los dias quincenales deben ser diferentes"));
+        }
 
         var created = await _repository.CreateCategoryAsync(new FinancialCategory
         {
             CompanyId = companyId,
+            BranchId = branchId,
             Name = request.Name.Trim(),
             Type = request.Type.Trim().ToLowerInvariant(),
             ColorHex = request.ColorHex,
+            DefaultAmount = Math.Round(request.DefaultAmount, 2),
+            DayOfMonth = request.DayOfMonth,
+            Nature = request.Nature.Trim().ToLowerInvariant(),
+            Frequency = request.Frequency.Trim().ToLowerInvariant(),
+            BiweeklyDay1 = request.BiweeklyDay1,
+            BiweeklyDay2 = request.BiweeklyDay2,
+            AutoIncludeInMonth = request.AutoIncludeInMonth,
             IsSystem = false,
-            IsActive = true,
+            IsActive = request.IsActive,
             CreatedBy = userId,
         });
 
-        return StatusCode(StatusCodes.Status201Created, ApiResponse<FinancialCategory>.Ok(created, "Categoria creada exitosamente"));
+        return StatusCode(StatusCodes.Status201Created, ApiResponse<FinancialCategory>.Ok(created, "Item financiero creado exitosamente"));
     }
 
     [HttpPut("categories/{id:long}")]
@@ -62,18 +86,31 @@ public class FinanceController : ControllerBase
         var companyId = _tenant.CompanyId;
         var category = await _repository.GetCategoryByIdAsync(id, companyId);
         if (category is null)
-            return NotFound(ApiResponse.Fail("Categoria no encontrada"));
+            return NotFound(ApiResponse.Fail("Item financiero no encontrado"));
         if (string.IsNullOrWhiteSpace(request.Name))
-            return BadRequest(ApiResponse.Fail("El nombre de la categoria es obligatorio"));
+            return BadRequest(ApiResponse.Fail("El nombre del item es obligatorio"));
         if (request.Type is not ("income" or "expense"))
             return BadRequest(ApiResponse.Fail("El tipo debe ser income o expense"));
+        if (request.DefaultAmount <= 0)
+            return BadRequest(ApiResponse.Fail("El monto debe ser mayor a cero"));
+        if (request.DayOfMonth < 1 || request.DayOfMonth > 31)
+            return BadRequest(ApiResponse.Fail("El dia del mes debe estar entre 1 y 31"));
 
+        category.BranchId = request.BranchId ?? _tenant.BranchId;
         category.Name = request.Name.Trim();
         category.Type = request.Type.Trim().ToLowerInvariant();
         category.ColorHex = request.ColorHex;
+        category.DefaultAmount = Math.Round(request.DefaultAmount, 2);
+        category.DayOfMonth = request.DayOfMonth;
+        category.Nature = request.Nature.Trim().ToLowerInvariant();
+        category.Frequency = request.Frequency.Trim().ToLowerInvariant();
+        category.BiweeklyDay1 = request.BiweeklyDay1;
+        category.BiweeklyDay2 = request.BiweeklyDay2;
+        category.AutoIncludeInMonth = request.AutoIncludeInMonth;
+        category.IsActive = request.IsActive;
 
         var updated = await _repository.UpdateCategoryAsync(category);
-        return Ok(ApiResponse<FinancialCategory>.Ok(updated, "Categoria actualizada exitosamente"));
+        return Ok(ApiResponse<FinancialCategory>.Ok(updated, "Item financiero actualizado exitosamente"));
     }
 
     [HttpDelete("categories/{id:long}")]
@@ -81,130 +118,7 @@ public class FinanceController : ControllerBase
     {
         var companyId = _tenant.CompanyId;
         await _repository.SoftDeleteCategoryAsync(id, companyId);
-        return Ok(ApiResponse.Ok("Categoria eliminada exitosamente"));
-    }
-
-    [HttpGet("templates")]
-    public async Task<IActionResult> GetRecurringTemplates([FromQuery] long? branchId, [FromQuery] string? type)
-    {
-        var companyId = _tenant.CompanyId;
-        var branch = branchId ?? _tenant.BranchId;
-        var templates = (await _repository.GetRecurringTemplatesAsync(companyId, branch, type)).ToList();
-        return Ok(ApiResponse<List<FinancialRecurringTemplate>>.Ok(templates, count: templates.Count));
-    }
-
-    [HttpPost("templates")]
-    public async Task<IActionResult> CreateRecurringTemplate([FromBody] CreateFinancialRecurringTemplateRequest request)
-    {
-        var companyId = _tenant.CompanyId;
-        var userId = _tenant.UserId;
-        var branch = request.BranchId ?? _tenant.BranchId;
-
-        if (request.Type is not ("income" or "expense"))
-            return BadRequest(ApiResponse.Fail("El tipo debe ser income o expense"));
-        if (request.DefaultAmount <= 0)
-            return BadRequest(ApiResponse.Fail("El monto debe ser mayor a cero"));
-        if (request.CategoryId <= 0)
-            return BadRequest(ApiResponse.Fail("La categoria es obligatoria"));
-        if (string.IsNullOrWhiteSpace(request.Description))
-            return BadRequest(ApiResponse.Fail("La descripcion es obligatoria"));
-        if (request.DayOfMonth < 1 || request.DayOfMonth > 31)
-            return BadRequest(ApiResponse.Fail("El dia del mes debe estar entre 1 y 31"));
-        if (request.Nature is not ("fixed" or "variable" or "unique"))
-            return BadRequest(ApiResponse.Fail("La naturaleza debe ser fixed, variable o unique"));
-        if (request.Frequency is not ("weekly" or "biweekly" or "quincenal" or "monthly" or "unique"))
-            return BadRequest(ApiResponse.Fail("La periodicidad debe ser weekly, biweekly/quincenal, monthly o unique"));
-
-        if (request.Nature == "variable")
-        {
-            // Variable templates are allowed for classification, but they are not auto-generated.
-            // Frequency is kept but not used by InitMonth.
-        }
-
-        if (request.Frequency is "biweekly" or "quincenal")
-        {
-            if (!request.BiweeklyDay1.HasValue || !request.BiweeklyDay2.HasValue)
-                return BadRequest(ApiResponse.Fail("Para quincenal debes definir dos dias del mes"));
-            if (request.BiweeklyDay1.Value < 1 || request.BiweeklyDay1.Value > 31 || request.BiweeklyDay2.Value < 1 || request.BiweeklyDay2.Value > 31)
-                return BadRequest(ApiResponse.Fail("Los dias quincenales deben estar entre 1 y 31"));
-            if (request.BiweeklyDay1.Value == request.BiweeklyDay2.Value)
-                return BadRequest(ApiResponse.Fail("Los dias quincenales deben ser diferentes"));
-        }
-
-        var category = await _repository.GetCategoryByIdAsync(request.CategoryId, companyId);
-        if (category is null)
-            return NotFound(ApiResponse.Fail("Categoria no encontrada"));
-        if (!string.Equals(category.Type, request.Type, StringComparison.OrdinalIgnoreCase))
-            return BadRequest(ApiResponse.Fail("La categoria no coincide con el tipo seleccionado"));
-
-        var created = await _repository.CreateRecurringTemplateAsync(new FinancialRecurringTemplate
-        {
-            CompanyId = companyId,
-            BranchId = branch,
-            CategoryId = request.CategoryId,
-            Type = request.Type.Trim().ToLowerInvariant(),
-            Description = request.Description.Trim(),
-            DefaultAmount = Math.Round(request.DefaultAmount, 2),
-            DayOfMonth = request.DayOfMonth,
-            Nature = request.Nature.Trim().ToLowerInvariant(),
-            Frequency = request.Frequency.Trim().ToLowerInvariant(),
-            BiweeklyDay1 = request.BiweeklyDay1,
-            BiweeklyDay2 = request.BiweeklyDay2,
-            IsActive = request.IsActive,
-            CreatedBy = userId,
-        });
-
-        return StatusCode(StatusCodes.Status201Created,
-            ApiResponse<FinancialRecurringTemplate>.Ok(created, "Plantilla creada exitosamente"));
-    }
-
-    [HttpPut("templates/{id:long}")]
-    public async Task<IActionResult> UpdateRecurringTemplate(long id, [FromBody] UpdateFinancialRecurringTemplateRequest request)
-    {
-        var companyId = _tenant.CompanyId;
-        var existing = await _repository.GetRecurringTemplateByIdAsync(id, companyId);
-        if (existing is null)
-            return NotFound(ApiResponse.Fail("Plantilla no encontrada"));
-
-        if (request.Type is not ("income" or "expense"))
-            return BadRequest(ApiResponse.Fail("El tipo debe ser income o expense"));
-        if (request.DefaultAmount <= 0)
-            return BadRequest(ApiResponse.Fail("El monto debe ser mayor a cero"));
-        if (request.CategoryId <= 0)
-            return BadRequest(ApiResponse.Fail("La categoria es obligatoria"));
-        if (string.IsNullOrWhiteSpace(request.Description))
-            return BadRequest(ApiResponse.Fail("La descripcion es obligatoria"));
-        if (request.DayOfMonth < 1 || request.DayOfMonth > 31)
-            return BadRequest(ApiResponse.Fail("El dia del mes debe estar entre 1 y 31"));
-
-        var category = await _repository.GetCategoryByIdAsync(request.CategoryId, companyId);
-        if (category is null)
-            return NotFound(ApiResponse.Fail("Categoria no encontrada"));
-        if (!string.Equals(category.Type, request.Type, StringComparison.OrdinalIgnoreCase))
-            return BadRequest(ApiResponse.Fail("La categoria no coincide con el tipo seleccionado"));
-
-        existing.BranchId = request.BranchId ?? _tenant.BranchId;
-        existing.CategoryId = request.CategoryId;
-        existing.Type = request.Type.Trim().ToLowerInvariant();
-        existing.Description = request.Description.Trim();
-        existing.DefaultAmount = Math.Round(request.DefaultAmount, 2);
-        existing.DayOfMonth = request.DayOfMonth;
-        existing.Nature = request.Nature.Trim().ToLowerInvariant();
-        existing.Frequency = request.Frequency.Trim().ToLowerInvariant();
-        existing.BiweeklyDay1 = request.BiweeklyDay1;
-        existing.BiweeklyDay2 = request.BiweeklyDay2;
-        existing.IsActive = request.IsActive;
-
-        var updated = await _repository.UpdateRecurringTemplateAsync(existing);
-        return Ok(ApiResponse<FinancialRecurringTemplate>.Ok(updated, "Plantilla actualizada exitosamente"));
-    }
-
-    [HttpDelete("templates/{id:long}")]
-    public async Task<IActionResult> DeleteRecurringTemplate(long id)
-    {
-        var companyId = _tenant.CompanyId;
-        await _repository.SoftDeleteRecurringTemplateAsync(id, companyId);
-        return Ok(ApiResponse.Ok("Plantilla eliminada exitosamente"));
+        return Ok(ApiResponse.Ok("Item financiero eliminado exitosamente"));
     }
 
     [HttpPost("month/init")]
@@ -220,7 +134,14 @@ public class FinanceController : ControllerBase
         if (!DateTime.TryParse($"{request.Month}-01", out var monthStart))
             return BadRequest(ApiResponse.Fail("Formato de mes invalido. Usa YYYY-MM"));
 
-        var inserted = await _repository.InitMonthFromRecurringTemplatesAsync(companyId, branch, monthStart, userId);
+        var selectedCategoryIds = request.UseSelectedCategoryIds
+            ? request.SelectedCategoryIds?
+                .Where(id => id > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<long>()
+            : null;
+
+        var inserted = await _repository.InitMonthFromFinancialItemsAsync(companyId, branch, monthStart, userId, selectedCategoryIds);
         return Ok(ApiResponse<int>.Ok(inserted, "Mes iniciado exitosamente"));
     }
 
@@ -327,7 +248,7 @@ public class FinanceController : ControllerBase
         if (existing is null)
             return NotFound(ApiResponse.Fail("Movimiento no encontrado"));
 
-        if (existing.RecurringTemplateId.HasValue && existing.RecurringTemplateId.Value > 0)
+        if (!existing.IsManual)
         {
             existing.Status = "skipped";
             await _repository.UpdateEntryAsync(existing);

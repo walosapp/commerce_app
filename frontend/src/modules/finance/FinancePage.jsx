@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarRange, PlayCircle, PlusCircle, Repeat, SlidersHorizontal, Tags } from 'lucide-react';
+import { CalendarRange, PlayCircle, Repeat, SlidersHorizontal } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAuthStore from '../../stores/authStore';
 import financeService from '../../services/financeService';
@@ -8,7 +8,7 @@ import FinancialEntryTable from './components/FinancialEntryTable';
 import FinancialEntryFormModal from './components/FinancialEntryFormModal';
 import FinancialCategoryModal from './components/FinancialCategoryModal';
 import MonthInitPanelModal from './components/MonthInitPanelModal';
-import RecurringTemplatesModal from './components/RecurringTemplatesModal';
+import MonthItemSelectorModal from './components/MonthItemSelectorModal';
 
 const getMonthValue = (date) => {
   const year = date.getFullYear();
@@ -47,7 +47,8 @@ const FinancePage = () => {
   const [entryModalOpen, setEntryModalOpen] = useState(false);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [monthPanelOpen, setMonthPanelOpen] = useState(false);
-  const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
+  const [monthSelectorOpen, setMonthSelectorOpen] = useState(false);
+  const [startingMonth, setStartingMonth] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
 
@@ -72,21 +73,13 @@ const FinancePage = () => {
     queryFn: () => financeService.getCategories(),
   });
 
-  const { data: templatesData } = useQuery({
-    queryKey: ['finance-templates', branchId],
-    queryFn: () => financeService.getTemplates({ branchId }),
-    enabled: !!branchId,
-  });
-
   const entries = entriesData?.data || [];
   const categories = categoriesData?.data || [];
-  const templates = templatesData?.data || [];
   const monthLabel = getMonthLabel(filters.selectedMonth);
 
   const refreshAll = () => {
     queryClient.invalidateQueries({ queryKey: ['finance-entries'] });
     queryClient.invalidateQueries({ queryKey: ['finance-categories'] });
-    queryClient.invalidateQueries({ queryKey: ['finance-templates'] });
   };
 
   const handleSaveEntry = async (payload) => {
@@ -112,10 +105,10 @@ const FinancePage = () => {
   const handleSaveCategory = async (payload) => {
     if (editingCategory) {
       await financeService.updateCategory(editingCategory.id, payload);
-      toast.success('Categoria actualizada');
+      toast.success('Item financiero actualizado');
     } else {
       await financeService.createCategory(payload);
-      toast.success('Categoria creada');
+      toast.success('Item financiero creado');
     }
 
     setCategoryModalOpen(false);
@@ -125,22 +118,31 @@ const FinancePage = () => {
 
   const handleDeleteCategory = async (category) => {
     await financeService.deleteCategory(category.id);
-    toast.success('Categoria eliminada');
+    toast.success('Item financiero eliminado');
     setCategoryModalOpen(false);
     setEditingCategory(null);
     refreshAll();
   };
 
-  const handleInitMonth = async () => {
+  const handleInitMonth = async (selectedCategoryIds = []) => {
     if (!filters.selectedMonth) return;
+    setStartingMonth(true);
     try {
-      const res = await financeService.initMonth({ month: filters.selectedMonth, branchId });
+      const res = await financeService.initMonth({
+        month: filters.selectedMonth,
+        branchId,
+        selectedCategoryIds,
+        useSelectedCategoryIds: true,
+      });
       const inserted = res?.data ?? 0;
       toast.success(inserted > 0 ? `Mes iniciado. ${inserted} item(s) generados` : 'Mes ya estaba iniciado');
       refreshAll();
+      setMonthSelectorOpen(false);
       setMonthPanelOpen(true);
     } catch (err) {
       toast.error(err?.response?.data?.message || 'No fue posible iniciar el mes');
+    } finally {
+      setStartingMonth(false);
     }
   };
 
@@ -155,24 +157,16 @@ const FinancePage = () => {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Finanzas</h1>
-          <p className="mt-1 text-sm text-gray-500">Configura categorias y plantillas fijas, inicia el mes y ajusta los valores reales cuando sea necesario.</p>
+          <p className="mt-1 text-sm text-gray-500">Primero creas tus items financieros. Luego inicias el mes y trabajas solo sobre los items de ese mes.</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <button onClick={() => { setEditingCategory(null); setCategoryModalOpen(true); }} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            <Tags className="h-4 w-4" />
-            Categorias
-          </button>
-          <button onClick={() => setTemplatesModalOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
             <Repeat className="h-4 w-4" />
-            Plantillas
+            Items financieros
           </button>
-          <button onClick={handleInitMonth} className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-medium text-primary-700 hover:bg-primary-100">
+          <button onClick={() => setMonthSelectorOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-medium text-primary-700 hover:bg-primary-100">
             <PlayCircle className="h-4 w-4" />
             Iniciar mes
-          </button>
-          <button onClick={() => { setEditingEntry(null); setEntryModalOpen(true); }} className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700">
-            <PlusCircle className="h-4 w-4" />
-            Nuevo movimiento
           </button>
         </div>
       </div>
@@ -185,7 +179,7 @@ const FinancePage = () => {
               <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">Control mensual</h2>
             </div>
             <p className="mt-2 text-lg font-semibold text-gray-900">{monthLabel}</p>
-            <p className="mt-1 text-sm text-gray-500">Inicia el mes para generar automaticamente los items fijos configurados (arriendo, nomina, etc.).</p>
+            <p className="mt-1 text-sm text-gray-500">Usa solo estos dos pasos: crear items y luego iniciar el mes con los que quieras cargar.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => applyRelativeMonth(-1)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Mes anterior</button>
@@ -248,24 +242,26 @@ const FinancePage = () => {
         entries={entries}
         categories={categories}
         monthLabel={monthLabel}
+        selectedMonth={filters.selectedMonth}
+        branchId={branchId}
         onUpdated={refreshAll}
       />
 
-      <RecurringTemplatesModal
-        isOpen={templatesModalOpen}
-        onClose={() => setTemplatesModalOpen(false)}
-        templates={templates}
-        categories={categories}
-        branchId={branchId}
-        onUpdated={refreshAll}
+      <MonthItemSelectorModal
+        isOpen={monthSelectorOpen}
+        onClose={() => setMonthSelectorOpen(false)}
+        onConfirm={handleInitMonth}
+        items={categories}
+        monthLabel={monthLabel}
+        loading={startingMonth}
       />
 
       {!categoryModalOpen && categories.length > 0 && (
         <div className="card">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Categorias activas</h2>
-              <p className="mt-1 text-sm text-gray-500">Usa categorias como "Servicios publicos" y registra un movimiento nuevo cada mes con el valor real de la factura.</p>
+              <h2 className="text-lg font-semibold text-gray-900">Items financieros creados</h2>
+              <p className="mt-1 text-sm text-gray-500">Puedes tocar cualquiera para editarlo.</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">

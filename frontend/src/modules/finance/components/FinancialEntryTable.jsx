@@ -12,7 +12,7 @@ const statusStyles = {
   skipped: 'bg-gray-100 text-gray-600',
 };
 
-const isFromTemplate = (entry) => !!entry.recurringTemplateId;
+const isFromTemplate = (entry) => !!entry.financialItemId || entry.isManual === false;
 
 const FinancialEntryTable = ({ entries, isLoading, onEdit, onDelete }) => {
   if (isLoading) {
@@ -67,7 +67,7 @@ const FinancialEntryTable = ({ entries, isLoading, onEdit, onDelete }) => {
                 <td className="px-4 py-3 text-gray-700">{entry.categoryName}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1.5">
-                    {isFromTemplate(entry) && <Repeat className="h-3.5 w-3.5 flex-shrink-0 text-primary-500" title="Generado desde plantilla" />}
+                    {isFromTemplate(entry) && <Repeat className="h-3.5 w-3.5 flex-shrink-0 text-primary-500" title="Generado desde item financiero" />}
                     <p className="font-medium text-gray-900">{entry.description}</p>
                   </div>
                   {entry.notes && <p className="mt-1 text-xs text-gray-500">{entry.notes}</p>}

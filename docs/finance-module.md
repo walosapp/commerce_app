@@ -3,6 +3,8 @@
 > **Ultima actualizacion**: Abril 2026
 > **Estado**: Produccion
 > **Stack**: .NET 8 / Dapper / PostgreSQL (Supabase) + React / Tailwind / React Query
+>
+> **Nota de refactor**: el modulo se esta simplificando para usar `finance.categories` como catalogo principal de items financieros. Algunas secciones historicas de este documento todavia mencionan `templates`.
 
 ---
 
@@ -11,8 +13,8 @@
 El modulo de Finanzas permite a cada empresa (tenant) controlar ingresos y gastos mensuales mediante:
 
 1. **Categorias financieras** — clasifican cada movimiento (Servicios, Nomina, Ventas, etc.).
-2. **Plantillas recurrentes** — items permanentes que se reutilizan mes a mes (arriendo, internet, nomina).
-3. **Inicio de mes** — genera automaticamente las instancias mensuales desde las plantillas activas.
+2. **Items financieros** — catalogo base reutilizable mes a mes (arriendo, internet, salario empleado 1).
+3. **Inicio de mes** — permite seleccionar que items incluir en el mes; los items marcados como automaticos vienen preseleccionados.
 4. **Entries (movimientos)** — registros financieros reales con monto, estado y fecha; pueden ser generados desde plantillas o creados manualmente.
 5. **Resumen financiero** — totales de ingresos, gastos, ventas del sistema y balance neto.
 
@@ -28,7 +30,7 @@ El modulo de Finanzas permite a cada empresa (tenant) controlar ingresos y gasto
                                   └────────────────────────────────────┘
 ```
 
-- **Plantillas** = fuente permanente de items. Nunca se eliminan logicamente al iniciar un mes.
+- **Items financieros** = fuente permanente de items. Nunca se eliminan logicamente al iniciar un mes.
 - **Entries** = copia independiente por mes. Cada mes obtiene sus propios registros con montos y estados autonomos.
 - El campo `entry_year_month` (columna generada `YYYYMM`) + `occurrence_in_month` garantizan unicidad por mes.
 - Si el usuario "elimina" un item generado desde plantilla, se marca como `skipped` (no soft-delete), evitando que se regenere al re-iniciar el mes.
@@ -287,14 +289,14 @@ stateDiagram-v2
 }
 ```
 
-### 4.2 Plantillas Recurrentes
+### 4.2 Items Financieros
 
 | Metodo | Ruta | Descripcion | Body / Query |
 |---|---|---|---|
-| `GET` | `/templates` | Listar plantillas | `?branchId=&type=` |
-| `POST` | `/templates` | Crear plantilla | Ver body abajo |
-| `PUT` | `/templates/{id}` | Actualizar plantilla | Ver body abajo |
-| `DELETE` | `/templates/{id}` | Eliminar plantilla (soft-delete) | — |
+| `GET` | `/templates` | Listar items financieros | `?branchId=&type=` |
+| `POST` | `/templates` | Crear item financiero | Ver body abajo |
+| `PUT` | `/templates/{id}` | Actualizar item financiero | Ver body abajo |
+| `DELETE` | `/templates/{id}` | Eliminar item financiero (soft-delete) | — |
 
 **Request: `CreateFinancialRecurringTemplateRequest`**
 ```json
@@ -327,13 +329,15 @@ stateDiagram-v2
 
 | Metodo | Ruta | Descripcion | Body |
 |---|---|---|---|
-| `POST` | `/month/init` | Generar entries del mes | `{ month, branchId }` |
+| `POST` | `/month/init` | Generar entries del mes | `{ month, branchId, selectedTemplateIds }` |
 
 **Request: `InitFinanceMonthRequest`**
 ```json
 {
   "month": "2025-05",
-  "branchId": null
+  "branchId": null,
+  "selectedTemplateIds": [1, 2, 5],
+  "useSelectedTemplateIds": true
 }
 ```
 
@@ -345,13 +349,15 @@ stateDiagram-v2
   "data": 8
 }
 ```
-`data` = numero de entries insertados. Si el mes ya fue iniciado, devuelve `0` (ON CONFLICT DO NOTHING).
+`data` = numero de entries insertados. Si el mes ya fue iniciado, devuelve `0` para los items ya cargados (ON CONFLICT DO NOTHING).
 
 #### Logica del query `InitMonthFromRecurringTemplatesAsync`
 
 ```
 1. CTE ctx         → calcula month_start, month_end, today_utc, week1_start
-2. CTE templates   → selecciona plantillas activas (no variable, no eliminadas, misma branch)
+2. CTE templates   → selecciona items activos (no variable, no eliminados, misma branch)
+                     si `selectedTemplateIds` llega con valores, usa solo esa seleccion
+                     si no llega seleccion explicita, usa los items marcados como automaticos
 3. CTE expanded    → expande cada plantilla segun su frecuencia:
                       • monthly/unique → 1 entry con fecha = day_of_month
                       • biweekly       → 2 entries con biweekly_day_1 y biweekly_day_2
@@ -563,13 +569,13 @@ frontend/src/
 **Queries React Query:**
 - `finance-entries` — movimientos filtrados por mes, tipo, categoria, sucursal
 - `finance-categories` — categorias activas
-- `finance-templates` — plantillas de la sucursal
+- `finance-templates` — items financieros de la sucursal
 
 **Acciones principales:**
 - **Iniciar mes** → `POST /month/init` con el mes seleccionado → abre MonthInitPanelModal
 - **Nuevo movimiento** → abre FinancialEntryFormModal
 - **Categorias** → abre FinancialCategoryModal
-- **Plantillas** → abre RecurringTemplatesModal
+- **Items financieros** → abre RecurringTemplatesModal
 - **Navegacion temporal** → botones "Mes anterior", "Mes actual", selector `<input type="month">`
 
 ### 7.3 `FinancialEntryTable.jsx` — Tabla de movimientos
@@ -609,10 +615,10 @@ Modal que muestra TODOS los entries del mes agrupados por estado:
 - Formulario rapido (tipo, descripcion, monto, categoria)
 - Crea entry manual con `nature: unique`, `status: pending`
 
-### 7.5 `RecurringTemplatesModal.jsx` — CRUD de plantillas
+### 7.5 `RecurringTemplatesModal.jsx` — CRUD de items financieros
 
 Layout dividido en dos columnas:
-- **Izquierda**: lista de plantillas existentes con badge activa/inactiva
+- **Izquierda**: lista de items existentes con badge de estado y auto-inclusion mensual
 - **Derecha**: formulario de creacion/edicion
 
 **Campos del formulario:**
@@ -674,7 +680,7 @@ flowchart LR
 ```
 
 1. Ir a Finanzas → "Categorias" → crear categorias (ej: Nomina, Servicios, Arriendo)
-2. Ir a "Plantillas" → crear plantillas recurrentes vinculadas a categorias
+2. Ir a "Items financieros" → crear los items base vinculados a categorias
 3. Configurar naturaleza, frecuencia, dia del mes y monto default
 
 ### 8.2 Ciclo mensual
@@ -682,15 +688,16 @@ flowchart LR
 ```mermaid
 flowchart TD
     A[Seleccionar mes] --> B[Clic Iniciar mes]
-    B --> C{Entries generados?}
-    C -->|Si, N items| D[Abrir panel mensual]
-    C -->|0 = ya iniciado| D
-    D --> E[Revisar items pendientes]
-    E --> F{Para cada item}
-    F --> G[Confirmar monto → Registrar]
-    F --> H[Omitir]
-    D --> I[Agregar items unicos del mes]
-    D --> J[Editar montos de registrados]
+    B --> C[Seleccionar items del mes]
+    C --> D{Entries generados?}
+    D -->|Si, N items| E[Abrir panel mensual]
+    D -->|0 = ya iniciado| E
+    E --> F[Revisar items pendientes]
+    F --> G{Para cada item}
+    G --> H[Confirmar monto → Registrar]
+    G --> I[Omitir]
+    E --> J[Agregar items unicos del mes]
+    E --> K[Editar montos de registrados]
 ```
 
 ### 8.3 Eliminacion de items de plantilla
