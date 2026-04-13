@@ -8,7 +8,6 @@ import FinancialEntryTable from './components/FinancialEntryTable';
 import FinancialEntryFormModal from './components/FinancialEntryFormModal';
 import FinancialCategoryModal from './components/FinancialCategoryModal';
 import MonthInitPanelModal from './components/MonthInitPanelModal';
-import MonthItemSelectorModal from './components/MonthItemSelectorModal';
 
 const getMonthValue = (date) => {
   const year = date.getFullYear();
@@ -47,7 +46,6 @@ const FinancePage = () => {
   const [entryModalOpen, setEntryModalOpen] = useState(false);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [monthPanelOpen, setMonthPanelOpen] = useState(false);
-  const [monthSelectorOpen, setMonthSelectorOpen] = useState(false);
   const [startingMonth, setStartingMonth] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
@@ -124,20 +122,27 @@ const FinancePage = () => {
     refreshAll();
   };
 
-  const handleInitMonth = async (selectedCategoryIds = []) => {
+  const openEditItemModal = (item) => {
+    setEditingCategory(item);
+    setCategoryModalOpen(true);
+  };
+
+  const handleInitMonth = async () => {
     if (!filters.selectedMonth) return;
+    if (categories.length === 0) {
+      toast.error('Primero crea al menos un item financiero');
+      return;
+    }
+
     setStartingMonth(true);
     try {
       const res = await financeService.initMonth({
         month: filters.selectedMonth,
         branchId,
-        selectedCategoryIds,
-        useSelectedCategoryIds: true,
       });
       const inserted = res?.data ?? 0;
       toast.success(inserted > 0 ? `Mes iniciado. ${inserted} item(s) generados` : 'Mes ya estaba iniciado');
       refreshAll();
-      setMonthSelectorOpen(false);
       setMonthPanelOpen(true);
     } catch (err) {
       toast.error(err?.response?.data?.message || 'No fue posible iniciar el mes');
@@ -164,9 +169,9 @@ const FinancePage = () => {
             <Repeat className="h-4 w-4" />
             Items financieros
           </button>
-          <button onClick={() => setMonthSelectorOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-medium text-primary-700 hover:bg-primary-100">
+          <button onClick={handleInitMonth} disabled={startingMonth} className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-medium text-primary-700 hover:bg-primary-100 disabled:opacity-50">
             <PlayCircle className="h-4 w-4" />
-            Iniciar mes
+            {startingMonth ? 'Iniciando...' : 'Iniciar mes'}
           </button>
         </div>
       </div>
@@ -247,15 +252,6 @@ const FinancePage = () => {
         onUpdated={refreshAll}
       />
 
-      <MonthItemSelectorModal
-        isOpen={monthSelectorOpen}
-        onClose={() => setMonthSelectorOpen(false)}
-        onConfirm={handleInitMonth}
-        items={categories}
-        monthLabel={monthLabel}
-        loading={startingMonth}
-      />
-
       {!categoryModalOpen && categories.length > 0 && (
         <div className="card">
           <div className="mb-4 flex items-center justify-between">
@@ -268,7 +264,7 @@ const FinancePage = () => {
             {categories.map((category) => (
               <button
                 key={category.id}
-                onClick={() => { setEditingCategory(category); setCategoryModalOpen(true); }}
+                onClick={() => openEditItemModal(category)}
                 className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: category.colorHex || '#94A3B8' }} />

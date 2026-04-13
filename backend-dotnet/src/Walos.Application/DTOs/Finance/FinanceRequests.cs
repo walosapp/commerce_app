@@ -44,6 +44,13 @@ public class InitFinanceMonthRequest
 {
     public long? BranchId { get; set; }
     public string Month { get; set; } = string.Empty;
+    public List<InitFinanceMonthItemRequest>? Items { get; set; }
     public List<long>? SelectedCategoryIds { get; set; }
     public bool UseSelectedCategoryIds { get; set; }
+}
+
+public class InitFinanceMonthItemRequest
+{
+    public long CategoryId { get; set; }
+    public decimal? Amount { get; set; }
 }

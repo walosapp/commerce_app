@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, CircleSlash2, Edit3, PlusCircle, RotateCcw, X } from 'lucide-react';
+import { CheckCircle2, CheckSquare, ChevronDown, ChevronUp, Edit3, PlusCircle, Square, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import financeService from '../../../services/financeService';
 import { formatCurrency } from '../../../utils/formatCurrency';
@@ -13,21 +13,29 @@ const getMonthEntryDate = (selectedMonth) => {
   return new Date(year, month - 1, 1, 12, 0, 0).toISOString();
 };
 
-const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], monthLabel, selectedMonth, branchId, onUpdated }) => {
+const MonthInitPanelModal = ({
+  isOpen,
+  onClose,
+  entries = [],
+  categories = [],
+  monthLabel,
+  selectedMonth,
+  branchId,
+  onUpdated,
+}) => {
   const grouped = useMemo(() => {
     const map = { pending: [], posted: [], skipped: [] };
-    entries.forEach((e) => {
-      if (map[e.status]) map[e.status].push(e);
-      else map.posted.push(e);
+    entries.forEach((entry) => {
+      if (map[entry.status]) map[entry.status].push(entry);
+      else map.posted.push(entry);
     });
     return map;
   }, [entries]);
 
   const [savingIds, setSavingIds] = useState([]);
   const [draftAmounts, setDraftAmounts] = useState({});
-  const [confirmedAmounts, setConfirmedAmounts] = useState({});
   const [editingPostedId, setEditingPostedId] = useState(null);
-
+  const [showNewItemForm, setShowNewItemForm] = useState(false);
   const [newItem, setNewItem] = useState({
     type: 'expense',
     categoryId: '',
@@ -36,17 +44,16 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
   });
 
   const setSaving = (id, value) => {
-    setSavingIds((prev) => (value ? [...prev, id] : prev.filter((x) => x !== id)));
+    setSavingIds((prev) => (value ? [...prev, id] : prev.filter((itemId) => itemId !== id)));
   };
 
   const isSaving = (id) => savingIds.includes(id);
-
-  const canEditAmount = (entry) => (entry.nature || 'fixed') === 'fixed';
+  const canEditPostedAmount = (entry) => (entry.nature || 'fixed') === 'fixed';
 
   const getAmount = (entry) => {
-    const v = draftAmounts[entry.id];
-    if (v === undefined || v === null || v === '') return entry.amount;
-    return Number(v);
+    const value = draftAmounts[entry.id];
+    if (value === undefined || value === null || value === '') return entry.amount;
+    return Number(value);
   };
 
   const updateEntry = async (entry, patch) => {
@@ -66,9 +73,11 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
         occurrenceInMonth: entry.occurrenceInMonth,
         isManual: entry.isManual,
       });
+
       if (patch.status === 'posted' || patch.amount !== undefined) {
         setEditingPostedId(null);
       }
+
       onUpdated?.();
     } catch (err) {
       toast.error(err?.response?.data?.message || 'No fue posible actualizar el item');
@@ -77,13 +86,8 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
     }
   };
 
-  if (!isOpen) return null;
-
-  const requireConfirm = (entry) => canEditAmount(entry);
-
-  const isConfirmed = (entry) => {
-    if (!requireConfirm(entry)) return true;
-    return confirmedAmounts[entry.id] === true;
+  const togglePendingInMonth = (entry, checked) => {
+    updateEntry(entry, { status: checked ? 'pending' : 'skipped' });
   };
 
   const createUniqueItem = async () => {
@@ -120,86 +124,65 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
       });
       toast.success('Item agregado');
       setNewItem({ type: 'expense', categoryId: '', description: '', amount: '' });
+      setShowNewItemForm(false);
       onUpdated?.();
     } catch (err) {
       toast.error(err?.response?.data?.message || 'No fue posible agregar el item');
     }
   };
 
+  if (!isOpen) return null;
+
   const renderPendingCard = (entry) => (
     <div key={entry.id} className="rounded-xl border border-yellow-200 bg-yellow-50/50 p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-gray-900">{entry.description}</p>
-          <p className="mt-1 text-xs text-gray-500">
-            {entry.categoryName} • Ocurr: {entry.occurrenceInMonth} • {new Date(entry.entryDate).toLocaleDateString('es-CO')}
-          </p>
-        </div>
+      <div className="flex gap-3">
+        <button
+          type="button"
+          title="Quitar este item del mes"
+          onClick={() => togglePendingInMonth(entry, false)}
+          disabled={isSaving(entry.id)}
+          className="mt-0.5 shrink-0 rounded-lg p-1 text-primary-600 transition-colors hover:bg-white/70 disabled:opacity-50"
+        >
+          <CheckSquare className="h-5 w-5" />
+        </button>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
-            {canEditAmount(entry) ? (
+        <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-gray-900">{entry.description}</p>
+            <p className="mt-1 text-xs text-gray-500">
+              {entry.categoryName} • Ocurr: {entry.occurrenceInMonth} • {new Date(entry.entryDate).toLocaleDateString('es-CO')}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
               <input
                 type="number"
                 min="0"
                 step="0.01"
                 className="w-32 bg-transparent text-right text-sm font-semibold text-gray-900 outline-none"
                 value={draftAmounts[entry.id] ?? entry.amount}
-                onChange={(e) => {
-                  setDraftAmounts((prev) => ({ ...prev, [entry.id]: e.target.value }));
-                  setConfirmedAmounts((prev) => ({ ...prev, [entry.id]: false }));
-                }}
+                onChange={(e) => setDraftAmounts((prev) => ({ ...prev, [entry.id]: e.target.value }))}
                 disabled={isSaving(entry.id)}
               />
-            ) : (
-              <span className="text-sm font-semibold text-gray-900">{formatCurrency(entry.amount)}</span>
-            )}
-          </div>
+            </div>
 
-          {requireConfirm(entry) && (
             <button
               onClick={() => {
-                const v = getAmount(entry);
-                if (!Number.isFinite(v) || v <= 0) {
+                const value = getAmount(entry);
+                if (!Number.isFinite(value) || value <= 0) {
                   toast.error('Monto invalido');
                   return;
                 }
-                setConfirmedAmounts((prev) => ({ ...prev, [entry.id]: true }));
+                updateEntry(entry, { status: 'posted', amount: value });
               }}
               disabled={isSaving(entry.id)}
-              className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-                isConfirmed(entry)
-                  ? 'border-green-200 bg-green-50 text-green-700'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
             >
-              {isConfirmed(entry) ? 'Confirmado' : 'Confirmar monto'}
+              <CheckCircle2 className="h-4 w-4" />
+              Registrar
             </button>
-          )}
-
-          <button
-            onClick={() => {
-              if (!isConfirmed(entry)) {
-                toast.error('Confirma el monto antes de registrar');
-                return;
-              }
-              updateEntry(entry, { status: 'posted', amount: canEditAmount(entry) ? getAmount(entry) : entry.amount });
-            }}
-            disabled={isSaving(entry.id) || !isConfirmed(entry)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            Registrar
-          </button>
-
-          <button
-            onClick={() => updateEntry(entry, { status: 'skipped' })}
-            disabled={isSaving(entry.id)}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-          >
-            <CircleSlash2 className="h-4 w-4" />
-            Omitir
-          </button>
+          </div>
         </div>
       </div>
     </div>
@@ -219,7 +202,7 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {isEditing && canEditAmount(entry) ? (
+            {isEditing && canEditPostedAmount(entry) ? (
               <>
                 <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
                   <input
@@ -234,12 +217,12 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
                 </div>
                 <button
                   onClick={() => {
-                    const v = getAmount(entry);
-                    if (!Number.isFinite(v) || v <= 0) {
+                    const value = getAmount(entry);
+                    if (!Number.isFinite(value) || value <= 0) {
                       toast.error('Monto invalido');
                       return;
                     }
-                    updateEntry(entry, { amount: v });
+                    updateEntry(entry, { amount: value });
                   }}
                   disabled={isSaving(entry.id)}
                   className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
@@ -248,7 +231,14 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
                   Guardar
                 </button>
                 <button
-                  onClick={() => { setEditingPostedId(null); setDraftAmounts((prev) => { const n = { ...prev }; delete n[entry.id]; return n; }); }}
+                  onClick={() => {
+                    setEditingPostedId(null);
+                    setDraftAmounts((prev) => {
+                      const next = { ...prev };
+                      delete next[entry.id];
+                      return next;
+                    });
+                  }}
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   Cancelar
@@ -257,7 +247,7 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
             ) : (
               <>
                 <span className="text-sm font-semibold text-gray-900">{formatCurrency(entry.amount)}</span>
-                {canEditAmount(entry) && (
+                {canEditPostedAmount(entry) && (
                   <button
                     onClick={() => setEditingPostedId(entry.id)}
                     className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
@@ -275,22 +265,25 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
   };
 
   const renderSkippedCard = (entry) => (
-    <div key={entry.id} className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-gray-800">{entry.description}</p>
-        <p className="mt-1 text-xs text-gray-500">
-          {entry.categoryName} • Ocurr: {entry.occurrenceInMonth}
-        </p>
-      </div>
+    <div key={entry.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+      <div className="flex items-start gap-3">
+        <button
+          type="button"
+          title="Volver a incluir este item en el mes"
+          onClick={() => togglePendingInMonth(entry, true)}
+          disabled={isSaving(entry.id)}
+          className="shrink-0 rounded-lg p-1 text-gray-400 transition-colors hover:bg-white hover:text-primary-600 disabled:opacity-50"
+        >
+          <Square className="h-5 w-5" />
+        </button>
 
-      <button
-        onClick={() => updateEntry(entry, { status: 'pending' })}
-        disabled={isSaving(entry.id)}
-        className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-      >
-        <RotateCcw className="h-4 w-4" />
-        Reactivar
-      </button>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-gray-800">{entry.description}</p>
+          <p className="mt-1 text-xs text-gray-500">
+            {entry.categoryName} • Ocurr: {entry.occurrenceInMonth}
+          </p>
+        </div>
+      </div>
     </div>
   );
 
@@ -303,7 +296,7 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
           <div>
             <h2 className="text-lg font-bold text-gray-900">Control del mes</h2>
             <p className="mt-1 text-sm text-gray-500">
-              Revisa todos los items de <span className="font-medium text-gray-700">{monthLabel}</span>. Puedes editar montos de items <span className="font-medium">fixed</span>, registrar pendientes u omitir.
+              Revisa todos los items de <span className="font-medium text-gray-700">{monthLabel}</span>. Aqui decides que entra al mes, ajustas el valor si hace falta y registras los pendientes.
             </p>
           </div>
           <button onClick={onClose} className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100">
@@ -315,58 +308,69 @@ const MonthInitPanelModal = ({ isOpen, onClose, entries = [], categories = [], m
           <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-semibold text-gray-800">Agregar item unico del mes</p>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-4">
-              <select
-                className="input"
-                value={newItem.type}
-                onChange={(e) => setNewItem((prev) => ({ ...prev, type: e.target.value, categoryId: '' }))}
-              >
-                <option value="expense">Gasto</option>
-                <option value="income">Ingreso</option>
-              </select>
-
-              <input
-                className="input md:col-span-2"
-                placeholder="Descripcion"
-                value={newItem.description}
-                onChange={(e) => setNewItem((prev) => ({ ...prev, description: e.target.value }))}
-              />
-
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className="input"
-                placeholder="Monto"
-                value={newItem.amount}
-                onChange={(e) => setNewItem((prev) => ({ ...prev, amount: e.target.value }))}
-              />
-
-              <select
-                className="input md:col-span-3"
-                value={newItem.categoryId}
-                onChange={(e) => setNewItem((prev) => ({ ...prev, categoryId: e.target.value }))}
-              >
-                <option value="">Categoria</option>
-                {categories
-                  .filter((c) => c.type === newItem.type)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-              </select>
-
               <button
-                onClick={createUniqueItem}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700"
+                type="button"
+                onClick={() => setShowNewItemForm((prev) => !prev)}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 <PlusCircle className="h-4 w-4" />
                 Agregar
+                {showNewItemForm ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </button>
             </div>
+
+            {showNewItemForm && (
+              <div className="grid gap-3 md:grid-cols-4">
+                <select
+                  className="input"
+                  value={newItem.type}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, type: e.target.value, categoryId: '' }))}
+                >
+                  <option value="expense">Gasto</option>
+                  <option value="income">Ingreso</option>
+                </select>
+
+                <input
+                  className="input md:col-span-2"
+                  placeholder="Descripcion"
+                  value={newItem.description}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, description: e.target.value }))}
+                />
+
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="input"
+                  placeholder="Monto"
+                  value={newItem.amount}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, amount: e.target.value }))}
+                />
+
+                <select
+                  className="input md:col-span-3"
+                  value={newItem.categoryId}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, categoryId: e.target.value }))}
+                >
+                  <option value="">Categoria</option>
+                  {categories
+                    .filter((category) => category.type === newItem.type)
+                    .map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                </select>
+
+                <button
+                  onClick={createUniqueItem}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700"
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  Guardar item
+                </button>
+              </div>
+            )}
           </div>
 
           {entries.length === 0 ? (

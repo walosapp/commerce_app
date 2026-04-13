@@ -19,3 +19,9 @@ public class FinancialEntry : BaseEntity
     public string? CategoryName { get; set; }
     public string? BranchName { get; set; }
 }
+
+public class FinanceMonthSelectionItem
+{
+    public long CategoryId { get; set; }
+    public decimal? Amount { get; set; }
+}

@@ -134,14 +134,7 @@ public class FinanceController : ControllerBase
         if (!DateTime.TryParse($"{request.Month}-01", out var monthStart))
             return BadRequest(ApiResponse.Fail("Formato de mes invalido. Usa YYYY-MM"));
 
-        var selectedCategoryIds = request.UseSelectedCategoryIds
-            ? request.SelectedCategoryIds?
-                .Where(id => id > 0)
-                .Distinct()
-                .ToArray() ?? Array.Empty<long>()
-            : null;
-
-        var inserted = await _repository.InitMonthFromFinancialItemsAsync(companyId, branch, monthStart, userId, selectedCategoryIds);
+        var inserted = await _repository.InitMonthFromFinancialItemsAsync(companyId, branch, monthStart, userId);
         return Ok(ApiResponse<int>.Ok(inserted, "Mes iniciado exitosamente"));
     }
 

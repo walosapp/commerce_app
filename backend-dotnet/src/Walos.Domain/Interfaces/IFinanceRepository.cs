@@ -10,7 +10,7 @@ public interface IFinanceRepository
     Task<FinancialCategory> UpdateCategoryAsync(FinancialCategory category);
     Task SoftDeleteCategoryAsync(long id, long companyId);
 
-    Task<int> InitMonthFromFinancialItemsAsync(long companyId, long? branchId, DateTime monthStart, long? userId, IReadOnlyCollection<long>? selectedCategoryIds = null);
+    Task<int> InitMonthFromFinancialItemsAsync(long companyId, long? branchId, DateTime monthStart, long? userId, IReadOnlyCollection<FinanceMonthSelectionItem>? selectedItems = null);
 
     Task<IEnumerable<FinancialEntry>> GetEntriesAsync(long companyId, long? branchId = null, string? type = null, long? categoryId = null, DateTime? startDate = null, DateTime? endDate = null);
     Task<FinancialEntry?> GetEntryByIdAsync(long id, long companyId);

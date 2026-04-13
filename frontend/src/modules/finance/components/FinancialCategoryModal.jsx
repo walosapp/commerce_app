@@ -55,7 +55,7 @@ const FinancialCategoryModal = ({ isOpen, onClose, onSave, onDelete, category })
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <form onSubmit={submit} className="space-y-4 p-6">
           <div className="flex items-center gap-2">

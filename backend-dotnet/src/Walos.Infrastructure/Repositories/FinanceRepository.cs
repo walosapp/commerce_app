@@ -69,12 +69,11 @@ public class FinanceRepository : IFinanceRepository
         }
     }
 
-    public async Task<int> InitMonthFromFinancialItemsAsync(long companyId, long? branchId, DateTime monthStart, long? userId, IReadOnlyCollection<long>? selectedCategoryIds = null)
+    public async Task<int> InitMonthFromFinancialItemsAsync(long companyId, long? branchId, DateTime monthStart, long? userId, IReadOnlyCollection<FinanceMonthSelectionItem>? selectedItems = null)
     {
         try
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
-            var selectedCategoryIdsArray = selectedCategoryIds?.Where(id => id > 0).Distinct().ToArray() ?? Array.Empty<long>();
 
             var sql = @"
                 WITH ctx AS (
@@ -101,11 +100,6 @@ public class FinanceRepository : IFinanceRepository
                     WHERE c.company_id = @CompanyId
                       AND c.deleted_at IS NULL
                       AND c.is_active = TRUE
-                      AND (c.nature IS NULL OR c.nature <> 'variable')
-                      AND (
-                          (@HasCategoryFilter = TRUE AND c.id = ANY(@SelectedCategoryIds))
-                          OR (@HasCategoryFilter = FALSE AND COALESCE(c.auto_include_in_month, TRUE) = TRUE)
-                      )
                       AND (
                           @BranchId IS NULL
                           OR c.branch_id = @BranchId
@@ -268,9 +262,7 @@ public class FinanceRepository : IFinanceRepository
                 CompanyId = companyId,
                 BranchId = branchId,
                 MonthStart = monthStart,
-                UserId = userId,
-                HasCategoryFilter = selectedCategoryIds is not null,
-                SelectedCategoryIds = selectedCategoryIdsArray
+                UserId = userId
             });
         }
         catch (Exception ex)
