@@ -1,0 +1,11 @@
+bin/
+obj/
+**/bin/
+**/obj/
+.git/
+.vs/
+.vscode/
+artifacts/
+logs/
+src/Walos.API/logs/
+src/Walos.API/.env
