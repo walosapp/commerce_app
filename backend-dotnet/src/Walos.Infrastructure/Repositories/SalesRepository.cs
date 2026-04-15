@@ -11,6 +11,13 @@ public class SalesRepository : ISalesRepository
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<SalesRepository> _logger;
 
+    private sealed class PendingOrderSummary
+    {
+        public long Id { get; set; }
+        public long TableId { get; set; }
+        public decimal Total { get; set; }
+    }
+
     public SalesRepository(IDbConnectionFactory connectionFactory, ILogger<SalesRepository> logger)
     {
         _connectionFactory = connectionFactory;
@@ -36,7 +43,7 @@ public class SalesRepository : ISalesRepository
 
             if (tables.Count == 0) return tables;
 
-            var tableIds = tables.Select(t => t.Id).ToList();
+            var tableIds = tables.Select(t => t.Id).ToArray();
 
             const string itemsSql = @"
                 SELECT oi.id AS Id, oi.order_id AS OrderId, oi.product_id AS ProductId,
@@ -55,16 +62,16 @@ public class SalesRepository : ISalesRepository
                 FROM sales.orders
                 WHERE table_id = ANY(@TableIds) AND company_id = @CompanyId AND status = 'pending'";
 
-            var orders = (await connection.QueryAsync<dynamic>(ordersSql, new { TableIds = tableIds, CompanyId = companyId })).ToList();
+            var orders = (await connection.QueryAsync<PendingOrderSummary>(ordersSql, new { TableIds = tableIds, CompanyId = companyId })).ToList();
 
             foreach (var table in tables)
             {
-                var order = orders.FirstOrDefault(o => (long)o.TableId == table.Id);
+                var order = orders.FirstOrDefault(o => o.TableId == table.Id);
                 if (order != null)
                 {
-                    var orderId = (long)order.Id;
+                    var orderId = order.Id;
                     table.Items = allItems.Where(i => i.OrderId == orderId).ToList();
-                    table.Total = (decimal)order.Total;
+                    table.Total = order.Total;
                 }
                 else
                 {
