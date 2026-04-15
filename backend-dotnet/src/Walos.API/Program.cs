@@ -154,7 +154,12 @@ try
     {
         options.AddDefaultPolicy(policy =>
         {
-            var origins = builder.Configuration["Cors:Origins"]?.Split(',') ?? new[] { "*" };
+            var origins = (builder.Configuration["Cors:Origins"] ?? "*")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(origin => origin.TrimEnd('/'))
+                .Where(origin => !string.IsNullOrWhiteSpace(origin))
+                .ToArray();
+
             if (origins.Contains("*"))
                 policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
             else
