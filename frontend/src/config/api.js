@@ -18,16 +18,20 @@ const api = axios.create({
   },
 });
 
+let _getAuthState = null;
+
+export const setAuthStateGetter = (getter) => {
+  _getAuthState = getter;
+};
+
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const state = _getAuthState?.();
+    if (state?.token) {
+      config.headers.Authorization = `Bearer ${state.token}`;
     }
-
-    const branchId = localStorage.getItem('branchId');
-    if (branchId) {
-      config.headers['X-Branch-ID'] = branchId;
+    if (state?.branchId) {
+      config.headers['X-Branch-ID'] = state.branchId;
     }
 
     return config;
@@ -41,8 +45,10 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      const state = _getAuthState?.();
+      if (state?.isAuthenticated) {
+        state.logout?.();
+      }
       window.location.href = '/login';
     }
 

@@ -13,11 +13,14 @@ import SalesPage from './modules/sales/SalesPage';
 import AiAssistantPage from './modules/ai-assistant/AiAssistantPage';
 import LoginPage from './modules/auth/LoginPage';
 import useAuthStore from './stores/authStore';
+import { setAuthStateGetter } from './config/api';
 import useUiStore from './stores/uiStore';
 import DashboardPage from './modules/dashboard/DashboardPage';
 import SettingsPage from './modules/settings/SettingsPage';
 import AlertsPage from './modules/alerts/AlertsPage';
 import FinancePage from './modules/finance/FinancePage';
+
+setAuthStateGetter(() => useAuthStore.getState());
 
 const queryClient = new QueryClient({
   defaultOptions: {

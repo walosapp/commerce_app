@@ -38,10 +38,6 @@ const LoginPage = () => {
           user: result.data.user,
         });
 
-        localStorage.setItem('token', result.data.token);
-        localStorage.setItem('tenantId', result.data.user.companyId);
-        localStorage.setItem('branchId', result.data.user.branchId);
-
         toast.success(`Bienvenido, ${result.data.user.name}`);
         navigate('/inventory');
       }

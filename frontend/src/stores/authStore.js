@@ -18,11 +18,6 @@ const useAuthStore = create(
       isAuthenticated: false,
 
       setAuth: (data) => {
-        localStorage.setItem('token', data.token);
-        if (data.user.branchId) {
-          localStorage.setItem('branchId', data.user.branchId);
-        }
-
         set({
           user: data.user,
           token: data.token,
@@ -34,10 +29,6 @@ const useAuthStore = create(
 
       logout: async () => {
         await authService.logout();
-
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('branchId');
 
         set({
           user: null,
