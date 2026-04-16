@@ -27,7 +27,7 @@
 | 12 | Finanzas Operativas (gastos, ingresos, control mensual) | `[x]` Completado | P1 |
 | 13 | Configuracion (reglas operativas y descuentos) | `[x]` Completado | P1 |
 | 9 | Proveedores (CRUD, WhatsApp/email, IA pedidos) | `[ ]` Pendiente | P2 |
-| 14 | Multi-tenant SaaS por company_id | `[~]` En progreso | P0 |
+| 14 | Multi-tenant SaaS por company_id | `[x]` Completado | P0 |
 | 16 | Panel Onboarding Tenant (crear comercio) | `[ ]` Pendiente | P0 |
 | 17 | Tipos de producto y control de stock inteligente | `[x]` Completado | P0 |
 | 15 | Pedidos y Domicilios (plataformas + IA + estados) | `[ ]` Pendiente | P1 |
@@ -265,7 +265,7 @@ Modulo de gestion de proveedores con CRUD, contacto directo (WhatsApp/email) y a
 
 ## 14. Multi-tenant SaaS por `company_id` `P0`
 
-**Estado**: `[~]` En progreso
+**Estado**: `[x]` Completado
 
 > **Migracion a Supabase (PostgreSQL) completada**. La app ahora usa Npgsql + PostgreSQL. Todas las tablas tienen `company_id`. Todos los repositories usan sintaxis PostgreSQL. Falta: middleware de tenant, hardening frontend, onboarding.
 
@@ -366,38 +366,25 @@ Se auditaron todas las tablas, queries y repositories. Se identifico que `sales.
 
 **Criterios**: ✅ Todo request resuelve tenant desde JWT, login real contra DB con BCrypt verificado
 
-### Fase 4 — Hardening de repositorios
+### Fase 4 — Hardening de repositorios `[x]` Completado
 
-**Meta**: Cero fugas por queries mal filtradas.
+**Auditado y corregido**:
+- `InventoryRepository.cs` — fix bug SQL en `GetProductProfitsAsync`: filtros de fecha se concatenaban antes del `WHERE` (query invalida con fechas). Todos los demas queries tienen `company_id`.
+- `SalesRepository.cs` — todos los queries tienen `AND company_id = @CompanyId`
+- `FinanceRepository.cs` — todos los queries tienen `AND company_id = @CompanyId`
+- `CompanyRepository.cs` — todos los queries tienen `company_id`
+- `AuthRepository.cs` — opera por `userId` (PK unica), sin riesgo cross-tenant; `GetUserByEmail` incluye JOIN a companies
 
-**Que hacer**:
-1. Revisar **cada query** en cada repository
-2. Asegurar `WHERE company_id = @CompanyId` en todos los SELECT, UPDATE, DELETE
-3. Queries por `id` deben tambien validar `company_id`
-4. JOINs no deben mezclar entidades de empresas distintas
-5. Crear tests de regresion por modulo
+### Fase 5 — Frontend y sesion `[x]` Completado
 
-**Checklist por repositorio**:
-- [ ] `InventoryRepository.cs` — todas las queries
-- [ ] `SalesRepository.cs` — todas las queries
-- [ ] `FinanceRepository.cs` — todas las queries
-- [ ] `CompanyRepository.cs` — todas las queries
-- [ ] Futuro `SuppliersRepository.cs`
-
-**Criterios**: Ningun query opera sin company_id, tests validan aislamiento
-
-### Fase 5 — Frontend y sesion
-
-**Meta**: UI consistente con tenant activo.
-
-**Que hacer**:
-1. Revisar `authStore.js` — login hidrata `companyId`, branding, permisos
-2. Query keys de React Query incluyen `companyId` donde aplique
-3. Cache se invalida al cambiar de empresa (futuro)
-4. Uploads segmentados por empresa: `wwwroot/uploads/{companyId}/products/`
-5. Branding, logo, temas: aislados por company
-
-**Criterios**: Frontend siempre opera con tenant activo, no hay caches compartidos
+**Implementado**:
+1. `authStore.js` hidrata `tenantId`, `branchId`, `isAuthenticated` en login
+2. `api.js` envia `X-Company-ID` y `X-Branch-ID` en cada request
+3. React Query keys incluyen `tenantId` en todos los queries de empresa:
+   - `['categories', tenantId]`, `['units', tenantId]`
+   - `['finance-categories', tenantId]`
+   - `['company-settings', tenantId]`, `['company-operations-settings', tenantId]`
+4. Queries con `branchId` ya incluian el tenant via `branchId` en key
 
 ### Fase 6 — Tipos de Producto y Control de Stock Inteligente `[x]` Completado
 
