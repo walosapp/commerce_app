@@ -31,9 +31,9 @@
 | 16 | Panel Onboarding Tenant (crear comercio) | `[ ]` Pendiente | P0 |
 | 17 | Tipos de producto y control de stock inteligente | `[x]` Completado | P0 |
 | 15 | Pedidos y Domicilios (plataformas + IA + estados) | `[ ]` Pendiente | P1 |
-| 18 | Auditoria de Codigo — Seguridad y Clean Code | `[~]` En progreso | P0 |
+| 18 | Auditoria de Codigo — Seguridad y Clean Code | `[x]` Completado | P0 |
 | 19 | Cobertura de Tests (unitarios + integracion) | `[ ]` Pendiente | P0 |
-| 20 | Service Layer para Sales, Finance, Company | `[ ]` Pendiente | P1 |
+| 20 | Service Layer para Sales, Finance, Company | `[x]` Completado | P1 |
 
 ---
 
@@ -791,8 +791,7 @@ new → accepted → preparing → ready_for_dispatch → out_for_delivery → d
 
 - [x] **CC-06**: Fuente de verdad unificada — Zustand persist como unica fuente, axios lee via `setAuthStateGetter`
 
-### Pendiente — Clean Code
-- [ ] **CC-01/CC-04**: Crear `ISalesService`, `IFinanceService`, `ICompanyService` (ver tarea #20)
+- [x] **CC-01/CC-04**: Service Layer creado — `ISalesService`, `IFinanceService`, `ICompanyService` + implementaciones. Controllers refactorizados a thin controllers.
 
 ---
 
