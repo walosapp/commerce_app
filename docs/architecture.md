@@ -24,14 +24,14 @@ Sistema PWA para gestión integral de bar/restaurante con asistencia de IA. Mód
 - **Panel Onboarding**: creación de nuevos tenants desde la app
 - **Pedidos y Domicilios**: plataformas, IA, estados
 - **i18n**: preparado pero no implementado (Inglés, Español, Portugués)
-- **Tests**: cobertura actual mínima, necesita expansión significativa
+- **Tests**: 69 tests unitarios backend (services + validators + tenant isolation), falta frontend + E2E
 
 ## Principios de Diseño
 
 - **Mobile-First**: diseño responsive comenzando por móvil
 - **AI-First**: IA integrada en flujos core (no es un add-on)
 - **Multi-tenant**: cada empresa aislada por `company_id` en todas las tablas
-- **Clean Architecture**: capas desacopladas con inyección de dependencias
+- **Clean Architecture**: capas desacopladas con inyección de dependencias. Todos los controllers son thin (orquestadores), la lógica vive en Services.
 
 ## Stack Tecnológico
 
@@ -91,7 +91,7 @@ graph TD
 
 ### Flujo de una petición típica
 ```
-HTTP Request → Controller → Service (Application) → Repository (Infrastructure) → SQL Server
+HTTP Request → Controller → Service (Application) → Repository (Infrastructure) → PostgreSQL
                                 ↓
                           IAiService (OpenAI)
 ```
@@ -126,7 +126,14 @@ Walos-app/
 │   │   │   │   └── Sales/                   # Table, order, invoice requests
 │   │   │   ├── Services/
 │   │   │   │   ├── IInventoryService.cs     # Interfaz + DTOs de resultado
-│   │   │   │   └── InventoryService.cs      # Lógica de negocio inventario + IA
+│   │   │   │   ├── InventoryService.cs      # Lógica de negocio inventario + IA
+│   │   │   │   ├── ISalesService.cs         # Interfaz ventas
+│   │   │   │   ├── SalesService.cs          # Lógica de mesas, pedidos, facturación
+│   │   │   │   ├── IFinanceService.cs       # Interfaz finanzas
+│   │   │   │   ├── FinanceService.cs        # Lógica de categorías, entries, mes
+│   │   │   │   ├── ICompanyService.cs       # Interfaz empresa
+│   │   │   │   └── CompanyService.cs        # Lógica de settings, temas, logo
+│   │   │   ├── DependencyInjection.cs       # Registro de todos los services
 │   │   │   └── Validators/                  # FluentValidation rules
 │   │   ├── Walos.Domain/
 │   │   │   ├── Entities/                    # 15 entidades (Product, Stock, Order, etc.)
@@ -136,7 +143,7 @@ Walos-app/
 │   │       ├── Data/SqlConnectionFactory.cs # Npgsql connection factory
 │   │       ├── Repositories/               # 5 repos (Auth, Company, Finance, Inventory, Sales)
 │   │       └── Services/OpenAiService.cs   # System prompt, llamada API, parseo
-│   └── tests/Walos.Tests/                  # Unit tests (xUnit + Moq)
+│   └── tests/Walos.Tests/                  # 69 unit tests (xUnit + Moq)
 │
 ├── frontend/
 │   ├── src/

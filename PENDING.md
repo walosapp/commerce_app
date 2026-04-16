@@ -32,7 +32,7 @@
 | 17 | Tipos de producto y control de stock inteligente | `[x]` Completado | P0 |
 | 15 | Pedidos y Domicilios (plataformas + IA + estados) | `[ ]` Pendiente | P1 |
 | 18 | Auditoria de Codigo — Seguridad y Clean Code | `[x]` Completado | P0 |
-| 19 | Cobertura de Tests (unitarios + integracion) | `[ ]` Pendiente | P0 |
+| 19 | Cobertura de Tests (unitarios + integracion) | `[~]` En progreso | P0 |
 | 20 | Service Layer para Sales, Finance, Company | `[x]` Completado | P1 |
 
 ---
@@ -773,7 +773,7 @@ new → accepted → preparing → ready_for_dispatch → out_for_delivery → d
 
 ## 18. Auditoria de Codigo — Seguridad y Clean Code `P0`
 
-**Estado**: `[~]` En progreso
+**Estado**: `[x]` Completado
 
 > **Reporte completo**: `docs/CODE_AUDIT_REPORT.md`
 
@@ -797,32 +797,32 @@ new → accepted → preparing → ready_for_dispatch → out_for_delivery → d
 
 ## 19. Cobertura de Tests `P0`
 
-**Estado**: `[ ]` Pendiente
+**Estado**: `[~]` En progreso
 
-### Contexto
-Regla del proyecto exige minimo 80% cobertura. Actualmente solo existen 4 archivos de test (InventoryService, CreateProductValidator, AiInputValidator, TenantIsolation). Faltan tests para Auth, Sales, Finance, Company y todo el frontend.
+### Completado
+- [x] **Backend unitarios**: 69 tests (xUnit + Moq) para todos los services
+  - `InventoryServiceTests` (3 tests) — IA, stock bajo, confirm
+  - `SalesServiceTests` (20 tests) — crear mesa, facturar, cancelar, items, stock
+  - `FinanceServiceTests` (17 tests) — categorias, entries, init mes, delete
+  - `CompanyServiceTests` (13 tests) — settings, temas, operaciones, logo
+  - `CreateProductValidatorTests` (7 tests) — validaciones FluentValidation
+  - `AiInputValidatorTests` (3 tests) — validaciones IA
+  - `TenantIsolationSqlTests` (6 tests) — company_id en queries
 
-### Que hacer
-1. **Backend unitarios**: Tests para cada controller y service (xUnit + Moq)
-2. **Backend integracion**: Tests contra DB de test para repositories
-3. **Frontend**: Configurar Vitest + React Testing Library
-4. **E2E**: Configurar Playwright para flujos criticos (login, crear mesa, facturar)
+### Pendiente
+- [ ] **Backend integracion**: Tests contra DB de test para repositories
+- [ ] **Frontend**: Configurar Vitest + React Testing Library
+- [ ] **E2E**: Configurar Playwright para flujos criticos (login, crear mesa, facturar)
 
 ---
 
 ## 20. Service Layer para Sales, Finance, Company `P1`
 
-**Estado**: `[ ]` Pendiente
+**Estado**: `[x]` Completado
 
-### Contexto
-`SalesController`, `FinanceController` y `CompanyController` tienen logica de negocio directamente en los controllers (fat controllers). Solo `InventoryController` usa un servicio. Esto viola Clean Architecture.
-
-### Que hacer
-1. Crear `ISalesService` + `SalesService` en Application layer
-   - Mover `ValidateItemAvailabilityAsync`, logica de `InvoiceTable`, logica de `CreateTable`
-2. Crear `IFinanceService` + `FinanceService` en Application layer
-   - Mover logica de `InitMonth`, validaciones de entries
-3. Crear `ICompanyService` + `CompanyService` en Application layer
-   - Mover validaciones de settings y theme
-4. Registrar en `DependencyInjection.cs`
-5. Controllers solo orquestan: validar request → llamar service → retornar response
+### Implementado
+- `ISalesService` + `SalesService` — mesas, pedidos, facturacion, stock validation
+- `IFinanceService` + `FinanceService` — categorias, entries, init mes, validaciones
+- `ICompanyService` + `CompanyService` — settings, temas, operaciones, logo
+- Registrados en `DependencyInjection.cs`
+- Controllers refactorizados: SalesController 403→83 ln, FinanceController 264→102 ln, CompanyController 161→66 ln
