@@ -47,8 +47,8 @@ public class InventoryRepository : IInventoryRepository
                     p.created_at AS CreatedAt,
                     p.updated_at AS UpdatedAt
                 FROM inventory.products p
-                INNER JOIN inventory.categories c ON p.category_id = c.id
-                INNER JOIN inventory.units u ON p.unit_id = u.id
+                INNER JOIN inventory.categories c ON p.category_id = c.id AND c.company_id = p.company_id
+                INNER JOIN inventory.units u ON p.unit_id = u.id AND u.company_id = p.company_id
                 WHERE p.company_id = @CompanyId
                   AND p.deleted_at IS NULL";
 
@@ -119,8 +119,8 @@ public class InventoryRepository : IInventoryRepository
                     u.name AS UnitName,
                     u.abbreviation AS UnitAbbreviation
                 FROM inventory.products p
-                INNER JOIN inventory.categories c ON p.category_id = c.id
-                INNER JOIN inventory.units u ON p.unit_id = u.id
+                INNER JOIN inventory.categories c ON p.category_id = c.id AND c.company_id = p.company_id
+                INNER JOIN inventory.units u ON p.unit_id = u.id AND u.company_id = p.company_id
                 WHERE p.id = @ProductId 
                   AND p.company_id = @CompanyId
                   AND p.deleted_at IS NULL";
@@ -233,9 +233,9 @@ public class InventoryRepository : IInventoryRepository
                         ELSE 'ok'
                     END AS StockStatus
                 FROM inventory.stock s
-                INNER JOIN inventory.products p ON s.product_id = p.id
-                LEFT JOIN inventory.categories c ON p.category_id = c.id
-                LEFT JOIN inventory.units u ON p.unit_id = u.id
+                INNER JOIN inventory.products p ON s.product_id = p.id AND p.company_id = s.company_id
+                LEFT JOIN inventory.categories c ON p.category_id = c.id AND c.company_id = p.company_id
+                LEFT JOIN inventory.units u ON p.unit_id = u.id AND u.company_id = p.company_id
                 LEFT JOIN committed ON committed.branch_id = s.branch_id AND committed.product_id = s.product_id
                 WHERE s.branch_id = @BranchId
                   AND s.company_id = @CompanyId
@@ -723,7 +723,7 @@ public class InventoryRepository : IInventoryRepository
                            ELSE s.quantity - COALESCE(committed.committed_quantity, 0)
                        END AS AvailableQuantity
                 FROM inventory.stock s
-                INNER JOIN inventory.products p ON s.product_id = p.id
+                INNER JOIN inventory.products p ON s.product_id = p.id AND p.company_id = s.company_id
                 LEFT JOIN committed ON committed.branch_id = s.branch_id AND committed.product_id = s.product_id
                 WHERE s.branch_id = @BranchId AND s.product_id = @ProductId AND s.company_id = @CompanyId";
 

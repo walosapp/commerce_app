@@ -44,7 +44,7 @@ public class FinanceRepository : IFinanceRepository
                     COUNT(e.id) AS EntryCount,
                     COALESCE(SUM(e.amount), 0) AS TotalAmount
                 FROM finance.categories c
-                LEFT JOIN finance.entries e ON e.category_id = c.id AND e.deleted_at IS NULL
+                LEFT JOIN finance.entries e ON e.category_id = c.id AND e.company_id = c.company_id AND e.deleted_at IS NULL
                 WHERE c.company_id = @CompanyId
                   AND c.deleted_at IS NULL
                   AND c.is_active = TRUE";

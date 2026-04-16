@@ -789,9 +789,10 @@ new → accepted → preparing → ready_for_dispatch → out_for_delivery → d
 - [x] **SEC-07**: Mensajes genericos en errores 500 en produccion
 - [x] **CC-05**: Eliminado `frontend/src/modules/login.jsx` (archivo vacio)
 
+- [x] **CC-06**: Fuente de verdad unificada — Zustand persist como unica fuente, axios lee via `setAuthStateGetter`
+
 ### Pendiente — Clean Code
 - [ ] **CC-01/CC-04**: Crear `ISalesService`, `IFinanceService`, `ICompanyService` (ver tarea #20)
-- [ ] **CC-06**: Unificar fuente de verdad del token (Zustand persist vs localStorage manual) (30 min)
 
 ---
 

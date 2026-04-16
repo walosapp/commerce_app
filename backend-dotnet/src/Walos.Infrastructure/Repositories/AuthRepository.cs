@@ -43,9 +43,9 @@ public class AuthRepository : IAuthRepository
                    b.name AS BranchName,
                    c.name AS CompanyName
             FROM core.users u
-            INNER JOIN core.roles r ON u.role_id = r.id
+            INNER JOIN core.roles r ON u.role_id = r.id AND r.company_id = u.company_id
             INNER JOIN core.companies c ON u.company_id = c.id
-            LEFT JOIN core.branches b ON u.branch_id = b.id
+            LEFT JOIN core.branches b ON u.branch_id = b.id AND b.company_id = u.company_id
             WHERE u.email = @Email
               AND u.deleted_at IS NULL";
 
@@ -138,7 +138,7 @@ public class AuthRepository : IAuthRepository
                    r.code AS RoleCode,
                    r.name AS RoleName
             FROM core.users u
-            INNER JOIN core.roles r ON u.role_id = r.id
+            INNER JOIN core.roles r ON u.role_id = r.id AND r.company_id = u.company_id
             WHERE u.refresh_token = @RefreshToken
               AND u.refresh_token_expires_at > NOW()
               AND u.deleted_at IS NULL
