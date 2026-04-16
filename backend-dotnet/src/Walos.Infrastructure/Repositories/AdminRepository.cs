@@ -40,6 +40,23 @@ public class AdminRepository : IAdminRepository
 
         try
         {
+            var legalName = string.IsNullOrWhiteSpace(request.LegalName)
+                ? request.CompanyName
+                : request.LegalName.Trim();
+            var taxId = string.IsNullOrWhiteSpace(request.TaxId)
+                ? $"TEMP-{Guid.NewGuid():N}"[..17]
+                : request.TaxId.Trim();
+            var branchType = string.IsNullOrWhiteSpace(request.BranchType)
+                ? "general"
+                : request.BranchType.Trim().ToLowerInvariant();
+            var branchCode = "MAIN";
+            var branchAddress = string.IsNullOrWhiteSpace(request.Address)
+                ? "Por definir"
+                : request.Address.Trim();
+            var branchCity = string.IsNullOrWhiteSpace(request.City)
+                ? "Por definir"
+                : request.City.Trim();
+
             const string companySql = @"
                 INSERT INTO core.companies (
                     name, legal_name, tax_id, email, phone,
@@ -58,8 +75,8 @@ public class AdminRepository : IAdminRepository
             var company = await conn.QuerySingleAsync<TenantResponse>(companySql, new
             {
                 Name = request.CompanyName,
-                request.LegalName,
-                request.TaxId,
+                LegalName = legalName,
+                TaxId = taxId,
                 request.Email,
                 request.Phone,
                 request.Address,
@@ -73,29 +90,39 @@ public class AdminRepository : IAdminRepository
             }, tx);
 
             const string branchSql = @"
-                INSERT INTO core.branches (company_id, name, type, is_main, is_active)
-                VALUES (@CompanyId, @Name, @Type, TRUE, TRUE)
+                INSERT INTO core.branches (
+                    company_id, name, code, branch_type,
+                    address, city, state, country, postal_code,
+                    is_main, is_active
+                )
+                VALUES (
+                    @CompanyId, @Name, @Code, @BranchType,
+                    @Address, @City, @State, @Country, @PostalCode,
+                    TRUE, TRUE
+                )
                 RETURNING id";
 
             var branchId = await conn.ExecuteScalarAsync<long>(branchSql, new
             {
                 CompanyId = company.Id,
                 Name = request.BranchName,
-                Type = request.BranchType
+                Code = branchCode,
+                BranchType = branchType,
+                Address = branchAddress,
+                City = branchCity,
+                request.State,
+                request.Country,
+                request.PostalCode
             }, tx);
 
-            const string rolesSql = @"
-                INSERT INTO core.roles (company_id, name, code, is_system, is_active)
+            var roles = (await conn.QueryAsync<(long Id, string Code)>(@"
+                INSERT INTO core.roles (company_id, name, code, is_system_role, is_active)
                 VALUES
                     (@CompanyId, 'Super Admin', 'super_admin', TRUE, TRUE),
                     (@CompanyId, 'Gerente', 'manager', TRUE, TRUE),
                     (@CompanyId, 'Cajero', 'cashier', TRUE, TRUE),
                     (@CompanyId, 'Mesero', 'waiter', TRUE, TRUE)
-                ON CONFLICT DO NOTHING
-                RETURNING id, code";
-
-            var roles = (await conn.QueryAsync<(long Id, string Code)>(
-                "INSERT INTO core.roles (company_id, name, code, is_system, is_active) VALUES (@CompanyId, 'Super Admin', 'super_admin', TRUE, TRUE), (@CompanyId, 'Gerente', 'manager', TRUE, TRUE), (@CompanyId, 'Cajero', 'cashier', TRUE, TRUE), (@CompanyId, 'Mesero', 'waiter', TRUE, TRUE) RETURNING id, code",
+                RETURNING id, code",
                 new { CompanyId = company.Id }, tx)).ToList();
 
             var superAdminRoleId = roles.FirstOrDefault(r => r.Code == "super_admin").Id;
@@ -126,24 +153,24 @@ public class AdminRepository : IAdminRepository
             }, tx);
 
             const string invCatSql = @"
-                INSERT INTO inventory.categories (company_id, name, is_active)
+                INSERT INTO inventory.categories (company_id, name, code, is_active)
                 VALUES
-                    (@CompanyId, 'Bebidas', TRUE),
-                    (@CompanyId, 'Alimentos', TRUE),
-                    (@CompanyId, 'Licores', TRUE),
-                    (@CompanyId, 'Insumos', TRUE)
+                    (@CompanyId, 'Bebidas', 'BEBIDAS', TRUE),
+                    (@CompanyId, 'Alimentos', 'ALIMENTOS', TRUE),
+                    (@CompanyId, 'Licores', 'LICORES', TRUE),
+                    (@CompanyId, 'Insumos', 'INSUMOS', TRUE)
                 ON CONFLICT DO NOTHING";
             await conn.ExecuteAsync(invCatSql, new { CompanyId = company.Id }, tx);
 
             const string unitsSql = @"
-                INSERT INTO inventory.units (company_id, name, abbreviation, is_active)
+                INSERT INTO inventory.units (company_id, name, abbreviation, unit_type, is_active)
                 VALUES
-                    (@CompanyId, 'Unidad', 'und', TRUE),
-                    (@CompanyId, 'Litro', 'lt', TRUE),
-                    (@CompanyId, 'Kilogramo', 'kg', TRUE),
-                    (@CompanyId, 'Gramo', 'gr', TRUE),
-                    (@CompanyId, 'Mililitro', 'ml', TRUE),
-                    (@CompanyId, 'Botella', 'bot', TRUE)
+                    (@CompanyId, 'Unidad', 'und', 'quantity', TRUE),
+                    (@CompanyId, 'Litro', 'lt', 'volume', TRUE),
+                    (@CompanyId, 'Kilogramo', 'kg', 'weight', TRUE),
+                    (@CompanyId, 'Gramo', 'gr', 'weight', TRUE),
+                    (@CompanyId, 'Mililitro', 'ml', 'volume', TRUE),
+                    (@CompanyId, 'Botella', 'bot', 'quantity', TRUE)
                 ON CONFLICT DO NOTHING";
             await conn.ExecuteAsync(unitsSql, new { CompanyId = company.Id }, tx);
 
