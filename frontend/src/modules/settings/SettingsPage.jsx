@@ -10,6 +10,7 @@ import { Loader2, Save } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import companyService from '../../services/companyService';
+import useAuthStore from '../../stores/authStore';
 import useUiStore from '../../stores/uiStore';
 import BrandingForm from './components/BrandingForm';
 import ThemeSelector from './components/ThemeSelector';
@@ -26,6 +27,7 @@ const getSectionFromPath = (pathname) => {
 
 const SettingsPage = () => {
   const queryClient = useQueryClient();
+  const { tenantId } = useAuthStore();
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const { setTheme, setBranding } = useUiStore();

@@ -168,6 +168,7 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
                           src={`${API_BASE}${item.imageUrl}`}
                           alt={item.productName}
                           className="h-9 w-9 rounded-lg object-cover border border-gray-200 flex-shrink-0"
+                          onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling?.remove?.(); }}
                         />
                       ) : (
                         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 border border-gray-200 flex-shrink-0">

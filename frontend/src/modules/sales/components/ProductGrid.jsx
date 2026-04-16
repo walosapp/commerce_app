@@ -104,6 +104,7 @@ const ProductGrid = ({ products = [], selectedItems, onUpdateItem }) => {
                       src={`${API_BASE}${product.imageUrl}`}
                       alt={product.productName}
                       className="h-full w-full object-cover"
+                      onError={e => { e.currentTarget.style.display = 'none'; }}
                     />
                   ) : (
                     <ImageIcon className="h-10 w-10 text-gray-300" />
