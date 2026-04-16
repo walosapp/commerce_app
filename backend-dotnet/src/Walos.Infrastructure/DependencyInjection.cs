@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Walos.Application.Services;
 using Walos.Domain.Interfaces;
 using Walos.Infrastructure.Data;
 using Walos.Infrastructure.Repositories;
@@ -14,6 +15,7 @@ public static class DependencyInjection
         services.AddSingleton<IDbConnectionFactory, SqlConnectionFactory>();
 
         services.AddScoped<IAuthRepository, AuthRepository>();
+        services.AddScoped<IAdminRepository, AdminRepository>();
         services.AddScoped<ICompanyRepository, CompanyRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
         services.AddScoped<ISalesRepository, SalesRepository>();

@@ -19,6 +19,7 @@ import DashboardPage from './modules/dashboard/DashboardPage';
 import SettingsPage from './modules/settings/SettingsPage';
 import AlertsPage from './modules/alerts/AlertsPage';
 import FinancePage from './modules/finance/FinancePage';
+import TenantsPage from './modules/admin/TenantsPage';
 
 setAuthStateGetter(() => useAuthStore.getState());
 
@@ -32,11 +33,15 @@ const queryClient = new QueryClient({
   },
 });
 
-const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useAuthStore();
+const ProtectedRoute = ({ children, requiredRole = null }) => {
+  const { isAuthenticated, user } = useAuthStore();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (requiredRole && user?.role !== requiredRole) {
+    return <Navigate to="/" replace />;
   }
 
   return <Layout>{children}</Layout>;
@@ -70,6 +75,7 @@ function App() {
           <Route path="/settings/themes" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/discounts" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/alerts" element={<ProtectedRoute><AlertsPage /></ProtectedRoute>} />
+          <Route path="/admin/tenants" element={<ProtectedRoute requiredRole="dev"><TenantsPage /></ProtectedRoute>} />
           <Route path="/login" element={<LoginPage />} />
         </Routes>
       </BrowserRouter>

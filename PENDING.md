@@ -28,7 +28,7 @@
 | 13 | Configuracion (reglas operativas y descuentos) | `[x]` Completado | P1 |
 | 9 | Proveedores (CRUD, WhatsApp/email, IA pedidos) | `[ ]` Pendiente | P2 |
 | 14 | Multi-tenant SaaS por company_id | `[x]` Completado | P0 |
-| 16 | Panel Onboarding Tenant (crear comercio) | `[ ]` Pendiente | P0 |
+| 16 | Panel Onboarding Tenant (crear comercio) | `[x]` Completado | P0 |
 | 17 | Tipos de producto y control de stock inteligente | `[x]` Completado | P0 |
 | 15 | Pedidos y Domicilios (plataformas + IA + estados) | `[ ]` Pendiente | P1 |
 | 18 | Auditoria de Codigo — Seguridad y Clean Code | `[x]` Completado | P0 |
@@ -462,7 +462,7 @@ foreach item in requestedItems:
 - [ ] Formulario adapta campos segun tipo de producto
 - [ ] Migracion SQL no rompe datos existentes
 
-### Fase 7 — Panel de Onboarding de Tenant (Nuevo Comercio) `[ ]` Pendiente
+### Fase 7 — Panel de Onboarding de Tenant (Nuevo Comercio) `[x]` Completado
 
 **Meta**: Un usuario con rol `dev` puede crear un nuevo comercio (tenant) desde la app, con todos sus datos base inicializados.
 
