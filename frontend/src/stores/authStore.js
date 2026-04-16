@@ -6,6 +6,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { authService } from '../services/authService';
 
 const useAuthStore = create(
   persist(
@@ -18,7 +19,6 @@ const useAuthStore = create(
 
       setAuth: (data) => {
         localStorage.setItem('token', data.token);
-        localStorage.setItem('tenantId', data.user.companyId);
         if (data.user.branchId) {
           localStorage.setItem('branchId', data.user.branchId);
         }
@@ -32,10 +32,11 @@ const useAuthStore = create(
         });
       },
 
-      logout: () => {
+      logout: async () => {
+        await authService.logout();
+
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        localStorage.removeItem('tenantId');
         localStorage.removeItem('branchId');
 
         set({

@@ -25,11 +25,6 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    const tenantId = localStorage.getItem('tenantId');
-    if (tenantId) {
-      config.headers['X-Tenant-ID'] = tenantId;
-    }
-
     const branchId = localStorage.getItem('branchId');
     if (branchId) {
       config.headers['X-Branch-ID'] = branchId;

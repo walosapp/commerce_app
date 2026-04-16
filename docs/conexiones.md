@@ -5,27 +5,33 @@
 El backend lee variables de entorno desde `backend-dotnet/src/Walos.API/.env`. Copiar `.env.example` como `.env` y configurar:
 
 ```env
-# Base de Datos (SQL Server)
-DB_CONNECTION_STRING=Server=localhost;Database=SCM_App_Track_Me;User Id=sa;Password=tu_password;TrustServerCertificate=true;Encrypt=true;
+# Base de Datos (PostgreSQL / Supabase)
+DB_CONNECTION_STRING=Host=db.<project-ref>.supabase.co;Port=5432;Database=postgres;Username=postgres.<project-ref>;Password=<your-password>;SSL Mode=Require;Trust Server Certificate=true
 
 # JWT
 JWT_SECRET=tu-clave-secreta-jwt-de-al-menos-32-caracteres
 JWT_EXPIRES_MINUTES=60
+JWT_REFRESH_SECRET=tu-clave-secreta-refresh-token
+JWT_REFRESH_EXPIRES_DAYS=7
 
 # OpenAI
 OPENAI_API_KEY=sk-tu-api-key-de-openai
-OPENAI_MODEL=gpt-3.5-turbo
+OPENAI_MODEL=gpt-4
 OPENAI_MAX_TOKENS=1000
 OPENAI_TEMPERATURE=0.7
 
-# CORS
+# CORS (separar origenes por coma, o * para todos)
 CORS_ORIGINS=http://localhost:5173
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
 
 # Server
 PORT=3000
 ```
 
-> **Importante**: La base de datos en desarrollo se llama `SCM_App_Track_Me`, no `WalosDB` como aparece en los scripts SQL.
+> **Nota**: La base de datos migró de SQL Server a PostgreSQL (Supabase). Todos los scripts están en `supabase/migrations/`.
 
 ## Frontend (.env)
 
@@ -60,30 +66,26 @@ El frontend configura estos headers automáticamente en `src/config/api.js` usan
 
 ## Autenticación para Desarrollo
 
+El frontend tiene login UI funcional en `/login`. Credenciales de seed:
+- **Email**: `admin@mibar.com`
+- **Password**: `admin123`
+
 ```bash
-# Login (obtener token)
+# Login via API (obtener token)
 curl -X POST http://localhost:3000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"dev","password":"1234"}'
+  -d '{"username":"admin@mibar.com","password":"admin123"}'
 
 # Usar token en peticiones
 curl http://localhost:3000/api/v1/inventory/products \
   -H "Authorization: Bearer <token>"
 ```
 
-En el frontend, configurar manualmente en la consola del navegador:
-```javascript
-localStorage.setItem('token', '<jwt_token>');
-localStorage.setItem('tenantId', '1');
-localStorage.setItem('branchId', '1');
-```
-
 ## Base de Datos
 
 - **Motor**: PostgreSQL (Supabase)
-- **Esquemas**: `core` (empresas, usuarios, roles), `inventory` (productos, stock, IA), `sales` (mesas, pedidos), `finance` (gastos/ingresos), `suppliers`, `delivery`
+- **Esquemas**: `core` (empresas, usuarios, roles), `inventory` (productos, stock, IA), `sales` (mesas, pedidos), `finance` (gastos/ingresos, templates recurrentes), `suppliers`, `delivery`, `audit`
 - **Migraciones**: `supabase/migrations/` (ejecutar en orden numérico 001→800)
-- **Cleanup SQL Server (legacy)**: `backend-dotnet/sql/999_cleanup_all.sql` — elimina todo lo creado en WalosDB y SCM_App_Track_Me
 
 ## Comandos Rápidos
 

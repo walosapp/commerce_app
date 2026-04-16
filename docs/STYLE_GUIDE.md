@@ -27,7 +27,7 @@
 |----------|-----------|
 | Framework | ASP.NET Core 8 |
 | ORM | Dapper (raw SQL) |
-| DB | SQL Server (`SCM_App_Track_Me`) |
+| DB | PostgreSQL (Supabase) |
 | Auth | JWT |
 | Arquitectura | Clean Architecture (API → Application → Domain ← Infrastructure) |
 

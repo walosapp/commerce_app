@@ -11,6 +11,19 @@ export const authService = {
     const response = await api.post('/auth/login', { username, password });
     return response.data;
   },
+
+  logout: async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Ignore errors — we clear local state regardless
+    }
+  },
+
+  refreshToken: async (refreshToken) => {
+    const response = await api.post('/auth/refresh', { refreshToken });
+    return response.data;
+  },
 };
 
 export default authService;

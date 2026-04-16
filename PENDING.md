@@ -31,6 +31,9 @@
 | 16 | Panel Onboarding Tenant (crear comercio) | `[ ]` Pendiente | P0 |
 | 17 | Tipos de producto y control de stock inteligente | `[x]` Completado | P0 |
 | 15 | Pedidos y Domicilios (plataformas + IA + estados) | `[ ]` Pendiente | P1 |
+| 18 | Auditoria de Codigo — Seguridad y Clean Code | `[~]` En progreso | P0 |
+| 19 | Cobertura de Tests (unitarios + integracion) | `[ ]` Pendiente | P0 |
+| 20 | Service Layer para Sales, Finance, Company | `[ ]` Pendiente | P1 |
 
 ---
 
@@ -755,11 +758,71 @@ new → accepted → preparing → ready_for_dispatch → out_for_delivery → d
 
 | Orden | Tarea | Dependencia | Complejidad |
 |-------|-------|-------------|-------------|
-| 1 | **#14 Multi-tenant** (fases 1-4) | Ninguna — base transversal | Alta |
-| 2 | **#9 Proveedores** | Mejor despues de #14 | Media |
-| 3 | **#14 Multi-tenant** (fases 5-7) | Proveedores listo | Media |
-| 4 | **#15 Pedidos Fase 1** | #14 completo | Alta |
-| 5 | **#15 Pedidos Fase 2** (IA) | Fase 1 funcional | Media |
-| 6 | **#15 Pedidos Fase 3** (integraciones) | Fase 1 funcional | Alta |
+| 1 | **#18 Auditoria** (fixes criticos) | Ninguna | Baja |
+| 2 | **#14 Multi-tenant** (fases 4-5) | Ninguna — base transversal | Alta |
+| 3 | **#20 Service Layer** | Mejora calidad antes de features | Media |
+| 4 | **#9 Proveedores** | Mejor despues de #14 | Media |
+| 5 | **#19 Tests** | En paralelo con features | Alta |
+| 6 | **#15 Pedidos Fase 1** | #14 completo | Alta |
+| 7 | **#15 Pedidos Fase 2** (IA) | Fase 1 funcional | Media |
+| 8 | **#15 Pedidos Fase 3** (integraciones) | Fase 1 funcional | Alta |
 
 > **Nota para agentes**: Proveedores (#9) puede ejecutarse en paralelo con las fases tempranas de multi-tenant si se sigue el patron existente. Pedidos (#15) debe esperar a que multi-tenant este razonablemente solido.
+
+---
+
+## 18. Auditoria de Codigo — Seguridad y Clean Code `P0`
+
+**Estado**: `[~]` En progreso
+
+> **Reporte completo**: `docs/CODE_AUDIT_REPORT.md`
+
+### Completado
+- [x] `.env` agregado a `frontend/.gitignore` (SEC-01 CRITICO)
+- [x] CORS robusto con handler OPTIONS explicito + headers anti-cache (Program.cs)
+- [x] PWA Service Worker corregido — `NetworkOnly` para API, `skipWaiting`, `clientsClaim`
+- [x] Documentacion actualizada (`architecture.md`, `STYLE_GUIDE.md`, `conexiones.md`, `.env.example`)
+- [x] **SEC-02**: `ApiResponse<T>` en `AuthController.Login` y `RefreshToken`
+- [x] **SEC-04**: Endpoint `POST /auth/logout` + revocacion de refresh token + frontend integrado
+- [x] **SEC-05**: Validacion de extensiones de archivo contra lista blanca en uploads
+- [x] **SEC-06**: Header `X-Tenant-ID` eliminado del interceptor de axios y `setAuth`
+- [x] **SEC-07**: Mensajes genericos en errores 500 en produccion
+- [x] **CC-05**: Eliminado `frontend/src/modules/login.jsx` (archivo vacio)
+
+### Pendiente — Clean Code
+- [ ] **CC-01/CC-04**: Crear `ISalesService`, `IFinanceService`, `ICompanyService` (ver tarea #20)
+- [ ] **CC-06**: Unificar fuente de verdad del token (Zustand persist vs localStorage manual) (30 min)
+
+---
+
+## 19. Cobertura de Tests `P0`
+
+**Estado**: `[ ]` Pendiente
+
+### Contexto
+Regla del proyecto exige minimo 80% cobertura. Actualmente solo existen 4 archivos de test (InventoryService, CreateProductValidator, AiInputValidator, TenantIsolation). Faltan tests para Auth, Sales, Finance, Company y todo el frontend.
+
+### Que hacer
+1. **Backend unitarios**: Tests para cada controller y service (xUnit + Moq)
+2. **Backend integracion**: Tests contra DB de test para repositories
+3. **Frontend**: Configurar Vitest + React Testing Library
+4. **E2E**: Configurar Playwright para flujos criticos (login, crear mesa, facturar)
+
+---
+
+## 20. Service Layer para Sales, Finance, Company `P1`
+
+**Estado**: `[ ]` Pendiente
+
+### Contexto
+`SalesController`, `FinanceController` y `CompanyController` tienen logica de negocio directamente en los controllers (fat controllers). Solo `InventoryController` usa un servicio. Esto viola Clean Architecture.
+
+### Que hacer
+1. Crear `ISalesService` + `SalesService` en Application layer
+   - Mover `ValidateItemAvailabilityAsync`, logica de `InvoiceTable`, logica de `CreateTable`
+2. Crear `IFinanceService` + `FinanceService` en Application layer
+   - Mover logica de `InitMonth`, validaciones de entries
+3. Crear `ICompanyService` + `CompanyService` en Application layer
+   - Mover validaciones de settings y theme
+4. Registrar en `DependencyInjection.cs`
+5. Controllers solo orquestan: validar request → llamar service → retornar response

@@ -43,10 +43,14 @@ public class ExceptionHandlingMiddleware
         _logger.LogError(exception, "Error capturado: {Name} - {Message} - URL: {Url} - Method: {Method}",
             exception.GetType().Name, exception.Message, context.Request.Path, context.Request.Method);
 
+        var message = statusCode == StatusCodes.Status500InternalServerError && !_env.IsDevelopment()
+            ? "Error interno del servidor"
+            : exception.Message;
+
         var response = new Dictionary<string, object?>
         {
             ["success"] = false,
-            ["message"] = exception.Message
+            ["message"] = message
         };
 
         if (exception is BusinessException bizEx && bizEx.Code is not null)

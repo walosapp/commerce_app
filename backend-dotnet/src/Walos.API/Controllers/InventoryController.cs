@@ -163,14 +163,17 @@ public class InventoryController : ControllerBase
         if (!allowedTypes.Contains(file.ContentType))
             return BadRequest(ApiResponse.Fail("Formato no permitido. Use JPG, PNG o WebP"));
 
+        var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!allowedExtensions.Contains(ext))
+            return BadRequest(ApiResponse.Fail("Extensión no permitida"));
+
         var product = await _repository.GetProductByIdAsync(id, companyId);
         if (product is null)
             return NotFound(ApiResponse.Fail("Producto no encontrado"));
 
         var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "products");
         Directory.CreateDirectory(uploadsDir);
-
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         var fileName = $"{id}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}{ext}";
         var filePath = Path.Combine(uploadsDir, fileName);
 

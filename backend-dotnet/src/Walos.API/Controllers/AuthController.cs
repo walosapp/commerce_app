@@ -102,31 +102,27 @@ public class AuthController : ControllerBase
 
         _logger.LogInformation("Login exitoso: {Email}, CompanyId: {CompanyId}", user.Email, user.CompanyId);
 
-        return Ok(new
+        return Ok(ApiResponse<object>.Ok(new
         {
-            success = true,
-            data = new
+            token = tokenString,
+            refreshToken,
+            user = new
             {
-                token = tokenString,
-                refreshToken,
-                user = new
-                {
-                    id = user.Id,
-                    name = $"{user.FirstName} {user.LastName}".Trim(),
-                    firstName = user.FirstName,
-                    lastName = user.LastName,
-                    email = user.Email,
-                    role = user.RoleCode ?? "user",
-                    roleName = user.RoleName,
-                    companyId = user.CompanyId,
-                    companyName = user.CompanyName,
-                    branchId = user.BranchId,
-                    branchName = user.BranchName,
-                    language = user.Language,
-                    avatarUrl = user.AvatarUrl
-                }
+                id = user.Id,
+                name = $"{user.FirstName} {user.LastName}".Trim(),
+                firstName = user.FirstName,
+                lastName = user.LastName,
+                email = user.Email,
+                role = user.RoleCode ?? "user",
+                roleName = user.RoleName,
+                companyId = user.CompanyId,
+                companyName = user.CompanyName,
+                branchId = user.BranchId,
+                branchName = user.BranchName,
+                language = user.Language,
+                avatarUrl = user.AvatarUrl
             }
-        });
+        }, "Login exitoso"));
     }
 
     [HttpPost("refresh")]
@@ -148,15 +144,25 @@ public class AuthController : ControllerBase
         var refreshDays = int.Parse(_configuration["Jwt:RefreshExpiresInDays"] ?? "7");
         await _authRepo.SaveRefreshTokenAsync(user.Id, newRefreshToken, DateTime.UtcNow.AddDays(refreshDays));
 
-        return Ok(new
+        return Ok(ApiResponse<object>.Ok(new
         {
-            success = true,
-            data = new
-            {
-                token = tokenString,
-                refreshToken = newRefreshToken
-            }
-        });
+            token = tokenString,
+            refreshToken = newRefreshToken
+        }, "Token renovado"));
+    }
+
+    [HttpPost("logout")]
+    [Microsoft.AspNetCore.Authorization.Authorize]
+    public async Task<IActionResult> Logout()
+    {
+        var userIdClaim = User.FindFirst("userId")?.Value;
+        if (long.TryParse(userIdClaim, out var userId))
+        {
+            await _authRepo.SaveRefreshTokenAsync(userId, string.Empty, DateTime.UtcNow.AddDays(-1));
+            _logger.LogInformation("Logout exitoso: UserId {UserId}", userId);
+        }
+
+        return Ok(ApiResponse.Ok("Sesión cerrada"));
     }
 
     private string GenerateJwtToken(Domain.Entities.User user)
