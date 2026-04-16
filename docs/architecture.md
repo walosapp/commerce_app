@@ -24,7 +24,7 @@ Sistema PWA para gestión integral de bar/restaurante con asistencia de IA. Mód
 - **Panel Onboarding**: creación de nuevos tenants desde la app
 - **Pedidos y Domicilios**: plataformas, IA, estados
 - **i18n**: preparado pero no implementado (Inglés, Español, Portugués)
-- **Tests**: 69 tests unitarios backend (services + validators + tenant isolation), falta frontend + E2E
+- **Tests**: 85 tests unitarios backend (services + validators + tenant isolation), falta frontend + E2E
 
 ## Principios de Diseño
 
@@ -104,7 +104,7 @@ Walos-app/
 │   ├── src/
 │   │   ├── Walos.API/
 │   │   │   ├── Controllers/
-│   │   │   │   ├── AuthController.cs        # Login, JWT, refresh tokens
+│   │   │   │   ├── AuthController.cs        # Login, refresh, logout (thin)
 │   │   │   │   ├── CompanyController.cs     # Settings, branding, temas, logo
 │   │   │   │   ├── FinanceController.cs     # Entries, categories, templates, month init
 │   │   │   │   ├── HealthController.cs      # Health check + API info
@@ -125,6 +125,8 @@ Walos-app/
 │   │   │   │   ├── Inventory/               # Product, AI, stock requests
 │   │   │   │   └── Sales/                   # Table, order, invoice requests
 │   │   │   ├── Services/
+│   │   │   │   ├── IAuthService.cs          # Interfaz autenticación
+│   │   │   │   ├── AuthService.cs           # Login, JWT, refresh, lockout
 │   │   │   │   ├── IInventoryService.cs     # Interfaz + DTOs de resultado
 │   │   │   │   ├── InventoryService.cs      # Lógica de negocio inventario + IA
 │   │   │   │   ├── ISalesService.cs         # Interfaz ventas
@@ -143,7 +145,7 @@ Walos-app/
 │   │       ├── Data/SqlConnectionFactory.cs # Npgsql connection factory
 │   │       ├── Repositories/               # 5 repos (Auth, Company, Finance, Inventory, Sales)
 │   │       └── Services/OpenAiService.cs   # System prompt, llamada API, parseo
-│   └── tests/Walos.Tests/                  # 69 unit tests (xUnit + Moq)
+│   └── tests/Walos.Tests/                  # 85 unit tests (xUnit + Moq)
 │
 ├── frontend/
 │   ├── src/

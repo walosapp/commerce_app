@@ -791,7 +791,7 @@ new → accepted → preparing → ready_for_dispatch → out_for_delivery → d
 
 - [x] **CC-06**: Fuente de verdad unificada — Zustand persist como unica fuente, axios lee via `setAuthStateGetter`
 
-- [x] **CC-01/CC-04**: Service Layer creado — `ISalesService`, `IFinanceService`, `ICompanyService` + implementaciones. Controllers refactorizados a thin controllers.
+- [x] **CC-01/CC-04**: Service Layer creado — `ISalesService`, `IFinanceService`, `ICompanyService`, `IAuthService` + implementaciones. Todos los controllers refactorizados a thin controllers.
 
 ---
 
@@ -800,7 +800,8 @@ new → accepted → preparing → ready_for_dispatch → out_for_delivery → d
 **Estado**: `[~]` En progreso
 
 ### Completado
-- [x] **Backend unitarios**: 69 tests (xUnit + Moq) para todos los services
+- [x] **Backend unitarios**: 85 tests (xUnit + Moq) para todos los services
+  - `AuthServiceTests` (16 tests) — login, lockout, refresh, logout, validaciones
   - `InventoryServiceTests` (3 tests) — IA, stock bajo, confirm
   - `SalesServiceTests` (20 tests) — crear mesa, facturar, cancelar, items, stock
   - `FinanceServiceTests` (17 tests) — categorias, entries, init mes, delete
