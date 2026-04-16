@@ -52,13 +52,15 @@ const SettingsPage = () => {
   const [saving, setSaving] = useState(false);
 
   const { data: settingsData, isLoading: settingsLoading } = useQuery({
-    queryKey: ['company-settings'],
+    queryKey: ['company-settings', tenantId],
     queryFn: () => companyService.getSettings(),
+    enabled: !!tenantId,
   });
 
   const { data: operationsData, isLoading: operationsLoading } = useQuery({
-    queryKey: ['company-operations-settings'],
+    queryKey: ['company-operations-settings', tenantId],
     queryFn: () => companyService.getOperationsSettings(),
+    enabled: !!tenantId,
   });
 
   useEffect(() => {
@@ -148,7 +150,7 @@ const SettingsPage = () => {
       setLogoFile(null);
     }
 
-    await queryClient.invalidateQueries({ queryKey: ['company-settings'] });
+    await queryClient.invalidateQueries({ queryKey: ['company-settings', tenantId] });
   };
 
   const handleSaveOperations = async () => {
@@ -160,7 +162,7 @@ const SettingsPage = () => {
       discountOverrideThresholdPercent: Number(operationsForm.discountOverrideThresholdPercent || 0),
     });
 
-    await queryClient.invalidateQueries({ queryKey: ['company-operations-settings'] });
+    await queryClient.invalidateQueries({ queryKey: ['company-operations-settings', tenantId] });
   };
 
   const handleSave = async () => {

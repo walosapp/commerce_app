@@ -8,11 +8,13 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Calculator, Camera, Upload, ImageIcon, Trash2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import inventoryService from '../../../services/inventoryService';
+import useAuthStore from '../../../stores/authStore';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
   const isEdit = !!product;
+  const { tenantId } = useAuthStore();
 
   const PRODUCT_TYPES = [
     { value: 'simple', label: 'Simple (insumo/botella)', trackStock: true },
@@ -48,15 +50,15 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
   const cameraInputRef = useRef(null);
 
   const { data: categoriesData } = useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories', tenantId],
     queryFn: () => inventoryService.getCategories(),
-    enabled: isOpen,
+    enabled: isOpen && !!tenantId,
   });
 
   const { data: unitsData } = useQuery({
-    queryKey: ['units'],
+    queryKey: ['units', tenantId],
     queryFn: () => inventoryService.getUnits(),
-    enabled: isOpen,
+    enabled: isOpen && !!tenantId,
   });
 
   const categories = categoriesData?.data || [];

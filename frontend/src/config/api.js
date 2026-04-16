@@ -30,6 +30,9 @@ api.interceptors.request.use(
     if (state?.token) {
       config.headers.Authorization = `Bearer ${state.token}`;
     }
+    if (state?.tenantId) {
+      config.headers['X-Company-ID'] = state.tenantId;
+    }
     if (state?.branchId) {
       config.headers['X-Branch-ID'] = state.branchId;
     }

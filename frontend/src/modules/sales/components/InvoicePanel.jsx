@@ -10,8 +10,10 @@ import { X, Receipt, Users, Printer, Percent, DollarSign, ShieldAlert } from 'lu
 import toast from 'react-hot-toast';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import companyService from '../../../services/companyService';
+import useAuthStore from '../../../stores/authStore';
 
 const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
+  const { tenantId } = useAuthStore();
   const [splitCount, setSplitCount] = useState(1);
   const [invoicing, setInvoicing] = useState(false);
   const [discountType, setDiscountType] = useState('none');
@@ -19,9 +21,9 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
   const [overrideConfirmed, setOverrideConfirmed] = useState(false);
 
   const { data: operationsData } = useQuery({
-    queryKey: ['company-operations-settings'],
+    queryKey: ['company-operations-settings', tenantId],
     queryFn: () => companyService.getOperationsSettings(),
-    enabled: isOpen,
+    enabled: isOpen && !!tenantId,
   });
 
   useEffect(() => {

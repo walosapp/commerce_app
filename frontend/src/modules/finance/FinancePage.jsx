@@ -36,7 +36,7 @@ const getMonthLabel = (monthValue) => {
 };
 
 const FinancePage = () => {
-  const { branchId } = useAuthStore();
+  const { branchId, tenantId } = useAuthStore();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({
     type: '',
@@ -67,8 +67,9 @@ const FinancePage = () => {
   });
 
   const { data: categoriesData } = useQuery({
-    queryKey: ['finance-categories'],
+    queryKey: ['finance-categories', tenantId],
     queryFn: () => financeService.getCategories(),
+    enabled: !!tenantId,
   });
 
   const entries = entriesData?.data || [];
@@ -77,7 +78,7 @@ const FinancePage = () => {
 
   const refreshAll = () => {
     queryClient.invalidateQueries({ queryKey: ['finance-entries'] });
-    queryClient.invalidateQueries({ queryKey: ['finance-categories'] });
+    queryClient.invalidateQueries({ queryKey: ['finance-categories', tenantId] });
   };
 
   const handleSaveEntry = async (payload) => {

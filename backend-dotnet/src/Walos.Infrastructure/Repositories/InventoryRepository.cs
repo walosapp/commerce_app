@@ -543,7 +543,27 @@ public class InventoryRepository : IInventoryRepository
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
 
-            var sql = @"
+            var joinCondition = @"m.movement_type = 'sale'
+                    AND m.company_id = @CompanyId
+                    AND m.branch_id = @BranchId";
+
+            var parameters = new DynamicParameters();
+            parameters.Add("CompanyId", companyId);
+            parameters.Add("BranchId", branchId);
+
+            if (startDate.HasValue)
+            {
+                joinCondition += " AND m.created_at >= @StartDate";
+                parameters.Add("StartDate", startDate.Value);
+            }
+
+            if (endDate.HasValue)
+            {
+                joinCondition += " AND m.created_at <= @EndDate";
+                parameters.Add("EndDate", endDate.Value);
+            }
+
+            var sql = $@"
                 SELECT 
                     p.id AS Id,
                     p.name AS Name,
@@ -558,27 +578,7 @@ public class InventoryRepository : IInventoryRepository
                     COALESCE(SUM(ABS(m.quantity) * (p.sale_price - p.cost_price)), 0) AS TotalProfit
                 FROM inventory.products p
                 LEFT JOIN inventory.movements m ON p.id = m.product_id
-                    AND m.movement_type = 'sale'
-                    AND m.company_id = @CompanyId
-                    AND m.branch_id = @BranchId";
-
-            var parameters = new DynamicParameters();
-            parameters.Add("CompanyId", companyId);
-            parameters.Add("BranchId", branchId);
-
-            if (startDate.HasValue)
-            {
-                sql += " AND m.created_at >= @StartDate";
-                parameters.Add("StartDate", startDate.Value);
-            }
-
-            if (endDate.HasValue)
-            {
-                sql += " AND m.created_at <= @EndDate";
-                parameters.Add("EndDate", endDate.Value);
-            }
-
-            sql += @"
+                    AND {joinCondition}
                 WHERE p.company_id = @CompanyId
                   AND p.deleted_at IS NULL
                 GROUP BY p.id, p.name, p.sku, p.cost_price, p.sale_price, p.margin_percentage

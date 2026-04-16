@@ -35,7 +35,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, logout, branchId } = useAuthStore();
+  const { user, logout, branchId, tenantId } = useAuthStore();
   const collapsed = useUiStore((state) => state.sidebarCollapsed);
   const setSidebarCollapsed = useUiStore((state) => state.setSidebarCollapsed);
   const companyName = useUiStore((state) => state.companyName);
@@ -46,9 +46,9 @@ const Layout = ({ children }) => {
   const location = useLocation();
 
   const { data: settingsData } = useQuery({
-    queryKey: ['company-settings'],
+    queryKey: ['company-settings', tenantId],
     queryFn: () => companyService.getSettings(),
-    enabled: !!user,
+    enabled: !!user && !!tenantId,
     staleTime: 5 * 60 * 1000,
   });
 
