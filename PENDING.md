@@ -30,7 +30,7 @@
 | 14 | Multi-tenant SaaS por company_id | `[x]` Completado | P0 |
 | 16 | Panel Onboarding Tenant (crear comercio) | `[x]` Completado | P0 |
 | 17 | Tipos de producto y control de stock inteligente | `[x]` Completado | P0 |
-| 15 | Pedidos y Domicilios (plataformas + IA + estados) | `[ ]` Pendiente | P1 |
+| 15 | Pedidos y Domicilios (plataformas + IA + estados) | `[x]` Completado | P1 |
 | 18 | Auditoria de Codigo — Seguridad y Clean Code | `[x]` Completado | P0 |
 | 19 | Cobertura de Tests (unitarios + integracion + E2E) | `[x]` Completado | P0 |
 | 20 | Service Layer para Sales, Finance, Company | `[x]` Completado | P1 |
@@ -588,7 +588,7 @@ CreateTenantRequest:
 
 ## 15. Pedidos y Domicilios `P1`
 
-**Estado**: `[ ]`
+**Estado**: `[x]` Completado (Fase 1 MVP)
 
 > **Estado actual del codigo**: No existe nada implementado. No hay carpeta delivery, no hay controller, no hay tablas. Todo debe crearse desde cero. **Depende de #14 (multi-tenant)** para nacer con aislamiento correcto.
 

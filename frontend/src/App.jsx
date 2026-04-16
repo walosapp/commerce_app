@@ -20,6 +20,7 @@ import SettingsPage from './modules/settings/SettingsPage';
 import AlertsPage from './modules/alerts/AlertsPage';
 import FinancePage from './modules/finance/FinancePage';
 import TenantsPage from './modules/admin/TenantsPage';
+import DeliveryOrdersPage from './modules/delivery/DeliveryOrdersPage';
 
 setAuthStateGetter(() => useAuthStore.getState());
 
@@ -76,6 +77,7 @@ function App() {
           <Route path="/settings/discounts" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/alerts" element={<ProtectedRoute><AlertsPage /></ProtectedRoute>} />
           <Route path="/admin/tenants" element={<ProtectedRoute requiredRole="dev"><TenantsPage /></ProtectedRoute>} />
+          <Route path="/delivery" element={<ProtectedRoute><DeliveryOrdersPage /></ProtectedRoute>} />
           <Route path="/login" element={<LoginPage />} />
         </Routes>
       </BrowserRouter>

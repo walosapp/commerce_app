@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Bell,
   Bot,
+  Bike,
   Building2,
   ChevronsLeft,
   ChevronsRight,
@@ -84,6 +85,7 @@ const Layout = ({ children }) => {
     { name: 'Asistente IA', path: '/ai-assistant', icon: Bot },
     { name: 'Inventario', path: '/inventory', icon: Package },
     { name: 'Ventas', path: '/sales', icon: ShoppingCart },
+    { name: 'Pedidos', path: '/delivery', icon: Bike },
     { name: 'Finanzas', path: '/finance', icon: Landmark },
     { name: 'Proveedores', path: '/suppliers', icon: Truck },
     { name: 'Usuarios', path: '/users', icon: Users },
