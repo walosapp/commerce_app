@@ -26,7 +26,7 @@
 | 11 | Stock Comprometido (ventas vs inventario) | `[x]` Completado | P1 |
 | 12 | Finanzas Operativas (gastos, ingresos, control mensual) | `[x]` Completado | P1 |
 | 13 | Configuracion (reglas operativas y descuentos) | `[x]` Completado | P1 |
-| 9 | Proveedores (CRUD, WhatsApp/email, IA pedidos) | `[ ]` Pendiente | P2 |
+| 9 | Proveedores (CRUD, WhatsApp/email, IA pedidos) | `[x]` Completado | P2 |
 | 14 | Multi-tenant SaaS por company_id | `[x]` Completado | P0 |
 | 16 | Panel Onboarding Tenant (crear comercio) | `[x]` Completado | P0 |
 | 17 | Tipos de producto y control de stock inteligente | `[x]` Completado | P0 |
@@ -138,7 +138,7 @@
 
 ## 9. Proveedores - Modulo Completo `P2`
 
-**Estado**: `[ ]`
+**Estado**: `[x]` Completado
 
 > **Estado actual del codigo**: Solo existe `frontend/src/modules/suppliers/suppliers.jsx` (archivo vacio). No hay controller, repository, service, entidades ni tablas SQL. La ruta `/suppliers` en `App.jsx` es un placeholder. Todo debe crearse desde cero.
 

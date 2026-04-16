@@ -21,6 +21,7 @@ import AlertsPage from './modules/alerts/AlertsPage';
 import FinancePage from './modules/finance/FinancePage';
 import TenantsPage from './modules/admin/TenantsPage';
 import DeliveryOrdersPage from './modules/delivery/DeliveryOrdersPage';
+import SuppliersPage from './modules/suppliers/SuppliersPage';
 
 setAuthStateGetter(() => useAuthStore.getState());
 
@@ -69,7 +70,7 @@ function App() {
           <Route path="/ai-assistant" element={<ProtectedRoute><AiAssistantPage /></ProtectedRoute>} />
           <Route path="/sales" element={<ProtectedRoute><SalesPage /></ProtectedRoute>} />
           <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
-          <Route path="/suppliers" element={<ProtectedRoute><div className="text-center"><h1 className="text-3xl font-bold">Proveedores</h1><p className="mt-4 text-gray-500">Proximamente...</p></div></ProtectedRoute>} />
+          <Route path="/suppliers" element={<ProtectedRoute><SuppliersPage /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute><div className="text-center"><h1 className="text-3xl font-bold">Usuarios</h1><p className="mt-4 text-gray-500">Proximamente...</p></div></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/branding" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
