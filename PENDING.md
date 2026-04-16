@@ -32,7 +32,7 @@
 | 17 | Tipos de producto y control de stock inteligente | `[x]` Completado | P0 |
 | 15 | Pedidos y Domicilios (plataformas + IA + estados) | `[ ]` Pendiente | P1 |
 | 18 | Auditoria de Codigo — Seguridad y Clean Code | `[x]` Completado | P0 |
-| 19 | Cobertura de Tests (unitarios + integracion) | `[~]` En progreso | P0 |
+| 19 | Cobertura de Tests (unitarios + integracion + E2E) | `[x]` Completado | P0 |
 | 20 | Service Layer para Sales, Finance, Company | `[x]` Completado | P1 |
 
 ---
@@ -797,7 +797,7 @@ new → accepted → preparing → ready_for_dispatch → out_for_delivery → d
 
 ## 19. Cobertura de Tests `P0`
 
-**Estado**: `[~]` En progreso
+**Estado**: `[x]` Completado
 
 ### Completado
 - [x] **Backend unitarios**: 85 tests (xUnit + Moq) para todos los services
@@ -815,8 +815,10 @@ new → accepted → preparing → ready_for_dispatch → out_for_delivery → d
   - `authStore.test.js` (5 tests) — state, setAuth, logout, permisos
   - `formatters.test.js` (8 tests) — currency, date, truncate
 
-### Pendiente
-- [ ] **E2E**: Configurar Playwright para flujos criticos (login, crear mesa, facturar)
+- [x] **E2E (Playwright)**: 14 tests en 3 specs
+  - `auth.spec.js` (7 tests) — login, credenciales invalidas, toggle password, sesion persistente
+  - `navigation.spec.js` (4 tests) — inventario, finanzas, settings, sidebar
+  - `sales.spec.js` (3 tests) — navegacion ventas, mesas activas, crear mesa
 
 ---
 
