@@ -809,10 +809,13 @@ new → accepted → preparing → ready_for_dispatch → out_for_delivery → d
   - `CreateProductValidatorTests` (7 tests) — validaciones FluentValidation
   - `AiInputValidatorTests` (3 tests) — validaciones IA
   - `TenantIsolationSqlTests` (6 tests) — company_id en queries
+- [x] **Backend integracion**: 16 tests (SkippableFact) para Auth + Company repos — requiere `WALOS_TEST_CONNECTION`
+- [x] **Frontend**: Vitest + React Testing Library configurado, 19 tests
+  - `LoginPage.test.jsx` (6 tests) — render, inputs, toggle password, toast
+  - `authStore.test.js` (5 tests) — state, setAuth, logout, permisos
+  - `formatters.test.js` (8 tests) — currency, date, truncate
 
 ### Pendiente
-- [ ] **Backend integracion**: Tests contra DB de test para repositories
-- [ ] **Frontend**: Configurar Vitest + React Testing Library
 - [ ] **E2E**: Configurar Playwright para flujos criticos (login, crear mesa, facturar)
 
 ---
