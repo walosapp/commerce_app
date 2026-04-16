@@ -22,6 +22,7 @@ import FinancePage from './modules/finance/FinancePage';
 import TenantsPage from './modules/admin/TenantsPage';
 import DeliveryOrdersPage from './modules/delivery/DeliveryOrdersPage';
 import SuppliersPage from './modules/suppliers/SuppliersPage';
+import UsersPage from './modules/users/UsersPage';
 
 setAuthStateGetter(() => useAuthStore.getState());
 
@@ -35,7 +36,7 @@ const queryClient = new QueryClient({
   },
 });
 
-const ProtectedRoute = ({ children, requiredRole = null }) => {
+const ProtectedRoute = ({ children, requiredRole = null, allowedRoles = null }) => {
   const { isAuthenticated, user } = useAuthStore();
 
   if (!isAuthenticated) {
@@ -43,6 +44,10 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
   }
 
   if (requiredRole && user?.role !== requiredRole) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user?.role)) {
     return <Navigate to="/" replace />;
   }
 
@@ -71,7 +76,7 @@ function App() {
           <Route path="/sales" element={<ProtectedRoute><SalesPage /></ProtectedRoute>} />
           <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
           <Route path="/suppliers" element={<ProtectedRoute><SuppliersPage /></ProtectedRoute>} />
-          <Route path="/users" element={<ProtectedRoute><div className="text-center"><h1 className="text-3xl font-bold">Usuarios</h1><p className="mt-4 text-gray-500">Proximamente...</p></div></ProtectedRoute>} />
+          <Route path="/users" element={<ProtectedRoute allowedRoles={['dev','admin','manager']}><UsersPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/branding" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/themes" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
