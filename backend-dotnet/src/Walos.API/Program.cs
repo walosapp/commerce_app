@@ -150,22 +150,26 @@ try
     builder.Services.AddAuthorization();
 
     // CORS
+    var corsOrigins = (builder.Configuration["Cors:Origins"] ?? "*")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(origin => origin.TrimEnd('/'))
+        .Where(origin => !string.IsNullOrWhiteSpace(origin))
+        .ToArray();
+
     builder.Services.AddCors(options =>
     {
         options.AddDefaultPolicy(policy =>
         {
-            var origins = (builder.Configuration["Cors:Origins"] ?? "*")
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(origin => origin.TrimEnd('/'))
-                .Where(origin => !string.IsNullOrWhiteSpace(origin))
-                .ToArray();
-
-            if (origins.Contains("*"))
+            if (corsOrigins.Contains("*"))
                 policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
             else
-                policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+                policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+
+            policy.SetPreflightMaxAge(TimeSpan.FromMinutes(10));
         });
     });
+
+    Log.Information("✓ CORS origins: {Origins}", string.Join(", ", corsOrigins));
 
     // Rate Limiting
     builder.Services.AddRateLimiter(options =>
@@ -208,7 +212,33 @@ try
 
     // Security & performance
     app.UseResponseCompression();
+
+    // CORS must be FIRST in the pipeline (before any auth or rate limiter)
     app.UseCors();
+
+    // Explicit OPTIONS preflight handler — guarantees CORS headers even if
+    // other middleware short-circuits the request.
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Method == "OPTIONS")
+        {
+            context.Response.StatusCode = StatusCodes.Status204NoContent;
+            return;
+        }
+        await next();
+    });
+
+    // Prevent browsers & service workers from deeply caching API responses
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            context.Response.Headers.Append("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+            context.Response.Headers.Append("Pragma", "no-cache");
+        }
+        await next();
+    });
+
     app.UseRateLimiter();
 
     // Static files (product images, uploads)
@@ -233,6 +263,7 @@ try
     Log.Information("✓ API: http://localhost:{Port}/api/v1", port);
     Log.Information("✓ Health: http://localhost:{Port}/health", port);
     Log.Information("✓ Swagger: http://localhost:{Port}/swagger", port);
+    Log.Information("✓ CORS origins: {Origins}", string.Join(", ", corsOrigins));
 
     app.Run($"http://0.0.0.0:{port}");
 }

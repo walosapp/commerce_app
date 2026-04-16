@@ -64,20 +64,19 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Skip waiting forces the new SW to activate immediately on update,
+        // preventing stale cached responses from old deployments.
+        skipWaiting: true,
+        clientsClaim: true,
+        // Do NOT cache API calls in the Service Worker.
+        // All /api/* requests go straight to the network.
+        // This prevents CORS/auth issues caused by stale cached responses.
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/api\.walos\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
+            urlPattern: /\/api\//,
+            handler: 'NetworkOnly',
           },
         ],
       },
