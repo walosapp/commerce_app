@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<IUsersRepository, UsersRepository>();
         services.AddScoped<IRecipeRepository, RecipeRepository>();
         services.AddScoped<ICatalogRepository, CatalogRepository>();
+        services.AddSingleton<ProductExcelService>();
         services.AddScoped<IPurchaseOrderRepository, PurchaseOrderRepository>();
         services.AddScoped<ICompanyRepository, CompanyRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();

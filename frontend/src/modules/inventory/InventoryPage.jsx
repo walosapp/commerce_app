@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Package, AlertCircle, TrendingUp, PlusCircle } from 'lucide-react';
+import { Package, AlertCircle, TrendingUp, PlusCircle, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
 import inventoryService from '../../services/inventoryService';
 import useAuthStore from '../../stores/authStore';
@@ -14,12 +14,14 @@ import StockTable from './components/StockTable';
 import ProductFormModal from './components/ProductFormModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import AddStockModal from './components/AddStockModal';
+import ImportProductsModal from './components/ImportProductsModal';
 
 const InventoryPage = () => {
   const { branchId } = useAuthStore();
   const queryClient = useQueryClient();
 
   const [showProductModal, setShowProductModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [addStockTarget, setAddStockTarget] = useState(null);
@@ -166,13 +168,22 @@ const InventoryPage = () => {
             Gestiona tu inventario con asistencia de IA
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 transition-colors shadow-sm"
-        >
-          <PlusCircle className="h-4 w-4" />
-          Agregar Producto
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-green-600" />
+            Importar Excel
+          </button>
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 transition-colors shadow-sm"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Agregar Producto
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -241,6 +252,12 @@ const InventoryPage = () => {
       />
 
       {/* Modals */}
+      <ImportProductsModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImported={refetchAll}
+      />
+
       <ProductFormModal
         isOpen={showProductModal}
         onClose={() => { setShowProductModal(false); setEditProduct(null); }}

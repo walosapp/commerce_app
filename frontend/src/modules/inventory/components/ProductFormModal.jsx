@@ -283,6 +283,48 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
             <p className="text-xs text-gray-400 mt-1">JPG, PNG o WebP. Máximo 2MB.</p>
           </div>
 
+          {/* Tipo de Producto — primero para guiar el resto del form */}
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+            <label className="block text-sm font-medium text-gray-700">Tipo de producto</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {PRODUCT_TYPES.map((pt) => (
+                <button
+                  key={pt.value}
+                  type="button"
+                  onClick={() => setForm(prev => ({ ...prev, productType: pt.value, trackStock: pt.trackStock }))}
+                  className={`rounded-lg border px-3 py-2.5 text-xs font-medium transition-colors text-left space-y-0.5 ${
+                    form.productType === pt.value
+                      ? 'border-primary-500 bg-primary-50 text-primary-700'
+                      : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="font-semibold">{pt.label}</div>
+                  <div className="text-gray-400 font-normal leading-tight">{pt.desc}</div>
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-4 pt-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.trackStock}
+                  onChange={(e) => handleChange('trackStock', e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="text-sm text-gray-700">Controlar stock</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.isForSale}
+                  onChange={(e) => handleChange('isForSale', e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="text-sm text-gray-700">Disponible para venta</span>
+              </label>
+            </div>
+          </div>
+
           {/* Nombre y SKU */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -350,12 +392,14 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
             </div>
           </div>
 
-          {/* Precios */}
+          {/* Precios — adapta según tipo de producto */}
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-4">
             <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
               <Calculator className="h-4 w-4" />
-              Precios y Margen
+              Precios{form.productType !== 'supply' && form.productType !== 'service' ? ' y Margen' : ''}
             </div>
+
+            {/* Costo — siempre visible */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Costo *</label>
@@ -370,84 +414,52 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
                   placeholder="0.00"
                 />
               </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Margen %</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.marginPercentage}
-                  onChange={(e) => handleChange('marginPercentage', e.target.value)}
-                  className="input"
-                  placeholder="30"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Precio Venta *</label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  step="0.01"
-                  value={form.salePrice}
-                  onChange={(e) => handleChange('salePrice', e.target.value)}
-                  className="input"
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-            <p className="text-xs text-gray-500">
-              Al cambiar el margen se recalcula el precio de venta y viceversa.
-            </p>
-          </div>
 
-          {/* Tipo de Producto */}
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-4">
-            <label className="block text-sm font-medium text-gray-700">Tipo de producto</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {PRODUCT_TYPES.map((pt) => (
-                <button
-                  key={pt.value}
-                  type="button"
-                  onClick={() => {
-                    setForm(prev => ({ ...prev, productType: pt.value, trackStock: pt.trackStock }));
-                  }}
-                  className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
-                    form.productType === pt.value
-                      ? 'border-primary-500 bg-primary-50 text-primary-700'
-                      : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  {pt.label}
-                </button>
-              ))}
+              {/* Margen — solo si es venta (no insumo ni servicio) */}
+              {form.productType !== 'supply' && form.productType !== 'service' && (
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Margen %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.marginPercentage}
+                    onChange={(e) => handleChange('marginPercentage', e.target.value)}
+                    className="input"
+                    placeholder="30"
+                  />
+                </div>
+              )}
+
+              {/* Precio venta — obligatorio si isForSale, opcional para insumos, oculto para servicios sin precio */}
+              {form.productType !== 'service' || form.isForSale ? (
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">
+                    Precio Venta
+                    {form.productType !== 'supply' ? ' *' : ' (opcional)'}
+                  </label>
+                  <input
+                    type="number"
+                    required={form.productType !== 'supply'}
+                    min="0"
+                    step="0.01"
+                    value={form.salePrice}
+                    onChange={(e) => handleChange('salePrice', e.target.value)}
+                    className="input"
+                    placeholder="0.00"
+                  />
+                </div>
+              ) : null}
             </div>
 
-            {!form.trackStock && (
-              <p className="text-xs text-amber-600 bg-amber-50 rounded-md px-3 py-2">
-                Este producto no requiere control de stock. Siempre estará disponible para venta mientras esté activo.
+            {form.productType === 'supply' && (
+              <p className="text-xs text-blue-600 bg-blue-50 rounded-md px-3 py-2">
+                Para insumos el margen no aplica. El precio de venta es opcional (solo si también se vende al cliente).
               </p>
             )}
-
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.trackStock}
-                onChange={(e) => handleChange('trackStock', e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              />
-              <span className="text-sm text-gray-700">Controlar stock</span>
-            </label>
-
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.isForSale}
-                onChange={(e) => handleChange('isForSale', e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              />
-              <span className="text-sm text-gray-700">Disponible para venta</span>
-            </label>
+            {form.productType !== 'supply' && form.productType !== 'service' && (
+              <p className="text-xs text-gray-500">Al cambiar el margen se recalcula el precio de venta y viceversa.</p>
+            )}
           </div>
 
           {/* Stock (solo si trackStock) */}

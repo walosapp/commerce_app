@@ -600,7 +600,7 @@ public class InventoryRepository : IInventoryRepository
             using var connection = await _connectionFactory.CreateConnectionAsync();
 
             const string sql = @"
-                SELECT id AS Id, name AS Name
+                SELECT id AS Id, name AS Name, is_active AS IsActive
                 FROM inventory.categories
                 WHERE company_id = @CompanyId AND is_active = TRUE
                 ORDER BY name";
@@ -621,7 +621,7 @@ public class InventoryRepository : IInventoryRepository
             using var connection = await _connectionFactory.CreateConnectionAsync();
 
             const string sql = @"
-                SELECT id AS Id, name AS Name, abbreviation AS Abbreviation
+                SELECT id AS Id, name AS Name, abbreviation AS Abbreviation, is_active AS IsActive
                 FROM inventory.units
                 WHERE company_id = @CompanyId AND is_active = TRUE
                 ORDER BY name";

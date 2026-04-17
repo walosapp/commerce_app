@@ -5,6 +5,7 @@ using Walos.Application.DTOs.Inventory;
 using Walos.Application.Services;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
+using Walos.Infrastructure.Services;
 
 namespace Walos.API.Controllers;
 
@@ -17,17 +18,20 @@ public class InventoryController : ControllerBase
     private readonly IInventoryService _service;
     private readonly ITenantContext _tenant;
     private readonly ILogger<InventoryController> _logger;
+    private readonly ProductExcelService _excel;
 
     public InventoryController(
         IInventoryRepository repository,
         IInventoryService service,
         ITenantContext tenant,
-        ILogger<InventoryController> logger)
+        ILogger<InventoryController> logger,
+        ProductExcelService excel)
     {
         _repository = repository;
         _service = service;
         _tenant = tenant;
         _logger = logger;
+        _excel = excel;
     }
 
     /// <summary>
@@ -211,6 +215,87 @@ public class InventoryController : ControllerBase
         _logger.LogInformation("Producto eliminado (soft): ProductId: {Id}, UserId: {UserId}", id, userId);
 
         return Ok(ApiResponse.Ok("Producto eliminado exitosamente"));
+    }
+
+    /// <summary>
+    /// GET /api/v1/inventory/products/template - Descargar plantilla Excel
+    /// </summary>
+    [HttpGet("products/template")]
+    [Authorize(Roles = "dev,admin,manager")]
+    public async Task<IActionResult> DownloadTemplate()
+    {
+        var companyId = _tenant.CompanyId;
+        var categories = (await _repository.GetCategoriesAsync(companyId)).Where(c => c.IsActive).Select(c => c.Name);
+        var units = (await _repository.GetUnitsAsync(companyId)).Where(u => u.IsActive).Select(u => u.Name);
+        var bytes = _excel.GenerateTemplate(categories, units);
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "plantilla_productos.xlsx");
+    }
+
+    /// <summary>
+    /// POST /api/v1/inventory/products/import - Importar productos desde Excel
+    /// </summary>
+    [HttpPost("products/import")]
+    [Authorize(Roles = "dev,admin,manager")]
+    public async Task<IActionResult> ImportProducts(IFormFile file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(ApiResponse.Fail("Adjunta un archivo Excel"));
+
+        var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
+        var branchId = _tenant.BranchId;
+
+        var categories = (await _repository.GetCategoriesAsync(companyId)).Where(c => c.IsActive).ToList();
+        var units      = (await _repository.GetUnitsAsync(companyId)).Where(u => u.IsActive).ToList();
+
+        var catMap  = categories.ToDictionary(c => c.Name.ToLowerInvariant(), c => c.Id);
+        var unitMap = units.ToDictionary(u => u.Name.ToLowerInvariant(), u => u.Id);
+
+        using var stream = file.OpenReadStream();
+        var (valid, errors) = _excel.ParseImport(stream, catMap, unitMap);
+
+        var created = 0;
+        foreach (var row in valid)
+        {
+            var product = new Product
+            {
+                CompanyId    = companyId,
+                Name         = row.Name,
+                Sku          = row.Sku,
+                Barcode      = row.Barcode,
+                Description  = row.Description,
+                CategoryId   = catMap[row.CategoryName],
+                UnitId       = unitMap[row.UnitName],
+                CostPrice    = row.CostPrice,
+                SalePrice    = row.SalePrice,
+                MarginPercentage = row.MarginPercentage,
+                MinStock     = row.MinStock,
+                MaxStock     = row.MaxStock,
+                ReorderPoint = row.ReorderPoint,
+                ProductType  = row.ProductType,
+                TrackStock   = row.TrackStock,
+                IsForSale    = row.IsForSale,
+                CreatedBy    = userId,
+            };
+            await _repository.CreateProductAsync(product);
+
+            if (branchId.HasValue)
+                await _repository.CreateStockEntryAsync(branchId.Value, product.Id, 0, companyId);
+
+            created++;
+        }
+
+        var result = new
+        {
+            Created = created,
+            Errors  = errors.Select(e => new { e.RowNumber, e.Name, e.Error }),
+        };
+
+        var msg = errors.Count == 0
+            ? $"{created} producto(s) importados exitosamente"
+            : $"{created} importados, {errors.Count} con errores";
+
+        return Ok(ApiResponse<object>.Ok(result, msg));
     }
 
     /// <summary>
