@@ -8,8 +8,10 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Calculator, Camera, Upload, ImageIcon, Trash2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import inventoryService from '../../../services/inventoryService';
+import catalogService from '../../../services/catalogService';
 import useAuthStore from '../../../stores/authStore';
 import RecipeManager from './RecipeManager';
+import toast from 'react-hot-toast';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -51,19 +53,19 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
   const cameraInputRef = useRef(null);
 
   const { data: categoriesData } = useQuery({
-    queryKey: ['categories', tenantId],
-    queryFn: () => inventoryService.getCategories(),
+    queryKey: ['catalog-categories', tenantId],
+    queryFn: () => catalogService.getCategories(),
     enabled: isOpen && !!tenantId,
   });
 
   const { data: unitsData } = useQuery({
-    queryKey: ['units', tenantId],
-    queryFn: () => inventoryService.getUnits(),
+    queryKey: ['catalog-units', tenantId],
+    queryFn: () => catalogService.getUnits(),
     enabled: isOpen && !!tenantId,
   });
 
-  const categories = categoriesData?.data || [];
-  const units = unitsData?.data || [];
+  const categories = (categoriesData?.data || []).filter(c => c.isActive);
+  const units = (unitsData?.data || []).filter(u => u.isActive);
 
   useEffect(() => {
     if (product) {
@@ -159,6 +161,11 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!form.name?.trim()) { toast.error('El nombre es requerido'); return; }
+    if (!form.categoryId) { toast.error('Selecciona una categoria. Si no hay opciones, crealas en Configuracion → Catalogo'); return; }
+    if (!form.unitId) { toast.error('Selecciona una unidad de medida. Si no hay opciones, crealas en Configuracion → Catalogo'); return; }
+
     setSaving(true);
     try {
       const payload = {
@@ -303,6 +310,15 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
           </div>
 
           {/* Categoría y Unidad */}
+          {(categories.length === 0 || units.length === 0) && (
+            <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800">
+              <span className="text-base leading-none">⚠️</span>
+              <span>
+                No hay {categories.length === 0 ? 'categorias' : ''}{categories.length === 0 && units.length === 0 ? ' ni ' : ''}{units.length === 0 ? 'unidades' : ''} activas.
+                Ve a <strong>Configuracion → Catalogo</strong> para crearlas primero.
+              </span>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Categoría *</label>

@@ -74,6 +74,13 @@ public class InventoryController : ControllerBase
     [HttpPost("products")]
     public async Task<IActionResult> CreateProduct([FromBody] CreateProductRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest(ApiResponse.Fail("El nombre del producto es requerido"));
+        if (request.CategoryId <= 0)
+            return BadRequest(ApiResponse.Fail("Selecciona una categoria valida. Puedes crear categorias en Configuracion > Catalogo"));
+        if (request.UnitId <= 0)
+            return BadRequest(ApiResponse.Fail("Selecciona una unidad de medida valida. Puedes crearlas en Configuracion > Catalogo"));
+
         var companyId = _tenant.CompanyId;
         var userId = _tenant.UserId;
 
