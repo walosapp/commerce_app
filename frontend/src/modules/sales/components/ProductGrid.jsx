@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Grid de Productos para Ventas
  * Seleccion rapida de productos al crear una mesa
  */
@@ -32,7 +32,8 @@ const ProductGrid = ({ products = [], selectedItems, onUpdateItem }) => {
   const handleIncrement = (product) => {
     const current = getQuantity(product.productId);
     const available = Number(product.availableQuantity ?? product.quantity ?? 0);
-    if (current >= available) return;
+    if (!product.trackStock && current >= 0) {}
+    else if (current >= available) return;
 
     onUpdateItem({
       productId: product.productId,
@@ -78,7 +79,8 @@ const ProductGrid = ({ products = [], selectedItems, onUpdateItem }) => {
             const qty = getQuantity(product.productId);
             const isSelected = qty > 0;
             const available = Number(product.availableQuantity ?? product.quantity ?? 0);
-            const maxed = available <= 0 || qty >= available;
+            const noStockControl = !product.trackStock;
+            const maxed = !noStockControl && (available <= 0 || qty >= available);
 
             return (
               <div
@@ -115,7 +117,7 @@ const ProductGrid = ({ products = [], selectedItems, onUpdateItem }) => {
                   <p className="truncate text-xs font-medium text-gray-900">{product.productName}</p>
                   <p className="mt-0.5 text-sm font-bold text-primary-600">{formatCurrency(product.salePrice)}</p>
                   <p className="mt-1 text-[11px] text-gray-500">
-                    Disponible: {available} {product.unit || ''}
+                    {product.trackStock ? ('Disponible: ' + available + ' ' + (product.unit || '')) : 'Sin limite'}
                   </p>
                 </div>
 
@@ -156,3 +158,5 @@ const ProductGrid = ({ products = [], selectedItems, onUpdateItem }) => {
 };
 
 export default ProductGrid;
+
+

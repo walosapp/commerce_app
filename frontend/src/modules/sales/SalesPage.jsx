@@ -44,7 +44,7 @@ const SalesPage = () => {
   const products = stockItems.filter(
     (p) =>
       p.productType !== 'supply' &&
-      (Number(p.availableQuantity ?? p.quantity ?? 0) > 0 || p.productType === 'service')
+      (!p.trackStock || Number(p.availableQuantity ?? p.quantity ?? 0) > 0)
   );
   const stockByProduct = useMemo(
     () =>
@@ -302,4 +302,5 @@ const SalesPage = () => {
 };
 
 export default SalesPage;
+
 
