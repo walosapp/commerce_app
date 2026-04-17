@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Selector de Temas
  * ¿Qué es? Galería de temas visuales disponibles
  * ¿Para qué? Permitir cambiar rápidamente la identidad cromática de la app
@@ -43,7 +43,13 @@ const THEMES = [
     description: 'Profundo y elegante con tono premium.',
     preview: ['bg-violet-50', 'bg-violet-300', 'bg-violet-700'],
   },
-];
+  {
+    id: 'glass',
+    name: 'Glass iOS',
+    description: 'Efecto glassmorphism con gradiente purpura.',
+    preview: ['bg-purple-400', 'bg-blue-300', 'bg-fuchsia-300'],
+    isGlass: true,
+  },];
 
 const ThemeSelector = ({ selectedTheme, onSelect }) => {
   return (
@@ -76,14 +82,24 @@ const ThemeSelector = ({ selectedTheme, onSelect }) => {
                 </span>
               )}
 
-              <div className="mb-4 flex gap-2">
-                {theme.preview.map((colorClass) => (
-                  <span
-                    key={`${theme.id}-${colorClass}`}
-                    className={`h-12 flex-1 rounded-lg border border-black/5 ${colorClass}`}
-                  />
-                ))}
-              </div>
+              {theme.isGlass ? (
+                <div className="mb-4 h-12 rounded-lg overflow-hidden relative" style={{background: 'linear-gradient(135deg,#667eea,#764ba2,#f093fb)'}}>
+                  <div className="absolute inset-0 flex gap-1.5 p-1.5">
+                    {[0,1,2].map(i => (
+                      <div key={i} className="flex-1 rounded-md" style={{background:'rgba(255,255,255,0.45)',backdropFilter:'blur(8px)',border:'1px solid rgba(255,255,255,0.6)'}} />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-4 flex gap-2">
+                  {theme.preview.map((colorClass) => (
+                    <span
+                      key={`${theme.id}-${colorClass}`}
+                      className={`h-12 flex-1 rounded-lg border border-black/5 ${colorClass}`}
+                    />
+                  ))}
+                </div>
+              )}
 
               <p className="text-sm font-semibold text-gray-900">{theme.name}</p>
               <p className="mt-1 text-sm text-gray-500">{theme.description}</p>
@@ -96,3 +112,5 @@ const ThemeSelector = ({ selectedTheme, onSelect }) => {
 };
 
 export default ThemeSelector;
+
+
