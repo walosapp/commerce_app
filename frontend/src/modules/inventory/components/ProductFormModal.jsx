@@ -9,6 +9,7 @@ import { X, Calculator, Camera, Upload, ImageIcon, Trash2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import inventoryService from '../../../services/inventoryService';
 import useAuthStore from '../../../stores/authStore';
+import RecipeManager from './RecipeManager';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -17,10 +18,10 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
   const { tenantId } = useAuthStore();
 
   const PRODUCT_TYPES = [
-    { value: 'simple', label: 'Simple (insumo/botella)', trackStock: true },
-    { value: 'prepared', label: 'Preparación (plato/bebida)', trackStock: false },
-    { value: 'combo', label: 'Combo', trackStock: false },
-    { value: 'service', label: 'Servicio', trackStock: false },
+    { value: 'simple',   label: 'Simple',      trackStock: true,  desc: 'Producto estándar con stock' },
+    { value: 'supply',   label: 'Insumo',      trackStock: true,  desc: 'Materia prima / ingrediente' },
+    { value: 'prepared', label: 'Preparado',   trackStock: false, desc: 'Plato o bebida con receta' },
+    { value: 'service',  label: 'Servicio',    trackStock: false, desc: 'Sin control de stock' },
   ];
 
   const [form, setForm] = useState({
@@ -520,6 +521,19 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
               </div>
             )}
           </div>
+
+          {/* Recipe Manager — only for prepared products in edit mode */}
+          {form.productType === 'prepared' && product?.productId && (
+            <RecipeManager
+              productId={product.productId}
+              productName={product.name}
+            />
+          )}
+          {form.productType === 'prepared' && !product?.productId && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              💡 Guarda el producto primero. Luego podrás editarlo para agregar los ingredientes de la receta.
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t">

@@ -11,17 +11,20 @@ public class SalesService : ISalesService
     private readonly ISalesRepository _salesRepo;
     private readonly IInventoryRepository _inventoryRepo;
     private readonly ICompanyRepository _companyRepo;
+    private readonly IRecipeRepository _recipeRepo;
     private readonly ILogger<SalesService> _logger;
 
     public SalesService(
         ISalesRepository salesRepo,
         IInventoryRepository inventoryRepo,
         ICompanyRepository companyRepo,
+        IRecipeRepository recipeRepo,
         ILogger<SalesService> logger)
     {
         _salesRepo = salesRepo;
         _inventoryRepo = inventoryRepo;
         _companyRepo = companyRepo;
+        _recipeRepo = recipeRepo;
         _logger = logger;
     }
 
@@ -155,29 +158,60 @@ public class SalesService : ISalesService
         if (request.FinalTotalPaid > 0 && Math.Abs(request.FinalTotalPaid - finalTotalPaid) > 1)
             throw new ValidationException("El total final no coincide con el descuento aplicado");
 
+        // Calcular descuentos de insumos para productos preparados (recetas)
+        var soldTuples = items.Select(i => (i.ProductId, i.Quantity));
+        var ingredientDeductions = (await _recipeRepo.GetAllIngredientsForSaleAsync(soldTuples, companyId)).ToList();
+
         foreach (var item in items)
         {
             try
             {
-                await _inventoryRepo.UpdateStockAsync(branchId, item.ProductId, -item.Quantity, companyId);
+                var product = await _inventoryRepo.GetProductByIdAsync(item.ProductId, companyId);
+                var isPrepared = product?.ProductType == "prepared";
 
-                var movement = new Movement
+                if (!isPrepared)
                 {
-                    CompanyId = companyId,
-                    BranchId = branchId,
-                    ProductId = item.ProductId,
-                    MovementType = "sale",
-                    Quantity = item.Quantity,
-                    UnitCost = item.UnitPrice,
-                    Notes = $"Venta Mesa {table.TableNumber} - {order.OrderNumber}",
-                    CreatedBy = userId
-                };
-
-                await _inventoryRepo.CreateMovementAsync(movement);
+                    // Producto simple o insumo: descuenta stock directo
+                    await _inventoryRepo.UpdateStockAsync(branchId, item.ProductId, -item.Quantity, companyId);
+                    await _inventoryRepo.CreateMovementAsync(new Movement
+                    {
+                        CompanyId = companyId, BranchId = branchId,
+                        ProductId = item.ProductId, MovementType = "sale",
+                        Quantity = item.Quantity, UnitCost = item.UnitPrice,
+                        Notes = $"Venta Mesa {table.TableNumber} - {order.OrderNumber}",
+                        CreatedBy = userId
+                    });
+                }
+                else
+                {
+                    // Producto preparado: no descuenta su propio stock, sino sus insumos
+                    _logger.LogInformation("Producto preparado {Name} vendido x{Qty} — descontando insumos", product!.Name, item.Quantity);
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Error descontando stock para producto {ProductId}", item.ProductId);
+            }
+        }
+
+        // Descontar insumos de la receta
+        foreach (var deduction in ingredientDeductions)
+        {
+            try
+            {
+                await _inventoryRepo.UpdateStockAsync(branchId, deduction.IngredientId, -deduction.Quantity, companyId);
+                await _inventoryRepo.CreateMovementAsync(new Movement
+                {
+                    CompanyId = companyId, BranchId = branchId,
+                    ProductId = deduction.IngredientId, MovementType = "recipe_consumption",
+                    Quantity = deduction.Quantity, UnitCost = 0,
+                    Notes = $"Consumo receta - Venta Mesa {table.TableNumber} - {order.OrderNumber}",
+                    CreatedBy = userId
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error descontando insumo {IngredientId} de receta", deduction.IngredientId);
             }
         }
 

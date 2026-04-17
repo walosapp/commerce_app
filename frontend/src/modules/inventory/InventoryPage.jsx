@@ -24,6 +24,7 @@ const InventoryPage = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [addStockTarget, setAddStockTarget] = useState(null);
   const [activeFilter, setActiveFilter] = useState(null); // null | 'all' | 'low' | 'out'
+  const [typeFilter, setTypeFilter] = useState(null); // null | 'simple' | 'supply' | 'prepared' | 'service'
 
   const { data: stockData, isLoading: stockLoading } = useQuery({
     queryKey: ['stock', branchId],
@@ -136,14 +137,21 @@ const InventoryPage = () => {
     },
   ];
 
-  const filteredStock = activeFilter
-    ? allStock.filter((item) => {
-        if (activeFilter === 'all') return true;
-        if (activeFilter === 'low') return item.stockStatus === 'low';
-        if (activeFilter === 'out') return item.stockStatus === 'out';
-        return true;
-      })
-    : allStock;
+  const filteredStock = allStock
+    .filter((item) => {
+      if (!activeFilter || activeFilter === 'all') return true;
+      if (activeFilter === 'low') return item.stockStatus === 'low';
+      if (activeFilter === 'out') return item.stockStatus === 'out';
+      return true;
+    })
+    .filter((item) => !typeFilter || item.productType === typeFilter);
+
+  const TYPE_CHIPS = [
+    { value: 'simple',   label: 'Simples',    color: 'bg-gray-100 text-gray-700 ring-gray-300' },
+    { value: 'supply',   label: 'Insumos',    color: 'bg-blue-100 text-blue-700 ring-blue-300' },
+    { value: 'prepared', label: 'Preparados', color: 'bg-indigo-100 text-indigo-700 ring-indigo-300' },
+    { value: 'service',  label: 'Servicios',  color: 'bg-purple-100 text-purple-700 ring-purple-300' },
+  ];
 
   const handleStatClick = (key) => {
     setActiveFilter(activeFilter === key ? null : key);
@@ -195,6 +203,32 @@ const InventoryPage = () => {
             </button>
           );
         })}
+      </div>
+
+      {/* Type filter chips */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-gray-500 font-medium">Tipo:</span>
+        {TYPE_CHIPS.map(chip => (
+          <button
+            key={chip.value}
+            onClick={() => setTypeFilter(typeFilter === chip.value ? null : chip.value)}
+            className={`text-xs font-medium px-3 py-1 rounded-full border transition-all ${
+              typeFilter === chip.value
+                ? `${chip.color} ring-2 shadow-sm`
+                : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {chip.label}
+            <span className="ml-1.5 opacity-60">
+              ({allStock.filter(s => s.productType === chip.value).length})
+            </span>
+          </button>
+        ))}
+        {typeFilter && (
+          <button onClick={() => setTypeFilter(null)} className="text-xs text-gray-400 hover:text-gray-600 underline">
+            Quitar filtro
+          </button>
+        )}
       </div>
 
       {/* Stock Table */}
