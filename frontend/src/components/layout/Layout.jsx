@@ -1,11 +1,11 @@
-/**
+﻿/**
  * Layout Principal
  * �Qu� es? Estructura base de la aplicacion
  * �Para qu�? Header, sidebar y contenido principal
  */
 
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
   Bot,
@@ -17,6 +17,7 @@ import {
   Landmark,
   LogOut,
   Menu,
+  RefreshCw,
   Package,
   Palette,
   Settings,
@@ -38,6 +39,8 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout, branchId, tenantId } = useAuthStore();
+  const queryClient = useQueryClient();
+  const [syncing, setSyncing] = useState(false);
   const collapsed = useUiStore((state) => state.sidebarCollapsed);
   const setSidebarCollapsed = useUiStore((state) => state.setSidebarCollapsed);
   const companyName = useUiStore((state) => state.companyName);
@@ -78,6 +81,16 @@ const Layout = ({ children }) => {
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await queryClient.invalidateQueries();
+      await queryClient.refetchQueries({ type: 'active' });
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const menuItems = [
@@ -291,6 +304,13 @@ const Layout = ({ children }) => {
 
           <div className="flex items-center gap-4">
             <button
+              onClick={handleSync}
+              className="rounded-lg p-2 transition-colors hover:bg-gray-100 text-gray-500 hover:text-gray-800"
+              title="Sincronizar datos"
+            >
+              <RefreshCw className={`h-5 w-5 ${syncing ? 'animate-spin text-primary-600' : ''}`} />
+            </button>
+            <button
               onClick={() => navigate('/alerts')}
               className="relative rounded-lg p-2 transition-colors hover:bg-gray-100"
               title="Ver alertas"
@@ -320,6 +340,8 @@ const Layout = ({ children }) => {
 };
 
 export default Layout;
+
+
 
 
 
