@@ -1,7 +1,7 @@
-/**
+ï»¿/**
  * Pagina de Ventas
- * ¿Qué es? Vista principal del modulo de ventas
- * ¿Para qué? Gestionar mesas, pedidos y facturacion
+ * ï¿½Quï¿½ es? Vista principal del modulo de ventas
+ * ï¿½Para quï¿½? Gestionar mesas, pedidos y facturacion
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -41,7 +41,11 @@ const SalesPage = () => {
 
   const tables = tablesData?.data || [];
   const stockItems = stockData?.data || [];
-  const products = stockItems.filter((p) => Number(p.availableQuantity ?? p.quantity ?? 0) > 0);
+  const products = stockItems.filter(
+    (p) =>
+      p.productType !== 'supply' &&
+      (Number(p.availableQuantity ?? p.quantity ?? 0) > 0 || p.productType === 'service')
+  );
   const stockByProduct = useMemo(
     () =>
       stockItems.reduce((acc, item) => {
@@ -298,3 +302,4 @@ const SalesPage = () => {
 };
 
 export default SalesPage;
+
