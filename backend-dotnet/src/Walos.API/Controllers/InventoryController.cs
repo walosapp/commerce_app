@@ -254,46 +254,56 @@ public class InventoryController : ControllerBase
         using var stream = file.OpenReadStream();
         var (valid, errors) = _excel.ParseImport(stream, catMap, unitMap);
 
-        var created = 0;
+        var savedCount = 0;
+        var rowErrors  = new List<object>(errors.Select(e => (object)new { e.RowNumber, e.Name, e.Error }));
+
         foreach (var row in valid)
         {
-            var product = new Product
+            try
             {
-                CompanyId    = companyId,
-                Name         = row.Name,
-                Sku          = row.Sku,
-                Barcode      = row.Barcode,
-                Description  = row.Description,
-                CategoryId   = catMap[row.CategoryName],
-                UnitId       = unitMap[row.UnitName],
-                CostPrice    = row.CostPrice,
-                SalePrice    = row.SalePrice,
-                MarginPercentage = row.MarginPercentage,
-                MinStock     = row.MinStock,
-                MaxStock     = row.MaxStock,
-                ReorderPoint = row.ReorderPoint,
-                ProductType  = row.ProductType,
-                TrackStock   = row.TrackStock,
-                IsForSale    = row.IsForSale,
-                CreatedBy    = userId,
-            };
-            var created_product = await _repository.CreateProductAsync(product);
+                var product = new Product
+                {
+                    CompanyId        = companyId,
+                    Name             = row.Name,
+                    Sku              = row.Sku,
+                    Barcode          = row.Barcode,
+                    Description      = row.Description,
+                    CategoryId       = catMap[row.CategoryName],
+                    UnitId           = unitMap[row.UnitName],
+                    CostPrice        = row.CostPrice,
+                    SalePrice        = row.SalePrice,
+                    MarginPercentage = row.MarginPercentage,
+                    MinStock         = row.MinStock,
+                    MaxStock         = row.MaxStock,
+                    ReorderPoint     = row.ReorderPoint,
+                    ProductType      = row.ProductType,
+                    TrackStock       = row.TrackStock,
+                    IsForSale        = row.IsForSale,
+                    CreatedBy        = userId,
+                };
+                var savedProduct = await _repository.CreateProductAsync(product);
 
-            if (branchId.HasValue)
-                await _repository.CreateStockEntryAsync(branchId.Value, created_product.Id, 0, companyId);
+                if (branchId.HasValue)
+                    await _repository.CreateStockEntryAsync(branchId.Value, savedProduct.Id, 0, companyId);
 
-            created++;
+                savedCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error importando fila {Row} SKU={Sku}", row.RowNumber, row.Sku);
+                rowErrors.Add(new { row.RowNumber, row.Name, Error = $"Error al guardar: {ex.Message}" });
+            }
         }
 
         var result = new
         {
-            Created = created,
-            Errors  = errors.Select(e => new { e.RowNumber, e.Name, e.Error }),
+            Created = savedCount,
+            Errors  = rowErrors,
         };
 
-        var msg = errors.Count == 0
-            ? $"{created} producto(s) importados exitosamente"
-            : $"{created} importados, {errors.Count} con errores";
+        var msg = rowErrors.Count == 0
+            ? $"{savedCount} producto(s) guardados exitosamente"
+            : $"{savedCount} guardados, {rowErrors.Count} con errores";
 
         return Ok(ApiResponse<object>.Ok(result, msg));
     }

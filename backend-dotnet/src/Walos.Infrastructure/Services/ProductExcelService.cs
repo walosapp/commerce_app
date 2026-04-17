@@ -111,6 +111,7 @@ public class ProductExcelService
 
         var valid = new List<ProductImportRow>();
         var errors = new List<ProductImportRow>();
+        var seenSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         int lastRow = ws.LastRowUsed()?.RowNumber() ?? 1;
 
@@ -118,7 +119,6 @@ public class ProductExcelService
         {
             var row = ws.Row(r);
             string Get(int col) => row.Cell(col).GetString().Trim();
-            bool Flag(int col) => Get(col).ToLowerInvariant() is "si" or "yes" or "true" or "1";
             decimal Dec(int col, decimal def = 0) => decimal.TryParse(Get(col), out var v) ? v : def;
 
             var name = Get(1);
@@ -126,8 +126,11 @@ public class ProductExcelService
 
             var err = new List<string>();
 
-            var sku      = Get(2);
-            if (string.IsNullOrEmpty(sku)) err.Add("sku requerido");
+            var sku = Get(2);
+            if (string.IsNullOrEmpty(sku))
+                err.Add("sku requerido");
+            else if (!seenSkus.Add(sku))
+                err.Add($"sku '{sku}' duplicado en el archivo (ya aparece en una fila anterior)");
 
             var catName  = Get(5).ToLowerInvariant();
             if (!categoriesMap.TryGetValue(catName, out _)) err.Add($"categoria '{Get(5)}' no encontrada");

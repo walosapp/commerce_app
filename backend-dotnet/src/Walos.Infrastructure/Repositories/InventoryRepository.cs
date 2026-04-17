@@ -154,6 +154,23 @@ public class InventoryRepository : IInventoryRepository
                     @ShelfLifeDays, @ProductType, @TrackStock, @IsForSale,
                     @CreatedBy
                 )
+                ON CONFLICT (company_id, sku) DO UPDATE SET
+                    name           = EXCLUDED.name,
+                    barcode        = EXCLUDED.barcode,
+                    description    = EXCLUDED.description,
+                    category_id    = EXCLUDED.category_id,
+                    unit_id        = EXCLUDED.unit_id,
+                    cost_price     = EXCLUDED.cost_price,
+                    sale_price     = EXCLUDED.sale_price,
+                    min_stock      = EXCLUDED.min_stock,
+                    max_stock      = EXCLUDED.max_stock,
+                    reorder_point  = EXCLUDED.reorder_point,
+                    is_perishable  = EXCLUDED.is_perishable,
+                    shelf_life_days= EXCLUDED.shelf_life_days,
+                    product_type   = EXCLUDED.product_type,
+                    track_stock    = EXCLUDED.track_stock,
+                    is_for_sale    = EXCLUDED.is_for_sale,
+                    updated_at     = NOW()
                 RETURNING id AS Id, company_id AS CompanyId,
                        name AS Name, sku AS Sku,
                        barcode AS Barcode, description AS Description,
@@ -644,17 +661,30 @@ public class InventoryRepository : IInventoryRepository
             const string sql = @"
                 INSERT INTO inventory.stock (company_id, branch_id, product_id, quantity)
                 VALUES (@CompanyId, @BranchId, @ProductId, @Quantity)
+                ON CONFLICT (branch_id, product_id) DO NOTHING
                 RETURNING id AS Id, company_id AS CompanyId,
                        branch_id AS BranchId, product_id AS ProductId,
                        quantity AS Quantity";
 
-            return await connection.QuerySingleAsync<Stock>(sql, new
+            var stock = await connection.QuerySingleOrDefaultAsync<Stock>(sql, new
             {
                 CompanyId = companyId,
                 BranchId = branchId,
                 ProductId = productId,
                 Quantity = quantity
             });
+
+            if (stock is null)
+            {
+                stock = await connection.QuerySingleAsync<Stock>(
+                    @"SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId,
+                             product_id AS ProductId, quantity AS Quantity
+                      FROM inventory.stock
+                      WHERE branch_id = @BranchId AND product_id = @ProductId",
+                    new { BranchId = branchId, ProductId = productId });
+            }
+
+            return stock;
         }
         catch (Exception ex)
         {
