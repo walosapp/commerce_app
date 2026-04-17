@@ -1,7 +1,7 @@
-/**
+ï»¿/**
  * Pagina de Configuracion
- * ¿Qué es? Vista principal del modulo de configuracion
- * ¿Para qué? Personalizar branding, tema y reglas operativas de la aplicacion
+ * ï¿½Quï¿½ es? Vista principal del modulo de configuracion
+ * ï¿½Para quï¿½? Personalizar branding, tema y reglas operativas de la aplicacion
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -15,6 +15,7 @@ import useUiStore from '../../stores/uiStore';
 import BrandingForm from './components/BrandingForm';
 import ThemeSelector from './components/ThemeSelector';
 import DiscountSettings from './components/DiscountSettings';
+import CatalogSettings from './components/CatalogSettings';
 import SettingsSectionNav from './components/SettingsSectionNav';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -22,6 +23,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const getSectionFromPath = (pathname) => {
   if (pathname.includes('/settings/themes')) return 'themes';
   if (pathname.includes('/settings/discounts')) return 'discounts';
+  if (pathname.includes('/settings/catalog')) return 'catalog';
   return 'branding';
 };
 
@@ -68,6 +70,8 @@ const SettingsPage = () => {
   useEffect(() => {
     if (location.pathname === '/settings') {
       navigate('/settings/branding', { replace: true });
+    } else if (location.pathname === '/settings/catalog') {
+      // allow
     }
   }, [location.pathname, navigate]);
 
@@ -170,7 +174,10 @@ const SettingsPage = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (activeSection === 'discounts') {
+      if (activeSection === 'catalog') {
+        toast.success('Los cambios en catalogo se guardan automaticamente');
+        return;
+      } else if (activeSection === 'discounts') {
         await handleSaveOperations();
       } else {
         await handleSaveBranding();
@@ -234,6 +241,10 @@ const SettingsPage = () => {
           <ThemeSelector selectedTheme={form.themePreference} onSelect={handleThemeSelect} />
         )}
 
+        {activeSection === 'catalog' && (
+          <CatalogSettings />
+        )}
+
         {activeSection === 'discounts' && (
           <DiscountSettings values={operationsForm} onChange={handleOperationsChange} />
         )}
@@ -243,3 +254,4 @@ const SettingsPage = () => {
 };
 
 export default SettingsPage;
+

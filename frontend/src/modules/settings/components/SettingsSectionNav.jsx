@@ -1,10 +1,4 @@
-/**
- * Navegacion de Configuracion
- * ¿Qué es? Navegacion interna del modulo de configuracion
- * ¿Para qué? Moverse entre branding, temas y descuentos con consistencia visual
- */
-
-import { Palette, Store, Percent } from 'lucide-react';
+ï»¿import { Palette, Store, Percent, LayoutList } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const sections = [
@@ -29,11 +23,18 @@ const sections = [
     path: '/settings/discounts',
     icon: Percent,
   },
+  {
+    key: 'catalog',
+    label: 'Catalogo',
+    description: 'Categorias y unidades de inventario',
+    path: '/settings/catalog',
+    icon: LayoutList,
+  },
 ];
 
 const SettingsSectionNav = ({ activeSection }) => {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {sections.map((section) => {
         const Icon = section.icon;
         const active = activeSection === section.key;
@@ -65,4 +66,3 @@ const SettingsSectionNav = ({ activeSection }) => {
 };
 
 export default SettingsSectionNav;
-
