@@ -277,10 +277,10 @@ public class InventoryController : ControllerBase
                 IsForSale    = row.IsForSale,
                 CreatedBy    = userId,
             };
-            await _repository.CreateProductAsync(product);
+            var created_product = await _repository.CreateProductAsync(product);
 
             if (branchId.HasValue)
-                await _repository.CreateStockEntryAsync(branchId.Value, product.Id, 0, companyId);
+                await _repository.CreateStockEntryAsync(branchId.Value, created_product.Id, 0, companyId);
 
             created++;
         }
