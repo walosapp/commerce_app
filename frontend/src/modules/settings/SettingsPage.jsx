@@ -192,7 +192,7 @@ const SettingsPage = () => {
 
   if (settingsLoading || operationsLoading) {
     return (
-      <div className="flex h-[calc(100vh-7rem)] items-center justify-center">
+      <div className="flex -m-4 h-[calc(100%+2rem)] items-center justify-center">
         <div className="card flex items-center gap-3 px-6 py-5">
           <Loader2 className="h-5 w-5 animate-spin text-primary-600" />
           <span className="text-sm font-medium text-gray-700">Cargando configuracion...</span>
@@ -202,7 +202,7 @@ const SettingsPage = () => {
   }
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] flex-col overflow-hidden gap-6">
+    <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden gap-6">
       <div className="flex flex-shrink-0 flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Configuracion</h1>

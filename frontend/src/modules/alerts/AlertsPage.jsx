@@ -154,7 +154,7 @@ const AlertsPage = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-7rem)] overflow-hidden">
+    <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden">
       <div className="mb-4 flex flex-shrink-0 items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Alertas</h1>

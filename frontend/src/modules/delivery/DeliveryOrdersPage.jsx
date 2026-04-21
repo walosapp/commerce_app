@@ -70,7 +70,7 @@ const DeliveryOrdersPage = () => {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden">
       <div className="px-4 md:px-6 py-4 border-b bg-white flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">

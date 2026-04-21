@@ -109,7 +109,7 @@ const SuppliersPage = () => {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden">
 
       {/* Top bar */}
       <div className="px-4 md:px-6 py-4 border-b bg-white flex items-center justify-between gap-3 flex-wrap">
