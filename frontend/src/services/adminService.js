@@ -6,6 +6,8 @@ const adminService = {
   createTenant: (data) => api.post('/admin/tenants', data).then(r => r.data),
   setTenantStatus: (id, isActive) =>
     api.patch(`/admin/tenants/${id}/status`, { isActive }).then(r => r.data),
+  updateTenant: (id, data) =>
+    api.put(`/admin/tenants/${id}`, data).then(r => r.data),
 };
 
 export default adminService;

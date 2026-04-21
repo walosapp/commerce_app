@@ -18,6 +18,19 @@ public class TenantResponse
     public DateTime CreatedAt { get; set; }
 }
 
+public class UpdateTenantRequest
+{
+    public string? Name { get; set; }
+    public string? LegalName { get; set; }
+    public string? TaxId { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+    public string? City { get; set; }
+    public string? Country { get; set; }
+    public string? Currency { get; set; }
+    public string? Language { get; set; }
+}
+
 public class CreateTenantResult
 {
     public TenantResponse Company { get; set; } = new();

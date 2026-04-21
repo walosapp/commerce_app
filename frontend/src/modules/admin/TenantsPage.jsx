@@ -5,11 +5,13 @@ import toast from 'react-hot-toast';
 import adminService from '../../services/adminService';
 import TenantCard from './components/TenantCard';
 import CreateTenantModal from './components/CreateTenantModal';
+import EditTenantModal from './components/EditTenantModal';
 
 const TenantsPage = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingTenant, setEditingTenant] = useState(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['admin-tenants'],
@@ -29,6 +31,12 @@ const TenantsPage = () => {
   const handleCreate = async (formData) => {
     await adminService.createTenant(formData);
     toast.success(`Comercio "${formData.companyName}" creado exitosamente`);
+    queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
+  };
+
+  const handleUpdate = async (id, formData) => {
+    await adminService.updateTenant(id, formData);
+    toast.success('Comercio actualizado');
     queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
   };
 
@@ -109,6 +117,7 @@ const TenantsPage = () => {
               key={tenant.id}
               tenant={tenant}
               onToggleStatus={handleToggleStatus}
+              onEdit={setEditingTenant}
             />
           ))}
         </div>
@@ -118,6 +127,12 @@ const TenantsPage = () => {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onCreated={handleCreate}
+      />
+
+      <EditTenantModal
+        tenant={editingTenant}
+        onClose={() => setEditingTenant(null)}
+        onSaved={handleUpdate}
       />
     </div>
   );

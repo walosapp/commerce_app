@@ -52,4 +52,13 @@ public class AdminService : IAdminService
 
         return await _adminRepo.SetTenantActiveAsync(companyId, isActive);
     }
+
+    public async Task<TenantResponse?> UpdateTenantAsync(long companyId, UpdateTenantRequest request)
+    {
+        var exists = await _adminRepo.GetTenantByIdAsync(companyId);
+        if (exists is null)
+            throw new BusinessException("Comercio no encontrado");
+
+        return await _adminRepo.UpdateTenantAsync(companyId, request);
+    }
 }

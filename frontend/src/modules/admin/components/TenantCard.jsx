@@ -1,6 +1,6 @@
-import { Building2, Users, GitBranch, Calendar, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Building2, Users, GitBranch, Calendar, ToggleLeft, ToggleRight, Pencil } from 'lucide-react';
 
-const TenantCard = ({ tenant, onToggleStatus }) => {
+const TenantCard = ({ tenant, onToggleStatus, onEdit }) => {
   const createdAt = tenant.createdAt
     ? new Date(tenant.createdAt).toLocaleDateString('es-CO')
     : '—';
@@ -44,18 +44,27 @@ const TenantCard = ({ tenant, onToggleStatus }) => {
         </div>
       </div>
 
-      <div className="pt-1 border-t flex items-center justify-between">
+      <div className="pt-1 border-t flex items-center justify-between gap-2">
         <span className="text-xs text-gray-400">{tenant.currency} · {tenant.country}</span>
-        <button
-          onClick={() => onToggleStatus(tenant)}
-          title={tenant.isActive ? 'Desactivar comercio' : 'Activar comercio'}
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
-        >
-          {tenant.isActive
-            ? <><ToggleRight size={18} className="text-green-500" /> Desactivar</>
-            : <><ToggleLeft size={18} className="text-gray-400" /> Activar</>
-          }
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => onEdit(tenant)}
+            title="Editar comercio"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
+          >
+            <Pencil size={14} /> Editar
+          </button>
+          <button
+            onClick={() => onToggleStatus(tenant)}
+            title={tenant.isActive ? 'Desactivar comercio' : 'Activar comercio'}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
+          >
+            {tenant.isActive
+              ? <><ToggleRight size={18} className="text-green-500" /> Desactivar</>
+              : <><ToggleLeft size={18} className="text-gray-400" /> Activar</>
+            }
+          </button>
+        </div>
       </div>
     </div>
   );

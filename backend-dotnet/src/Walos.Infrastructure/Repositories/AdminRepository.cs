@@ -269,4 +269,38 @@ public class AdminRepository : IAdminRepository
         var rows = await conn.ExecuteAsync(sql, new { CompanyId = companyId, IsActive = isActive });
         return rows > 0;
     }
+
+    public async Task<TenantResponse?> UpdateTenantAsync(long companyId, UpdateTenantRequest request)
+    {
+        using var conn = await _db.CreateConnectionAsync();
+        const string sql = @"
+            UPDATE core.companies SET
+                name        = COALESCE(@Name,       name),
+                legal_name  = COALESCE(@LegalName,  legal_name),
+                tax_id      = COALESCE(@TaxId,      tax_id),
+                email       = COALESCE(@Email,      email),
+                phone       = COALESCE(@Phone,      phone),
+                city        = COALESCE(@City,       city),
+                country     = COALESCE(@Country,    country),
+                currency    = COALESCE(@Currency,   currency),
+                language    = COALESCE(@Language,   language),
+                updated_at  = NOW()
+            WHERE id = @CompanyId AND deleted_at IS NULL";
+
+        await conn.ExecuteAsync(sql, new
+        {
+            CompanyId  = companyId,
+            request.Name,
+            request.LegalName,
+            request.TaxId,
+            request.Email,
+            request.Phone,
+            request.City,
+            request.Country,
+            request.Currency,
+            request.Language
+        });
+
+        return await GetTenantByIdAsync(companyId);
+    }
 }

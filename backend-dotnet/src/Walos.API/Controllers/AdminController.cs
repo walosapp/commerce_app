@@ -44,6 +44,16 @@ public class AdminController : ControllerBase
             ApiResponse<CreateTenantResult>.Ok(result, "Comercio creado exitosamente"));
     }
 
+    [HttpPut("tenants/{id:long}")]
+    public async Task<IActionResult> UpdateTenant(long id, [FromBody] UpdateTenantRequest request)
+    {
+        var updated = await _adminService.UpdateTenantAsync(id, request);
+        if (updated is null)
+            return NotFound(ApiResponse.Fail("Comercio no encontrado"));
+
+        return Ok(ApiResponse<TenantResponse>.Ok(updated, "Comercio actualizado"));
+    }
+
     [HttpPatch("tenants/{id:long}/status")]
     public async Task<IActionResult> SetTenantStatus(long id, [FromBody] SetTenantStatusRequest request)
     {

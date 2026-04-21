@@ -10,4 +10,5 @@ public interface IAdminRepository
     Task<IEnumerable<TenantResponse>> GetTenantsAsync();
     Task<TenantResponse?> GetTenantByIdAsync(long companyId);
     Task<bool> SetTenantActiveAsync(long companyId, bool isActive);
+    Task<TenantResponse?> UpdateTenantAsync(long companyId, UpdateTenantRequest request);
 }
