@@ -35,6 +35,7 @@ const CreateDeliveryOrderPanel = ({ isOpen, onClose, onCreated }) => {
   const [form, setForm]           = useState(emptyForm());
   const [items, setItems]         = useState([]);
   const [productSearch, setProductSearch] = useState('');
+  const [showOutOfStock, setShowOutOfStock] = useState(false);
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState('');
 
@@ -44,13 +45,23 @@ const CreateDeliveryOrderPanel = ({ isOpen, onClose, onCreated }) => {
     enabled: isOpen && !!branchId,
   });
 
-  // Only show products available for sale (not supplies)
-  const products = (stockData?.data ?? [])
-    .filter(p =>
-      p.productType !== 'supply' &&
-      (!productSearch.trim() || p.productName?.toLowerCase().includes(productSearch.toLowerCase()))
-    )
-    .sort((a, b) => (a.productName ?? '').localeCompare(b.productName ?? ''));
+  const allSellable = (stockData?.data ?? []).filter(p => p.productType !== 'supply');
+
+  const products = allSellable
+    .filter(p => {
+      const hasStock = !p.trackStock || (p.availableQuantity ?? p.quantity ?? 0) > 0;
+      if (!showOutOfStock && !hasStock) return false;
+      return !productSearch.trim() || p.productName?.toLowerCase().includes(productSearch.toLowerCase());
+    })
+    .sort((a, b) => {
+      const aStock = !a.trackStock || (a.availableQuantity ?? a.quantity ?? 0) > 0 ? 0 : 1;
+      const bStock = !b.trackStock || (b.availableQuantity ?? b.quantity ?? 0) > 0 ? 0 : 1;
+      return aStock - bStock || (a.productName ?? '').localeCompare(b.productName ?? '');
+    });
+
+  const outOfStockCount = allSellable.filter(p =>
+    p.trackStock && (p.availableQuantity ?? p.quantity ?? 0) <= 0
+  ).length;
 
   const addItem = (product) => {
     setItems(prev => {
@@ -132,8 +143,23 @@ const CreateDeliveryOrderPanel = ({ isOpen, onClose, onCreated }) => {
 
           {/* LEFT — product catalog */}
           <div className="w-72 shrink-0 border-r flex flex-col bg-gray-50">
-            <div className="p-3 border-b bg-white">
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Menú / Productos</p>
+            <div className="p-3 border-b bg-white space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-500 uppercase">Menú / Productos</p>
+                {outOfStockCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowOutOfStock(v => !v)}
+                    className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                      showOutOfStock
+                        ? 'bg-red-100 text-red-700 border-red-200'
+                        : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-red-50 hover:text-red-600'
+                    }`}
+                  >
+                    {showOutOfStock ? `Ocultar sin stock (${outOfStockCount})` : `Ver sin stock (${outOfStockCount})`}
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
@@ -153,13 +179,16 @@ const CreateDeliveryOrderPanel = ({ isOpen, onClose, onCreated }) => {
               ) : products.length === 0 ? (
                 <div className="text-center py-10 text-gray-400 text-sm">Sin resultados</div>
               ) : products.map(p => {
-                const inOrder = items.find(i => i.productId === p.productId);
+                const inOrder   = items.find(i => i.productId === p.productId);
+                const available = p.availableQuantity ?? p.quantity ?? 0;
+                const hasStock  = !p.trackStock || available > 0;
                 return (
                   <button
                     key={p.productId}
                     type="button"
                     onClick={() => addItem(p)}
-                    className="w-full text-left px-3 py-2.5 border-b border-gray-100 transition-colors flex flex-col gap-0.5 hover:bg-orange-50 cursor-pointer"
+                    className={`w-full text-left px-3 py-2.5 border-b border-gray-100 transition-colors flex flex-col gap-0.5 cursor-pointer
+                      ${hasStock ? 'hover:bg-orange-50' : 'hover:bg-red-50 opacity-70'}`}
                   >
                     <div className="flex items-start justify-between gap-1">
                       <span className="text-sm font-medium text-gray-800 leading-tight line-clamp-2 flex-1">{p.productName}</span>
@@ -169,7 +198,7 @@ const CreateDeliveryOrderPanel = ({ isOpen, onClose, onCreated }) => {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       {p.productType && (
                         <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${TYPE_CLS[p.productType] ?? 'bg-gray-100 text-gray-600'}`}>
                           {TYPE_LABEL[p.productType] ?? p.productType}
@@ -178,6 +207,11 @@ const CreateDeliveryOrderPanel = ({ isOpen, onClose, onCreated }) => {
                       <span className="text-xs font-semibold text-gray-600">
                         ${Number(p.salePrice ?? 0).toLocaleString('es-CO')}
                       </span>
+                      {p.trackStock && (
+                        <span className={`text-xs ml-auto ${hasStock ? 'text-green-600' : 'text-red-500 font-medium'}`}>
+                          {hasStock ? `Stock: ${available}` : 'Sin stock'}
+                        </span>
+                      )}
                     </div>
                   </button>
                 );
