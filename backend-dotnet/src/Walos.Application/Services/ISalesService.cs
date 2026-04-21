@@ -1,5 +1,6 @@
 using Walos.Application.DTOs.Sales;
 using Walos.Domain.Entities;
+using Walos.Domain.Interfaces;
 
 namespace Walos.Application.Services;
 
@@ -34,4 +35,6 @@ public class InvoiceResult
     public int SplitCount { get; set; }
     public List<OrderItem> Items { get; set; } = new();
     public DateTime InvoicedAt { get; set; }
+    public long? CreditId { get; set; }
+    public decimal? CreditAmount { get; set; }
 }

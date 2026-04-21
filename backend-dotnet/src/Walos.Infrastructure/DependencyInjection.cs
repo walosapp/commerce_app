@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<ICompanyRepository, CompanyRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
         services.AddScoped<ISalesRepository, SalesRepository>();
+        services.AddScoped<ICreditRepository, CreditRepository>();
         services.AddScoped<IFinanceRepository, FinanceRepository>();
 
         services.AddHttpClient<IAiService, OpenAiService>(client =>

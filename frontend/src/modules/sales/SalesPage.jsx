@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusCircle, ShoppingCart, LayoutGrid } from 'lucide-react';
+import { PlusCircle, ShoppingCart, LayoutGrid, CreditCard } from 'lucide-react';
 import toast from 'react-hot-toast';
 import salesService from '../../services/salesService';
 import inventoryService from '../../services/inventoryService';
@@ -14,6 +14,7 @@ import useAuthStore from '../../stores/authStore';
 import AddTablePanel from './components/AddTablePanel';
 import TableCard from './components/TableCard';
 import InvoicePanel from './components/InvoicePanel';
+import CreditsPanel from './components/CreditsPanel';
 
 const SalesPage = () => {
   const { branchId } = useAuthStore();
@@ -25,6 +26,7 @@ const SalesPage = () => {
   const [invoiceTarget, setInvoiceTarget] = useState(null);
   const [addProductsTarget, setAddProductsTarget] = useState(null);
   const [arrangeKey, setArrangeKey] = useState(0);
+  const [showCredits, setShowCredits] = useState(false);
 
   const { data: tablesData, isLoading: tablesLoading } = useQuery({
     queryKey: ['sales-tables', branchId],
@@ -214,6 +216,13 @@ const SalesPage = () => {
             </button>
           )}
           <button
+            onClick={() => setShowCredits(true)}
+            className="flex items-center gap-2 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2.5 text-sm font-medium text-orange-700 hover:bg-orange-100 transition-colors"
+          >
+            <CreditCard className="h-4 w-4" />
+            Créditos
+          </button>
+          <button
             onClick={() => setShowAddPanel(true)}
             className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 transition-colors shadow-sm"
           >
@@ -307,6 +316,11 @@ const SalesPage = () => {
         onClose={() => setInvoiceTarget(null)}
         onConfirm={handleInvoice}
         table={invoiceTarget}
+      />
+
+      <CreditsPanel
+        isOpen={showCredits}
+        onClose={() => setShowCredits(false)}
       />
     </div>
   );

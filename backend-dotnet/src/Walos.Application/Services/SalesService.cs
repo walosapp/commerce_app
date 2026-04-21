@@ -12,6 +12,7 @@ public class SalesService : ISalesService
     private readonly IInventoryRepository _inventoryRepo;
     private readonly ICompanyRepository _companyRepo;
     private readonly IRecipeRepository _recipeRepo;
+    private readonly ICreditRepository _creditRepo;
     private readonly ILogger<SalesService> _logger;
 
     public SalesService(
@@ -19,12 +20,14 @@ public class SalesService : ISalesService
         IInventoryRepository inventoryRepo,
         ICompanyRepository companyRepo,
         IRecipeRepository recipeRepo,
+        ICreditRepository creditRepo,
         ILogger<SalesService> logger)
     {
         _salesRepo = salesRepo;
         _inventoryRepo = inventoryRepo;
         _companyRepo = companyRepo;
         _recipeRepo = recipeRepo;
+        _creditRepo = creditRepo;
         _logger = logger;
     }
 
@@ -215,19 +218,55 @@ public class SalesService : ISalesService
             }
         }
 
+        // Si hay credito, el monto realmente pagado ahora es CreditAmountPaid
+        var actualPaid = (request.HasCredit && request.CreditAmountPaid > 0 && request.CreditAmountPaid < finalTotalPaid)
+            ? Math.Round(request.CreditAmountPaid, 2)
+            : finalTotalPaid;
+
         await _salesRepo.UpdateOrderInvoiceSummaryAsync(
             order.Id,
             companyId,
             discountType == "none" ? null : discountType,
             discountType == "none" ? 0 : discountValue,
             discountAmount,
-            finalTotalPaid,
+            actualPaid,
             Math.Max(1, request.SplitCount));
         await _salesRepo.UpdateOrderStatusAsync(order.Id, companyId, "completed");
         await _salesRepo.UpdateTableStatusAsync(tableId, companyId, "invoiced");
 
+        // Crear registro de credito si aplica
+        long? creditId = null;
+        decimal? creditAmount = null;
+        if (request.HasCredit && actualPaid < finalTotalPaid)
+        {
+            var remaining = Math.Round(finalTotalPaid - actualPaid, 2);
+            var customerName = !string.IsNullOrWhiteSpace(request.CreditCustomerName)
+                ? request.CreditCustomerName.Trim()
+                : table.Name ?? $"Mesa {table.TableNumber}";
+
+            var credit = await _creditRepo.CreateCreditAsync(new Domain.Entities.Credit
+            {
+                CompanyId = companyId,
+                BranchId = branchId,
+                OrderId = order.Id,
+                CustomerName = customerName,
+                OrderNumber = order.OrderNumber,
+                OriginalTotal = finalTotalPaid,
+                AmountPaid = actualPaid,
+                CreditAmount = remaining,
+                Status = "pending",
+                Notes = request.CreditNotes,
+                CreatedBy = userId
+            });
+
+            creditId = credit.Id;
+            creditAmount = remaining;
+            _logger.LogInformation("Credito {CreditId} creado por {Amount} para '{Customer}'",
+                credit.Id, remaining, customerName);
+        }
+
         _logger.LogInformation("Mesa {TableNumber} facturada. Order: {OrderNumber}, Total: {Total}",
-            table.TableNumber, order.OrderNumber, finalTotalPaid);
+            table.TableNumber, order.OrderNumber, actualPaid);
 
         return new InvoiceResult
         {
@@ -237,11 +276,13 @@ public class SalesService : ISalesService
             DiscountType = discountType,
             DiscountValue = discountType == "none" ? 0 : discountValue,
             DiscountAmount = discountAmount,
-            Total = finalTotalPaid,
-            FinalTotalPaid = finalTotalPaid,
+            Total = actualPaid,
+            FinalTotalPaid = actualPaid,
             SplitCount = Math.Max(1, request.SplitCount),
             Items = items,
-            InvoicedAt = DateTime.UtcNow
+            InvoicedAt = DateTime.UtcNow,
+            CreditId = creditId,
+            CreditAmount = creditAmount
         };
     }
 

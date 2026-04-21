@@ -14,6 +14,7 @@ public static class DependencyInjection
         services.AddScoped<IDeliveryService, DeliveryService>();
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<ISalesService, SalesService>();
+        services.AddScoped<ICreditService, CreditService>();
         services.AddScoped<IFinanceService, FinanceService>();
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddValidatorsFromAssemblyContaining<CreateProductValidator>();
