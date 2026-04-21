@@ -64,6 +64,7 @@ public class InventoryController : ControllerBase
     public async Task<IActionResult> GetProductById(long id)
     {
         var companyId = _tenant.CompanyId;
+        var userId = _tenant.UserId;
         var product = await _repository.GetProductByIdAsync(id, companyId);
 
         if (product is null)
