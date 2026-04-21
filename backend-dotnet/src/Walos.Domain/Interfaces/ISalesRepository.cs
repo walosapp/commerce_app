@@ -20,4 +20,5 @@ public interface ISalesRepository
     Task AddOrderItemAsync(OrderItem item);
     Task RecalculateOrderTotalAsync(long orderId, long companyId);
     Task UpdateOrderInvoiceSummaryAsync(long orderId, long companyId, string? discountType, decimal discountValue, decimal discountAmount, decimal finalTotalPaid, int splitReferenceCount);
+    Task RenameTableAsync(long tableId, long companyId, string name);
 }

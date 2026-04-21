@@ -341,6 +341,23 @@ public class SalesService : ISalesService
         _logger.LogInformation("Agregados {Count} productos a Mesa {TableNumber}", items.Count, table.TableNumber);
     }
 
+    public async Task RenameTableAsync(long companyId, long tableId, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ValidationException("El nombre no puede estar vacío");
+        if (name.Length > 100)
+            throw new ValidationException("El nombre no puede superar 100 caracteres");
+
+        var table = await _salesRepo.GetTableByIdAsync(tableId, companyId)
+            ?? throw new NotFoundException("Mesa no encontrada");
+
+        if (table.Status != "open")
+            throw new BusinessException("Solo se puede renombrar una mesa abierta");
+
+        await _salesRepo.RenameTableAsync(tableId, companyId, name.Trim());
+        _logger.LogInformation("Mesa {TableId} renombrada a '{Name}'", tableId, name.Trim());
+    }
+
     private async Task ValidateItemAvailabilityAsync(
         long companyId,
         long branchId,

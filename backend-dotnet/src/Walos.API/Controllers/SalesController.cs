@@ -79,4 +79,13 @@ public class SalesController : ControllerBase
         await _salesService.AddItemsToTableAsync(_tenant.CompanyId, id, items);
         return Ok(ApiResponse.Ok("Productos agregados exitosamente"));
     }
+
+    [HttpPatch("tables/{id:long}/name")]
+    public async Task<IActionResult> RenameTable(long id, [FromBody] RenameTableRequest request)
+    {
+        await _salesService.RenameTableAsync(_tenant.CompanyId, id, request.Name ?? string.Empty);
+        return Ok(ApiResponse.Ok("Mesa renombrada"));
+    }
 }
+
+public record RenameTableRequest(string? Name);

@@ -435,6 +435,24 @@ public class SalesRepository : ISalesRepository
             throw;
         }
     }
+    public async Task RenameTableAsync(long tableId, long companyId, string name)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+            const string sql = @"
+                UPDATE sales.tables
+                SET name = @Name, updated_at = NOW()
+                WHERE id = @TableId AND company_id = @CompanyId AND deleted_at IS NULL";
+            await connection.ExecuteAsync(sql, new { TableId = tableId, CompanyId = companyId, Name = name });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error renombrando mesa {TableId}", tableId);
+            throw;
+        }
+    }
+
     public async Task UpdateOrderInvoiceSummaryAsync(long orderId, long companyId, string? discountType, decimal discountValue, decimal discountAmount, decimal finalTotalPaid, int splitReferenceCount)
     {
         try

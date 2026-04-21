@@ -1,7 +1,7 @@
-/**
+ï»¿/**
  * Servicio de Ventas
- * ¿Qué es? Funciones para comunicarse con la API de ventas
- * ¿Para qué? Abstraer llamadas HTTP del modulo de ventas
+ * Â¿QuÃ© es? Funciones para comunicarse con la API de ventas
+ * Â¿Para quÃ©? Abstraer llamadas HTTP del modulo de ventas
  */
 
 import api from '../config/api';
@@ -18,22 +18,27 @@ export const salesService = {
   },
 
   invoiceTable: async (tableId, payload = {}) => {
-    const response = await api.post(`/sales/tables/${tableId}/invoice`, payload);
+    const response = await api.post(/sales/tables//invoice, payload);
     return response.data;
   },
 
   cancelTable: async (tableId) => {
-    const response = await api.delete(`/sales/tables/${tableId}`);
+    const response = await api.delete(/sales/tables/);
     return response.data;
   },
 
   updateItemQuantity: async (itemId, quantity, orderId) => {
-    const response = await api.patch(`/sales/items/${itemId}/quantity`, { quantity, orderId });
+    const response = await api.patch(/sales/items//quantity, { quantity, orderId });
     return response.data;
   },
 
   addItemsToTable: async (tableId, items) => {
-    const response = await api.post(`/sales/tables/${tableId}/items`, items);
+    const response = await api.post(/sales/tables//items, items);
+    return response.data;
+  },
+
+  renameTable: async (tableId, name) => {
+    const response = await api.patch(/sales/tables//name, { name });
     return response.data;
   },
 };

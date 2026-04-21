@@ -11,6 +11,7 @@ public interface ISalesService
     Task CancelTableAsync(long companyId, long tableId);
     Task UpdateItemQuantityAsync(long companyId, long branchId, long itemId, UpdateItemQuantityRequest request);
     Task AddItemsToTableAsync(long companyId, long tableId, List<CreateTableItemDto> items);
+    Task RenameTableAsync(long companyId, long tableId, string name);
 }
 
 public class CreateTableResult

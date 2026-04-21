@@ -184,6 +184,15 @@ const SalesPage = () => {
     refetchTables();
   };
 
+  const handleRenameTable = async (table, name) => {
+    try {
+      await salesService.renameTable(table.id, name);
+      refetchTables();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'No se pudo renombrar la mesa');
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-7rem)] overflow-hidden">
       <div className="mb-4 flex flex-shrink-0 items-center justify-between">
@@ -249,6 +258,7 @@ const SalesPage = () => {
                   onCancel={handleCancel}
                   onUpdateItemQty={handleUpdateItemQty}
                   onAddProducts={handleAddProducts}
+                  onRename={handleRenameTable}
                   stockByProduct={stockByProduct}
                 />
               ))}
@@ -265,6 +275,7 @@ const SalesPage = () => {
                   onCancel={handleCancel}
                   onUpdateItemQty={handleUpdateItemQty}
                   onAddProducts={handleAddProducts}
+                  onRename={handleRenameTable}
                   stockByProduct={stockByProduct}
                 />
               ))}

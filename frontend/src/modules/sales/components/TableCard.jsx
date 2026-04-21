@@ -8,6 +8,61 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Clock, Receipt, X, GripVertical, Plus, Minus, PlusCircle } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatCurrency';
 
+const InlineTableName = ({ table, onRename }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState('');
+  const inputRef = useRef(null);
+  const defaultName = table.name && table.name !== '' ? table.name : `Mesa ${table.tableNumber}`;
+
+  const startEdit = (e) => {
+    e.stopPropagation();
+    setDraft(defaultName);
+    setEditing(true);
+  };
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    const val = draft.trim();
+    if (val && val !== defaultName) onRename?.(table, val);
+    setEditing(false);
+  };
+
+  const cancel = () => setEditing(false);
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') cancel(); }}
+        onClick={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
+        maxLength={100}
+        className="font-bold text-gray-900 bg-yellow-50 border border-yellow-300 rounded px-1.5 py-0.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+      />
+    );
+  }
+
+  return (
+    <span
+      title="Haz clic para renombrar"
+      onClick={startEdit}
+      onMouseDown={e => e.stopPropagation()}
+      className="font-bold text-gray-900 cursor-text hover:bg-yellow-50 hover:text-yellow-700 rounded px-1 py-0.5 transition-colors select-none"
+    >
+      {defaultName}
+    </span>
+  );
+};
+
 const CARD_W = 326;
 const CARD_H = 320;
 const GAP = 16;
@@ -31,7 +86,7 @@ const useIsMobile = () => {
   return mobile;
 };
 
-const TableCard = ({ table, tableIndex = 0, onInvoice, onCancel, onUpdateItemQty, onAddProducts, containerRef, arrangeKey = 0, stockByProduct = {} }) => {
+const TableCard = ({ table, tableIndex = 0, onInvoice, onCancel, onUpdateItemQty, onAddProducts, onRename, containerRef, arrangeKey = 0, stockByProduct = {} }) => {
   const isMobile = useIsMobile();
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
@@ -187,7 +242,7 @@ const TableCard = ({ table, tableIndex = 0, onInvoice, onCancel, onUpdateItemQty
     return (
       <div className="w-full rounded-xl bg-white border border-gray-200 shadow-sm flex flex-col">
         <div className="flex items-center justify-between border-b px-4 py-3 bg-gray-50 rounded-t-xl flex-shrink-0">
-          <h3 className="font-bold text-gray-900">Mesa {table.tableNumber}</h3>
+          <InlineTableName table={table} onRename={onRename} />
           <div className="flex items-center gap-1.5 text-xs text-gray-500">
             <Clock className="h-3 w-3" />
             {timeStr}
@@ -216,7 +271,7 @@ const TableCard = ({ table, tableIndex = 0, onInvoice, onCancel, onUpdateItemQty
       <div className="flex items-center justify-between border-b px-4 py-3 bg-gray-50 rounded-t-xl flex-shrink-0">
         <div className="flex items-center gap-2">
           <GripVertical className="h-4 w-4 text-gray-400" />
-          <h3 className="font-bold text-gray-900">Mesa {table.tableNumber}</h3>
+          <InlineTableName table={table} onRename={onRename} />
         </div>
         <div className="flex items-center gap-1.5 text-xs text-gray-500">
           <Clock className="h-3 w-3" />
