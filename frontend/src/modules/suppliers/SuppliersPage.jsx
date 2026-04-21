@@ -12,6 +12,7 @@ import SupplierFormModal from './components/SupplierFormModal';
 import SupplierDetailPanel from './components/SupplierDetailPanel';
 import PurchaseOrderModal from './components/PurchaseOrderModal';
 import ReceiveOrderModal from './components/ReceiveOrderModal';
+import PurchaseOrderDetailPanel from './components/PurchaseOrderDetailPanel';
 
 const STATUS_BADGE = {
   pending:   { label: 'Pendiente',  cls: 'bg-yellow-100 text-yellow-700', icon: Clock },
@@ -31,6 +32,7 @@ const SuppliersPage = () => {
   const [activeTab, setActiveTab] = useState('suppliers');
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [receiveOrder, setReceiveOrder] = useState(null);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
 
   // ── Suppliers query ──────────────────────────────────────────────────────────
   const { data: suppliersData, isLoading, refetch } = useQuery({
@@ -104,6 +106,23 @@ const SuppliersPage = () => {
       setReceiveOrder(res.data);
     } catch {
       toast.error('Error cargando pedido');
+    }
+  };
+
+  const handleOpenReceiveFromPanel = (order) => {
+    setReceiveOrder(order);
+    setSelectedOrderId(null);
+  };
+
+  const handleCancelFromPanel = async (id) => {
+    if (!window.confirm('¿Cancelar este pedido?')) return;
+    try {
+      await purchaseOrderService.cancel(id);
+      toast.success('Pedido cancelado');
+      setSelectedOrderId(null);
+      refetchOrders();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'No se pudo cancelar');
     }
   };
 
@@ -328,7 +347,11 @@ const SuppliersPage = () => {
                       const badge = STATUS_BADGE[o.status] ?? STATUS_BADGE.pending;
                       const BadgeIcon = badge.icon;
                       return (
-                        <tr key={o.id} className="hover:bg-gray-50 transition-colors">
+                        <tr
+                          key={o.id}
+                          onClick={() => setSelectedOrderId(o.id)}
+                          className={`hover:bg-primary-50 cursor-pointer transition-colors ${selectedOrderId === o.id ? 'bg-primary-50' : ''}`}
+                        >
                           <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">{o.orderNumber}</td>
                           <td className="px-4 py-3 text-sm text-gray-700">{o.supplierName}</td>
                           <td className="px-4 py-3 text-sm text-gray-500">
@@ -342,7 +365,7 @@ const SuppliersPage = () => {
                               <BadgeIcon size={11} /> {badge.label}
                             </span>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center gap-3">
                               {o.status === 'pending' && (
                                 <>
@@ -400,6 +423,15 @@ const SuppliersPage = () => {
         onSaved={refetchOrders}
         suppliers={suppliersData?.data ?? []}
       />
+
+      {selectedOrderId && (
+        <PurchaseOrderDetailPanel
+          orderId={selectedOrderId}
+          onClose={() => setSelectedOrderId(null)}
+          onReceive={handleOpenReceiveFromPanel}
+          onCancel={handleCancelFromPanel}
+        />
+      )}
 
       <ReceiveOrderModal
         isOpen={!!receiveOrder}
