@@ -85,6 +85,10 @@ public class InventoryController : ControllerBase
         if (request.UnitId <= 0)
             return BadRequest(ApiResponse.Fail("Selecciona una unidad de medida valida. Puedes crearlas en Configuracion > Catalogo"));
 
+        // Auto-generate SKU if not provided
+        var sku = string.IsNullOrWhiteSpace(request.Sku)
+            ? $"SKU-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}"
+            : request.Sku.Trim();
         var companyId = _tenant.CompanyId;
         var userId = _tenant.UserId;
 
@@ -92,7 +96,7 @@ public class InventoryController : ControllerBase
         {
             CompanyId = companyId,
             Name = request.Name,
-            Sku = request.Sku,
+            Sku = sku,
             Barcode = request.Barcode,
             Description = request.Description,
             CategoryId = request.CategoryId,
@@ -110,17 +114,25 @@ public class InventoryController : ControllerBase
             CreatedBy = userId
         };
 
-        var created = await _repository.CreateProductAsync(product);
+        try
+        {
+            var created = await _repository.CreateProductAsync(product);
 
-        var branchId = _tenant.BranchId;
-        if (branchId.HasValue)
-            await _repository.CreateStockEntryAsync(branchId.Value, created.Id, 0, companyId);
+            var branchId = _tenant.BranchId;
+            if (branchId.HasValue)
+                await _repository.CreateStockEntryAsync(branchId.Value, created.Id, 0, companyId);
 
-        _logger.LogInformation("Producto creado: {Name}, ProductId: {Id}, UserId: {UserId}",
-            created.Name, created.Id, userId);
+            _logger.LogInformation("Producto creado: {Name}, ProductId: {Id}, UserId: {UserId}",
+                created.Name, created.Id, userId);
 
-        return StatusCode(StatusCodes.Status201Created,
-            ApiResponse<Product>.Ok(created, "Producto creado exitosamente"));
+            return StatusCode(StatusCodes.Status201Created,
+                ApiResponse<Product>.Ok(created, "Producto creado exitosamente"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creando producto {Name}", request.Name);
+            return BadRequest(ApiResponse.Fail($"Error al crear el producto: {ex.Message}"));
+        }
     }
 
     /// <summary>
@@ -523,4 +535,5 @@ public class InventoryController : ControllerBase
         return Ok(ApiResponse<object>.Ok(new { summary, products = profits }));
     }
 }
+
 
