@@ -1,4 +1,4 @@
-using FluentValidation;
+﻿using FluentValidation;
 using Walos.Application.DTOs.Inventory;
 
 namespace Walos.Application.Validators;
@@ -38,8 +38,8 @@ public class CreateProductValidator : AbstractValidator<CreateProductRequest>
             .GreaterThanOrEqualTo(0).WithMessage("El precio de venta debe ser mayor o igual a 0");
 
         RuleFor(x => x.ProductType)
-            .Must(x => x is "simple" or "prepared" or "combo" or "service")
-            .WithMessage("El tipo de producto debe ser: simple, prepared, combo o service");
+            .Must(x => x is "simple" or "prepared" or "combo" or "service" or "supply")
+            .WithMessage("El tipo de producto debe ser: simple, prepared, combo, service o supply");
 
         RuleFor(x => x.MinStock)
             .GreaterThanOrEqualTo(0).WithMessage("El stock mínimo debe ser mayor o igual a 0")
@@ -58,3 +58,4 @@ public class CreateProductValidator : AbstractValidator<CreateProductRequest>
             .When(x => x.IsPerishable && x.ShelfLifeDays.HasValue);
     }
 }
+
