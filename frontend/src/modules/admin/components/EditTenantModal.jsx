@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { X, Building2, Save, Loader2 } from 'lucide-react';
+import { X, Building2, Save, Loader2, KeyRound, Eye, EyeOff } from 'lucide-react';
+import toast from 'react-hot-toast';
+import adminService from '../../../services/adminService';
 
 const Field = ({ label, name, value, onChange, type = 'text', placeholder }) => (
   <div>
@@ -31,8 +33,11 @@ const Select = ({ label, name, value, onChange, options }) => (
 
 const EditTenantModal = ({ tenant, onClose, onSaved }) => {
   const [form, setForm] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState(null);
+  const [saving, setSaving]         = useState(false);
+  const [error, setError]           = useState(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [showPwd, setShowPwd]       = useState(false);
+  const [savingPwd, setSavingPwd]   = useState(false);
 
   useEffect(() => {
     if (tenant) {
@@ -48,6 +53,7 @@ const EditTenantModal = ({ tenant, onClose, onSaved }) => {
         language: tenant.language ?? 'es',
       });
       setError(null);
+      setNewPassword('');
     }
   }, [tenant]);
 
@@ -56,6 +62,20 @@ const EditTenantModal = ({ tenant, onClose, onSaved }) => {
   const handleChange = e => {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleResetPassword = async () => {
+    if (newPassword.length < 6) { toast.error('Mínimo 6 caracteres'); return; }
+    setSavingPwd(true);
+    try {
+      await adminService.resetTenantPassword(tenant.id, newPassword);
+      toast.success('Contraseña del administrador actualizada');
+      setNewPassword('');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Error cambiando contraseña');
+    } finally {
+      setSavingPwd(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -119,6 +139,38 @@ const EditTenantModal = ({ tenant, onClose, onSaved }) => {
               { value: 'en', label: 'English' },
               { value: 'pt', label: 'Português' },
             ]} />
+          </div>
+
+          {/* Cambio de contraseña del admin */}
+          <div className="border border-dashed border-gray-300 rounded-xl p-4 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <KeyRound size={15} className="text-indigo-500" />
+              Contraseña del administrador
+            </div>
+            <p className="text-xs text-gray-400">Cambia la contraseña del usuario super_admin de este comercio</p>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Nueva contraseña (mín. 6 caracteres)"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm pr-9 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <button type="button" onClick={() => setShowPwd(v => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+              <button
+                onClick={handleResetPassword}
+                disabled={savingPwd || newPassword.length < 6}
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+              >
+                {savingPwd ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                {savingPwd ? '...' : 'Cambiar'}
+              </button>
+            </div>
           </div>
 
           {error && (

@@ -54,6 +54,13 @@ public class AdminController : ControllerBase
         return Ok(ApiResponse<TenantResponse>.Ok(updated, "Comercio actualizado"));
     }
 
+    [HttpPost("tenants/{id:long}/reset-password")]
+    public async Task<IActionResult> ResetAdminPassword(long id, [FromBody] ResetPasswordRequest request)
+    {
+        await _adminService.ResetTenantAdminPasswordAsync(id, request.NewPassword);
+        return Ok(ApiResponse.Ok("Contraseña del administrador actualizada"));
+    }
+
     [HttpPatch("tenants/{id:long}/status")]
     public async Task<IActionResult> SetTenantStatus(long id, [FromBody] SetTenantStatusRequest request)
     {
@@ -65,4 +72,5 @@ public class AdminController : ControllerBase
     }
 
     public record SetTenantStatusRequest(bool IsActive);
+    public record ResetPasswordRequest(string NewPassword);
 }

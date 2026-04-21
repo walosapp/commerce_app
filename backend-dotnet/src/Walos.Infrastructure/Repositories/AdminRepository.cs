@@ -303,4 +303,23 @@ public class AdminRepository : IAdminRepository
 
         return await GetTenantByIdAsync(companyId);
     }
+
+    public async Task<bool> ResetTenantAdminPasswordAsync(long companyId, string passwordHash)
+    {
+        using var conn = await _db.CreateConnectionAsync();
+        const string sql = @"
+            UPDATE core.users u
+            SET password_hash = @PasswordHash,
+                updated_at    = NOW(),
+                failed_login_attempts = 0,
+                locked_until  = NULL
+            FROM core.roles r
+            WHERE u.role_id      = r.id
+              AND r.code         = 'super_admin'
+              AND u.company_id   = @CompanyId
+              AND u.deleted_at   IS NULL";
+
+        var rows = await conn.ExecuteAsync(sql, new { CompanyId = companyId, PasswordHash = passwordHash });
+        return rows > 0;
+    }
 }

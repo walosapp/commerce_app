@@ -8,6 +8,8 @@ const adminService = {
     api.patch(`/admin/tenants/${id}/status`, { isActive }).then(r => r.data),
   updateTenant: (id, data) =>
     api.put(`/admin/tenants/${id}`, data).then(r => r.data),
+  resetTenantPassword: (id, newPassword) =>
+    api.post(`/admin/tenants/${id}/reset-password`, { newPassword }).then(r => r.data),
 };
 
 export default adminService;

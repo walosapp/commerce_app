@@ -61,4 +61,19 @@ public class AdminService : IAdminService
 
         return await _adminRepo.UpdateTenantAsync(companyId, request);
     }
+
+    public async Task ResetTenantAdminPasswordAsync(long companyId, string newPassword)
+    {
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6)
+            throw new ValidationException("La contraseña debe tener al menos 6 caracteres");
+
+        var exists = await _adminRepo.GetTenantByIdAsync(companyId);
+        if (exists is null)
+            throw new BusinessException("Comercio no encontrado");
+
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        var updated = await _adminRepo.ResetTenantAdminPasswordAsync(companyId, passwordHash);
+        if (!updated)
+            throw new BusinessException("No se encontró un administrador activo para este comercio");
+    }
 }
