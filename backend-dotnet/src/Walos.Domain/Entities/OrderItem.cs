@@ -10,6 +10,7 @@ public class OrderItem
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal Subtotal { get; set; }
+    public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; }
 
     // Navigation (from JOINs)
