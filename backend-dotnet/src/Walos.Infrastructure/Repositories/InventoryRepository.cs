@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Extensions.Logging;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
@@ -221,18 +221,18 @@ public class InventoryRepository : IInventoryRepository
                 )
                 SELECT 
                     s.id AS Id,
-                    s.company_id AS CompanyId,
-                    s.branch_id AS BranchId,
-                    s.product_id AS ProductId,
+                    p.company_id AS CompanyId,
+                    @BranchId AS BranchId,
+                    p.id AS ProductId,
                     p.name AS ProductName,
                     p.sku AS Sku,
                     c.name AS Category,
                     p.min_stock AS MinStock,
-                    s.quantity AS Quantity,
+                    COALESCE(s.quantity, 0) AS Quantity,
                     COALESCE(committed.committed_quantity, 0) AS ReservedQuantity,
                     CASE
-                        WHEN s.quantity - COALESCE(committed.committed_quantity, 0) < 0 THEN 0
-                        ELSE s.quantity - COALESCE(committed.committed_quantity, 0)
+                        WHEN COALESCE(s.quantity, 0) - COALESCE(committed.committed_quantity, 0) < 0 THEN 0
+                        ELSE COALESCE(s.quantity, 0) - COALESCE(committed.committed_quantity, 0)
                     END AS AvailableQuantity,
                     s.location AS Location,
                     u.abbreviation AS Unit,
@@ -244,19 +244,19 @@ public class InventoryRepository : IInventoryRepository
                     p.is_perishable AS IsPerishable,
                     CASE 
                         WHEN p.track_stock = FALSE THEN 'ok'
-                        WHEN s.quantity - COALESCE(committed.committed_quantity, 0) <= 0 THEN 'out'
-                        WHEN p.min_stock > 0 AND s.quantity - COALESCE(committed.committed_quantity, 0) <= p.min_stock THEN 'low'
-                        WHEN p.reorder_point > 0 AND s.quantity - COALESCE(committed.committed_quantity, 0) <= p.reorder_point THEN 'reorder'
+                        WHEN COALESCE(s.quantity, 0) - COALESCE(committed.committed_quantity, 0) <= 0 THEN 'out'
+                        WHEN p.min_stock > 0 AND COALESCE(s.quantity, 0) - COALESCE(committed.committed_quantity, 0) <= p.min_stock THEN 'low'
+                        WHEN p.reorder_point > 0 AND COALESCE(s.quantity, 0) - COALESCE(committed.committed_quantity, 0) <= p.reorder_point THEN 'reorder'
                         ELSE 'ok'
                     END AS StockStatus
-                FROM inventory.stock s
-                INNER JOIN inventory.products p ON s.product_id = p.id AND p.company_id = s.company_id
+                FROM inventory.products p
+                LEFT JOIN inventory.stock s ON s.product_id = p.id AND s.company_id = p.company_id AND s.branch_id = @BranchId
                 LEFT JOIN inventory.categories c ON p.category_id = c.id AND c.company_id = p.company_id
                 LEFT JOIN inventory.units u ON p.unit_id = u.id AND u.company_id = p.company_id
                 LEFT JOIN committed ON committed.branch_id = s.branch_id AND committed.product_id = s.product_id
-                WHERE s.branch_id = @BranchId
-                  AND s.company_id = @CompanyId
+                WHERE p.company_id = @CompanyId
                   AND p.deleted_at IS NULL
+                  AND p.is_active = TRUE
                 ORDER BY p.name";
 
             return await connection.QueryAsync<Stock>(sql, new { BranchId = branchId, CompanyId = companyId });
@@ -752,8 +752,8 @@ public class InventoryRepository : IInventoryRepository
                            WHEN s.quantity - COALESCE(committed.committed_quantity, 0) < 0 THEN 0
                            ELSE s.quantity - COALESCE(committed.committed_quantity, 0)
                        END AS AvailableQuantity
-                FROM inventory.stock s
-                INNER JOIN inventory.products p ON s.product_id = p.id AND p.company_id = s.company_id
+                FROM inventory.products p
+                LEFT JOIN inventory.stock s ON s.product_id = p.id AND s.company_id = p.company_id AND s.branch_id = @BranchId
                 LEFT JOIN committed ON committed.branch_id = s.branch_id AND committed.product_id = s.product_id
                 WHERE s.branch_id = @BranchId AND s.product_id = @ProductId AND s.company_id = @CompanyId";
 
@@ -888,3 +888,4 @@ public class InventoryRepository : IInventoryRepository
         }
     }
 }
+

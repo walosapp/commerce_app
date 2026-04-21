@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Inventory;
@@ -111,6 +111,10 @@ public class InventoryController : ControllerBase
         };
 
         var created = await _repository.CreateProductAsync(product);
+
+        var branchId = _tenant.BranchId;
+        if (branchId.HasValue)
+            await _repository.CreateStockEntryAsync(branchId.Value, created.Id, 0, companyId);
 
         _logger.LogInformation("Producto creado: {Name}, ProductId: {Id}, UserId: {UserId}",
             created.Name, created.Id, userId);
@@ -519,3 +523,4 @@ public class InventoryController : ControllerBase
         return Ok(ApiResponse<object>.Ok(new { summary, products = profits }));
     }
 }
+
