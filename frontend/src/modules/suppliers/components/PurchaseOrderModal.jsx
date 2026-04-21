@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Plus, Trash2, Loader2, Search, ShoppingCart, PackagePlus } from 'lucide-react';
+import { X, Plus, Trash2, Loader2, Search, ShoppingCart, PackagePlus, MessageCircle, Mail, Send } from 'lucide-react';
+import ContactActions from './ContactActions';
 import toast from 'react-hot-toast';
 import purchaseOrderService from '../../../services/purchaseOrderService';
 import inventoryService from '../../../services/inventoryService';
@@ -47,7 +48,9 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSaved, suppliers }) => {
   const updateItem  = (productId, field, val) =>
     setItems(prev => prev.map(i => i.productId === productId ? { ...i, [field]: val } : i));
 
-  const total = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.unitCost) || 0), 0);
+  const total            = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.unitCost) || 0), 0);
+  const selectedSupplier = (suppliers ?? []).find(s => String(s.id) === String(form.supplierId));
+  const canShare         = !!selectedSupplier && items.length > 0;
 
   const handleSubmit = async () => {
     if (!form.supplierId) { toast.error('Selecciona un proveedor'); return; }
@@ -252,19 +255,35 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSaved, suppliers }) => {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 px-5 py-3 border-t bg-gray-50 shrink-0">
-              <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={saving}
-                className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 rounded-lg transition-colors"
-              >
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <ShoppingCart size={14} />}
-                {saving ? 'Creando...' : `Crear Pedido${items.length > 0 ? ` (${items.length})` : ''}`}
-              </button>
+            <div className="flex items-center justify-between gap-3 px-5 py-3 border-t bg-gray-50 shrink-0">
+              {/* WhatsApp / Email — solo si hay proveedor e ítems */}
+              <div className="flex items-center gap-2">
+                {canShare ? (
+                  <ContactActions
+                    supplier={selectedSupplier}
+                    orderItems={items}
+                    mode="order"
+                  />
+                ) : (
+                  <span className="text-xs text-gray-400">
+                    {!selectedSupplier ? 'Selecciona proveedor para compartir' : 'Agrega productos para compartir'}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 rounded-lg transition-colors"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <ShoppingCart size={14} />}
+                  {saving ? 'Creando...' : `Crear Pedido${items.length > 0 ? ` (${items.length})` : ''}`}
+                </button>
+              </div>
             </div>
           </div>
         </div>

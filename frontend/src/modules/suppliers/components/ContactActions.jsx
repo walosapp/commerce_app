@@ -1,17 +1,28 @@
 import { MessageCircle, Mail } from 'lucide-react';
 
-const buildMessage = (supplier, items) => {
+const buildMessage = (supplier, items, mode = 'suggested') => {
+  const name = supplier.contactName || supplier.name;
   if (!items || items.length === 0) {
-    return `Hola ${supplier.contactName || supplier.name}, me gustaría hacer un pedido. ¿Podría enviarme su lista de precios actualizada?`;
+    return `Hola ${name}, me gustaría hacer un pedido. ¿Podría enviarme su lista de precios actualizada?`;
+  }
+  if (mode === 'order') {
+    const lines = items.map(i => {
+      const subtotal = (Number(i.quantity) || 0) * (Number(i.unitCost) || 0);
+      return `• ${i.productName}: ${Number(i.quantity)} unid. x $${Number(i.unitCost).toLocaleString('es-CO')} = $${subtotal.toLocaleString('es-CO')}`;
+    }).join('\n');
+    const total = items.reduce((s, i) => s + (Number(i.quantity)||0)*(Number(i.unitCost)||0), 0);
+    const date  = new Date().toLocaleDateString('es-CO', { dateStyle: 'long' });
+    return `Hola ${name},\n\nLe enviamos la siguiente orden de compra (${date}):\n\n${lines}\n\n*Total: $${total.toLocaleString('es-CO')}*\n\nQuedamos atentos a su confirmación. Gracias.`;
   }
   const lines = items.map(i =>
     `• ${i.productName}: ${i.suggestedQty} unidades${i.unitCost ? ` (~$${Number(i.unitCost).toLocaleString('es-CO')}/und)` : ''}`
   ).join('\n');
-  return `Hola ${supplier.contactName || supplier.name},\n\nNos gustaría realizar el siguiente pedido:\n\n${lines}\n\nQuedamos atentos. Gracias!`;
+  return `Hola ${name},\n\nNos gustaría realizar el siguiente pedido:\n\n${lines}\n\nQuedamos atentos. Gracias!`;
 };
 
-const ContactActions = ({ supplier, suggestedItems = [] }) => {
-  const message = buildMessage(supplier, suggestedItems);
+const ContactActions = ({ supplier, suggestedItems = [], orderItems, mode = 'suggested' }) => {
+  const items   = mode === 'order' ? (orderItems ?? []) : suggestedItems;
+  const message = buildMessage(supplier, items, mode);
 
   const handleWhatsApp = () => {
     const phone = supplier.phone?.replace(/\D/g, '');
