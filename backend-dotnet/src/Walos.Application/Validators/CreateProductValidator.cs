@@ -13,9 +13,8 @@ public class CreateProductValidator : AbstractValidator<CreateProductRequest>
             .MaximumLength(200).WithMessage("El nombre no puede exceder 200 caracteres");
 
         RuleFor(x => x.Sku)
-            .NotEmpty().WithMessage("El SKU es requerido")
-            .MinimumLength(2).WithMessage("El SKU debe tener al menos 2 caracteres")
-            .MaximumLength(50).WithMessage("El SKU no puede exceder 50 caracteres");
+            .MaximumLength(50).WithMessage("El SKU no puede exceder 50 caracteres")
+            .When(x => !string.IsNullOrWhiteSpace(x.Sku));
 
         RuleFor(x => x.Barcode)
             .MaximumLength(100).WithMessage("El código de barras no puede exceder 100 caracteres")
