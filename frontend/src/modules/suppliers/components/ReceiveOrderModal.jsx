@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, PackageCheck, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import purchaseOrderService from '../../../services/purchaseOrderService';
@@ -8,10 +8,10 @@ const ReceiveOrderModal = ({ isOpen, order, onClose, onSaved }) => {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Init items from order when it opens
-  useState(() => {
+  useEffect(() => {
     if (order?.items) {
       setItems(order.items.map(i => ({ orderItemId: i.id, receivedQty: i.quantity, productName: i.productName, ordered: i.quantity })));
+      setNotes('');
     }
   }, [order]);
 

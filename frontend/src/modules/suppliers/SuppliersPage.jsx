@@ -25,6 +25,7 @@ const SuppliersPage = () => {
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
+  const [orderSearch, setOrderSearch] = useState('');
   const [selectedId, setSelectedId] = useState(null);
   const [formModal, setFormModal] = useState(null);
   const [activeTab, setActiveTab] = useState('suppliers');
@@ -53,7 +54,11 @@ const SuppliersPage = () => {
     enabled: !!tenantId,
   });
 
-  const orders = ordersData?.data ?? [];
+  const orders = (ordersData?.data ?? []).filter(o =>
+    !orderSearch.trim() ||
+    o.orderNumber?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+    o.supplierName?.toLowerCase().includes(orderSearch.toLowerCase())
+  );
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['suppliers', tenantId] });
@@ -125,9 +130,21 @@ const SuppliersPage = () => {
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Buscar..."
+                placeholder="Buscar proveedor..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
+                className="pl-8 pr-4 py-2 border border-gray-300 rounded-lg text-sm w-52 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+          )}
+          {activeTab === 'orders' && (
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar pedido o proveedor..."
+                value={orderSearch}
+                onChange={e => setOrderSearch(e.target.value)}
                 className="pl-8 pr-4 py-2 border border-gray-300 rounded-lg text-sm w-52 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>

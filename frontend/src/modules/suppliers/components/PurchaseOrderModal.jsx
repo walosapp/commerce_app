@@ -20,9 +20,14 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSaved, suppliers }) => {
     enabled: !!branchId,
   });
 
-  const products = (stockData?.data ?? []).filter(p =>
-    !search.trim() || p.productName?.toLowerCase().includes(search.toLowerCase())
-  );
+  const allProducts = (stockData?.data ?? [])
+    .filter(p => !search.trim() || p.productName?.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      const aIsSupply = a.productType === 'supply' ? 0 : 1;
+      const bIsSupply = b.productType === 'supply' ? 0 : 1;
+      return aIsSupply - bIsSupply || a.productName?.localeCompare(b.productName);
+    });
+  const products = allProducts;
 
   const addProduct = (p) => {
     if (items.find(i => i.productId === p.productId)) {
@@ -149,10 +154,15 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSaved, suppliers }) => {
                       key={p.productId}
                       type="button"
                       onMouseDown={() => addProduct(p)}
-                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-primary-50 border-b border-gray-100 last:border-b-0 flex justify-between"
+                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-primary-50 border-b border-gray-100 last:border-b-0 flex justify-between items-center gap-2"
                     >
-                      <span className="font-medium">{p.productName}</span>
-                      <span className="text-gray-400 text-xs">stock: {p.quantity}</span>
+                      <span className="font-medium flex-1 truncate">{p.productName}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {p.productType === 'supply' && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Insumo</span>
+                        )}
+                        <span className="text-gray-400 text-xs">costo: ${Number(p.costPrice ?? 0).toLocaleString('es-CO')}</span>
+                      </div>
                     </button>
                   ))}
                 </div>
