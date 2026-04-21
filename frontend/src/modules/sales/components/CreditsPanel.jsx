@@ -110,9 +110,15 @@ const CreditRow = ({ credit, onPayment, onCancel }) => {
                   {paying ? '...' : 'Abonar'}
                 </button>
               </div>
-              <button onClick={() => { if (window.confirm('Cancelar este crédito?')) onCancel(credit.id); }}
+              <button onClick={() => {
+                if (window.confirm(
+                  `¿Condonar el crédito de ${credit.customerName}?\n\n` +
+                  `Saldo a perdonar: $${credit.creditAmount.toLocaleString('es-CO')}\n\n` +
+                  `Esto marca la deuda como cancelada. La venta ya registrada y el stock descontado NO se revierten.`
+                )) onCancel(credit.id);
+              }}
                 className="text-xs text-red-500 hover:text-red-700 transition-colors">
-                Cancelar crédito
+                Condonar deuda
               </button>
             </div>
           )}
