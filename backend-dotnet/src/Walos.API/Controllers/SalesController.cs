@@ -13,13 +13,15 @@ namespace Walos.API.Controllers;
 [Authorize]
 public class SalesController : ControllerBase
 {
+    private readonly ISalesRepository _salesRepo;
     private readonly ISalesService _salesService;
     private readonly ITenantContext _tenant;
 
-    public SalesController(ISalesService salesService, ITenantContext tenant)
+    public SalesController(ISalesService salesService, ITenantContext tenant, ISalesRepository salesRepo)
     {
         _salesService = salesService;
         _tenant = tenant;
+        _salesRepo = salesRepo;
     }
 
     [HttpGet("tables")]
@@ -85,6 +87,26 @@ public class SalesController : ControllerBase
     {
         await _salesService.RenameTableAsync(_tenant.CompanyId, id, request.Name ?? string.Empty);
         return Ok(ApiResponse.Ok("Mesa renombrada"));
+    }
+
+    [HttpGet("summary")]
+    public async Task<IActionResult> GetSummary([FromQuery] long branchId, [FromQuery] string? date)
+    {
+        var parsedDate = DateTime.TryParse(date, out var d) ? d.Date : DateTime.UtcNow.Date;
+        var dateFrom = parsedDate;
+        var dateTo   = parsedDate.AddDays(1);
+        var summary  = await _salesRepo.GetSalesSummaryAsync(_tenant.CompanyId, branchId, dateFrom, dateTo);
+        return Ok(ApiResponse<SalesSummary>.Ok(summary));
+    }
+
+    [HttpGet("orders/completed")]
+    public async Task<IActionResult> GetCompletedOrders([FromQuery] long branchId, [FromQuery] string? date)
+    {
+        var parsedDate = DateTime.TryParse(date, out var d) ? d.Date : DateTime.UtcNow.Date;
+        var dateFrom = parsedDate;
+        var dateTo   = parsedDate.AddDays(1);
+        var orders   = (await _salesRepo.GetCompletedOrdersAsync(_tenant.CompanyId, branchId, dateFrom, dateTo)).ToList();
+        return Ok(ApiResponse<List<CompletedOrder>>.Ok(orders, count: orders.Count));
     }
 }
 

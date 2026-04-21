@@ -21,4 +21,6 @@ public interface ISalesRepository
     Task RecalculateOrderTotalAsync(long orderId, long companyId);
     Task UpdateOrderInvoiceSummaryAsync(long orderId, long companyId, string? discountType, decimal discountValue, decimal discountAmount, decimal finalTotalPaid, int splitReferenceCount);
     Task RenameTableAsync(long tableId, long companyId, string name);
+    Task<SalesSummary> GetSalesSummaryAsync(long companyId, long branchId, DateTime dateFrom, DateTime dateTo);
+    Task<IEnumerable<CompletedOrder>> GetCompletedOrdersAsync(long companyId, long branchId, DateTime dateFrom, DateTime dateTo);
 }

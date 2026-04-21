@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusCircle, ShoppingCart, LayoutGrid, CreditCard } from 'lucide-react';
+import { PlusCircle, ShoppingCart, LayoutGrid, CreditCard, TableProperties, TrendingUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 import salesService from '../../services/salesService';
 import inventoryService from '../../services/inventoryService';
@@ -15,6 +15,7 @@ import AddTablePanel from './components/AddTablePanel';
 import TableCard from './components/TableCard';
 import InvoicePanel from './components/InvoicePanel';
 import CreditsPanel from './components/CreditsPanel';
+import SalesSummaryTab from './components/SalesSummaryTab';
 
 const SalesPage = () => {
   const { branchId } = useAuthStore();
@@ -27,6 +28,7 @@ const SalesPage = () => {
   const [addProductsTarget, setAddProductsTarget] = useState(null);
   const [arrangeKey, setArrangeKey] = useState(0);
   const [showCredits, setShowCredits] = useState(false);
+  const [activeTab, setActiveTab] = useState('tables');
 
   const { data: tablesData, isLoading: tablesLoading } = useQuery({
     queryKey: ['sales-tables', branchId],
@@ -195,102 +197,146 @@ const SalesPage = () => {
     }
   };
 
+  const TABS = [
+    { k: 'tables',  label: 'Mesas',   icon: TableProperties },
+    { k: 'credits', label: 'Créditos', icon: CreditCard },
+    { k: 'sales',   label: 'Ventas',   icon: TrendingUp },
+  ];
+
   return (
-    <div className="flex flex-col h-[calc(100vh-7rem)] overflow-hidden">
-      <div className="mb-4 flex flex-shrink-0 items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Ventas</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {tables.length} mesa{tables.length !== 1 ? 's' : ''} activa{tables.length !== 1 ? 's' : ''}
-          </p>
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
+
+      {/* Top bar */}
+      <div className="px-4 md:px-6 py-4 border-b bg-white flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center">
+            <ShoppingCart size={20} className="text-primary-600" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Ventas</h1>
+            <p className="text-sm text-gray-500">
+              {tables.length} mesa{tables.length !== 1 ? 's' : ''} activa{tables.length !== 1 ? 's' : ''}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          {tables.length > 0 && (
+          {activeTab === 'tables' && tables.length > 0 && (
             <button
               onClick={() => setArrangeKey((k) => k + 1)}
-              className="hidden md:flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              title="Ordenar mesas"
+              className="hidden md:flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             >
-              <LayoutGrid className="h-4 w-4" />
-              Ordenar
+              <LayoutGrid size={16} /> Ordenar
             </button>
           )}
-          <button
-            onClick={() => setShowCredits(true)}
-            className="flex items-center gap-2 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2.5 text-sm font-medium text-orange-700 hover:bg-orange-100 transition-colors"
-          >
-            <CreditCard className="h-4 w-4" />
-            Créditos
-          </button>
-          <button
-            onClick={() => setShowAddPanel(true)}
-            className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 transition-colors shadow-sm"
-          >
-            <PlusCircle className="h-4 w-4" />
-            Agregar Mesa
-          </button>
+          {activeTab === 'tables' && (
+            <button
+              onClick={() => setShowAddPanel(true)}
+              className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            >
+              <PlusCircle size={16} /> Agregar Mesa
+            </button>
+          )}
         </div>
       </div>
 
-      <div
-        ref={areaRef}
-        className="flex-1 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 relative overflow-y-auto"
-      >
-        {tablesLoading ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+      {/* Tabs */}
+      <div className="flex border-b bg-white px-6 flex-shrink-0">
+        {TABS.map(({ k, label, icon: Icon }) => (
+          <button
+            key={k}
+            onClick={() => setActiveTab(k)}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === k
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Icon size={16} /> {label}
+            {k === 'tables' && tables.length > 0 && (
+              <span className="ml-1 bg-primary-100 text-primary-700 text-xs rounded-full px-1.5">
+                {tables.length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-hidden flex flex-col">
+
+        {/* ── MESAS TAB ── */}
+        {activeTab === 'tables' && (
+          <div
+            ref={areaRef}
+            className="flex-1 rounded-none border-0 bg-gray-50/50 relative overflow-y-auto"
+          >
+            {tablesLoading ? (
+              <div className="flex h-full items-center justify-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+              </div>
+            ) : tables.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center text-gray-400">
+                <ShoppingCart className="mb-4 h-16 w-16 opacity-50" />
+                <p className="text-lg font-medium">No hay mesas activas</p>
+                <p className="mt-1 text-sm">Crea una mesa para comenzar a vender</p>
+                <button
+                  onClick={() => setShowAddPanel(true)}
+                  className="mt-4 flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 transition-colors"
+                >
+                  <PlusCircle className="h-4 w-4" /> Agregar Mesa
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:hidden">
+                  {tables.map((table, idx) => (
+                    <TableCard
+                      key={table.id}
+                      table={table}
+                      tableIndex={idx}
+                      containerRef={areaRef}
+                      arrangeKey={arrangeKey}
+                      onInvoice={(t) => setInvoiceTarget(t)}
+                      onCancel={handleCancel}
+                      onUpdateItemQty={handleUpdateItemQty}
+                      onAddProducts={handleAddProducts}
+                      onRename={handleRenameTable}
+                      stockByProduct={stockByProduct}
+                    />
+                  ))}
+                </div>
+                <div className="hidden md:block" style={{ minHeight: desktopAreaHeight }}>
+                  {tables.map((table, idx) => (
+                    <TableCard
+                      key={table.id}
+                      table={table}
+                      tableIndex={idx}
+                      containerRef={areaRef}
+                      arrangeKey={arrangeKey}
+                      onInvoice={(t) => setInvoiceTarget(t)}
+                      onCancel={handleCancel}
+                      onUpdateItemQty={handleUpdateItemQty}
+                      onAddProducts={handleAddProducts}
+                      onRename={handleRenameTable}
+                      stockByProduct={stockByProduct}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-        ) : tables.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-gray-400">
-            <ShoppingCart className="mb-4 h-16 w-16 opacity-50" />
-            <p className="text-lg font-medium">No hay mesas activas</p>
-            <p className="mt-1 text-sm">Crea una mesa para comenzar a vender</p>
-            <button
-              onClick={() => setShowAddPanel(true)}
-              className="mt-4 flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 transition-colors"
-            >
-              <PlusCircle className="h-4 w-4" />
-              Agregar Mesa
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:hidden">
-              {tables.map((table, idx) => (
-                <TableCard
-                  key={table.id}
-                  table={table}
-                  tableIndex={idx}
-                  containerRef={areaRef}
-                  arrangeKey={arrangeKey}
-                  onInvoice={(t) => setInvoiceTarget(t)}
-                  onCancel={handleCancel}
-                  onUpdateItemQty={handleUpdateItemQty}
-                  onAddProducts={handleAddProducts}
-                  onRename={handleRenameTable}
-                  stockByProduct={stockByProduct}
-                />
-              ))}
-            </div>
-            <div className="hidden md:block" style={{ minHeight: desktopAreaHeight }}>
-              {tables.map((table, idx) => (
-                <TableCard
-                  key={table.id}
-                  table={table}
-                  tableIndex={idx}
-                  containerRef={areaRef}
-                  arrangeKey={arrangeKey}
-                  onInvoice={(t) => setInvoiceTarget(t)}
-                  onCancel={handleCancel}
-                  onUpdateItemQty={handleUpdateItemQty}
-                  onAddProducts={handleAddProducts}
-                  onRename={handleRenameTable}
-                  stockByProduct={stockByProduct}
-                />
-              ))}
-            </div>
-          </>
         )}
+
+        {/* ── CRÉDITOS TAB ── */}
+        {activeTab === 'credits' && (
+          <CreditsPanel inline />
+        )}
+
+        {/* ── VENTAS TAB ── */}
+        {activeTab === 'sales' && (
+          <SalesSummaryTab />
+        )}
+
       </div>
 
       <AddTablePanel
@@ -316,11 +362,6 @@ const SalesPage = () => {
         onClose={() => setInvoiceTarget(null)}
         onConfirm={handleInvoice}
         table={invoiceTarget}
-      />
-
-      <CreditsPanel
-        isOpen={showCredits}
-        onClose={() => setShowCredits(false)}
       />
     </div>
   );

@@ -486,4 +486,110 @@ public class SalesRepository : ISalesRepository
             throw;
         }
     }
+
+    public async Task<SalesSummary> GetSalesSummaryAsync(long companyId, long branchId, DateTime dateFrom, DateTime dateTo)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            const string summarySql = @"
+                SELECT
+                    COALESCE(SUM(o.final_total_paid), 0)   AS TotalRevenue,
+                    COALESCE(SUM(o.discount_amount), 0)    AS TotalDiscounts,
+                    COUNT(*)                                AS TotalOrders,
+                    COALESCE(AVG(o.final_total_paid), 0)   AS AverageTicket,
+                    COALESCE(SUM(CASE WHEN c.id IS NOT NULL THEN c.credit_amount ELSE 0 END), 0) AS TotalCredits,
+                    COUNT(CASE WHEN c.id IS NOT NULL THEN 1 END) AS CreditOrders
+                FROM sales.orders o
+                LEFT JOIN sales.credits c ON c.order_id = o.id AND c.company_id = o.company_id
+                WHERE o.company_id = @CompanyId
+                  AND o.branch_id  = @BranchId
+                  AND o.status     = 'completed'
+                  AND o.created_at >= @DateFrom
+                  AND o.created_at <  @DateTo
+                  AND o.deleted_at IS NULL";
+
+            var summary = await connection.QueryFirstAsync<SalesSummary>(summarySql,
+                new { CompanyId = companyId, BranchId = branchId, DateFrom = dateFrom, DateTo = dateTo });
+
+            const string topSql = @"
+                SELECT oi.product_name AS ProductName,
+                       SUM(oi.quantity)             AS TotalQuantity,
+                       SUM(oi.quantity * oi.unit_price) AS TotalRevenue
+                FROM sales.order_items oi
+                JOIN sales.orders o ON o.id = oi.order_id
+                WHERE oi.company_id = @CompanyId
+                  AND o.branch_id   = @BranchId
+                  AND o.status      = 'completed'
+                  AND o.created_at >= @DateFrom
+                  AND o.created_at <  @DateTo
+                  AND o.deleted_at IS NULL
+                GROUP BY oi.product_name
+                ORDER BY TotalRevenue DESC
+                LIMIT 5";
+
+            summary.TopProducts = (await connection.QueryAsync<TopProduct>(topSql,
+                new { CompanyId = companyId, BranchId = branchId, DateFrom = dateFrom, DateTo = dateTo })).ToList();
+
+            const string hourlySql = @"
+                SELECT EXTRACT(HOUR FROM o.created_at)::INT AS Hour,
+                       COUNT(*)                              AS OrderCount,
+                       COALESCE(SUM(o.final_total_paid), 0) AS Revenue
+                FROM sales.orders o
+                WHERE o.company_id = @CompanyId
+                  AND o.branch_id  = @BranchId
+                  AND o.status     = 'completed'
+                  AND o.created_at >= @DateFrom
+                  AND o.created_at <  @DateTo
+                  AND o.deleted_at IS NULL
+                GROUP BY EXTRACT(HOUR FROM o.created_at)
+                ORDER BY Hour";
+
+            summary.HourlySales = (await connection.QueryAsync<HourlySale>(hourlySql,
+                new { CompanyId = companyId, BranchId = branchId, DateFrom = dateFrom, DateTo = dateTo })).ToList();
+
+            return summary;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error obteniendo resumen de ventas");
+            throw;
+        }
+    }
+
+    public async Task<IEnumerable<CompletedOrder>> GetCompletedOrdersAsync(long companyId, long branchId, DateTime dateFrom, DateTime dateTo)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+            const string sql = @"
+                SELECT o.id AS Id, o.order_number AS OrderNumber,
+                       COALESCE(NULLIF(t.name,''), 'Mesa ' || t.table_number) AS TableName,
+                       t.table_number AS TableNumber,
+                       o.subtotal AS Subtotal, o.discount_amount AS DiscountAmount,
+                       o.final_total_paid AS FinalTotalPaid,
+                       o.split_reference_count AS SplitReferenceCount,
+                       o.created_at AS CreatedAt,
+                       CASE WHEN c.id IS NOT NULL THEN TRUE ELSE FALSE END AS HasCredit
+                FROM sales.orders o
+                JOIN sales.tables t ON t.id = o.table_id
+                LEFT JOIN sales.credits c ON c.order_id = o.id AND c.company_id = o.company_id
+                WHERE o.company_id = @CompanyId
+                  AND o.branch_id  = @BranchId
+                  AND o.status     = 'completed'
+                  AND o.created_at >= @DateFrom
+                  AND o.created_at <  @DateTo
+                  AND o.deleted_at IS NULL
+                ORDER BY o.created_at DESC";
+
+            return await connection.QueryAsync<CompletedOrder>(sql,
+                new { CompanyId = companyId, BranchId = branchId, DateFrom = dateFrom, DateTo = dateTo });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error obteniendo ordenes completadas");
+            throw;
+        }
+    }
 }

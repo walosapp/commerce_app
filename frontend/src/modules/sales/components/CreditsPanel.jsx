@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CreditCard, X, ChevronDown, ChevronUp, DollarSign, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { CreditCard, X, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatCurrency } from '../../../utils/formatCurrency';
-import useAuthStore from '../../../stores/authStore';
 import api from '../../../config/api';
 
 const creditService = {
@@ -39,10 +38,10 @@ const CreditRow = ({ credit, onPayment, onCancel }) => {
   const isPending = credit.status !== 'paid' && credit.status !== 'cancelled';
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
-      <div
-        className="flex items-center gap-3 px-4 py-3 bg-white cursor-pointer hover:bg-gray-50 transition-colors"
+    <div className="border-b border-gray-100 last:border-0">
+      <button
         onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -61,7 +60,7 @@ const CreditRow = ({ credit, onPayment, onCancel }) => {
           <p className="font-bold text-orange-600">{formatCurrency(credit.creditAmount)}</p>
         </div>
         {expanded ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
-      </div>
+      </button>
 
       {expanded && (
         <div className="border-t bg-gray-50 px-4 py-3 space-y-3">
@@ -111,7 +110,7 @@ const CreditRow = ({ credit, onPayment, onCancel }) => {
                   {paying ? '...' : 'Abonar'}
                 </button>
               </div>
-              <button onClick={() => { if (window.confirm('¿Cancelar este crédito?')) onCancel(credit.id); }}
+              <button onClick={() => { if (window.confirm('Cancelar este crédito?')) onCancel(credit.id); }}
                 className="text-xs text-red-500 hover:text-red-700 transition-colors">
                 Cancelar crédito
               </button>
@@ -123,8 +122,53 @@ const CreditRow = ({ credit, onPayment, onCancel }) => {
   );
 };
 
-const CreditsPanel = ({ isOpen, onClose }) => {
-  const { branchId } = useAuthStore();
+const CreditsPanelContent = ({ statusFilter, setStatusFilter, search, setSearch, credits, isLoading, payMutation, cancelMutation, totalPending, onClose, inline }) => (
+  <>
+    <div className="flex items-center justify-between px-5 py-3 border-b flex-shrink-0">
+      <div className="flex items-center gap-2">
+        <CreditCard className="h-5 w-5 text-orange-600" />
+        <div>
+          <h2 className="font-bold text-gray-900">Créditos</h2>
+          {totalPending > 0 && (
+            <p className="text-xs text-orange-600">Total pendiente: {formatCurrency(totalPending)}</p>
+          )}
+        </div>
+      </div>
+      {!inline && onClose && (
+        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+          <X size={18} />
+        </button>
+      )}
+    </div>
+
+    <div className="px-4 py-2 border-b flex gap-2 flex-shrink-0 flex-wrap">
+      {['pending', 'partial', 'paid', 'all'].map(s => (
+        <button key={s} onClick={() => setStatusFilter(s)}
+          className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
+            statusFilter === s ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+          }`}>
+          {s === 'all' ? 'Todos' : STATUS_LABEL[s]}
+        </button>
+      ))}
+      <input value={search} onChange={e => setSearch(e.target.value)}
+        placeholder="Buscar cliente..." className="input text-sm flex-1 min-w-[120px]" />
+    </div>
+
+    <div className="flex-1 overflow-y-auto">
+      {isLoading ? (
+        <p className="text-center text-sm text-gray-400 py-8">Cargando...</p>
+      ) : credits.length === 0 ? (
+        <p className="text-center text-sm text-gray-400 py-8">Sin créditos</p>
+      ) : credits.map(c => (
+        <CreditRow key={c.id} credit={c}
+          onPayment={(id, body) => payMutation.mutate({ id, body })}
+          onCancel={(id) => cancelMutation.mutate(id)} />
+      ))}
+    </div>
+  </>
+);
+
+const CreditsPanel = ({ isOpen, onClose, inline = false }) => {
   const queryClient  = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('pending');
   const [search, setSearch] = useState('');
@@ -132,7 +176,7 @@ const CreditsPanel = ({ isOpen, onClose }) => {
   const { data, isLoading } = useQuery({
     queryKey: ['credits', statusFilter, search],
     queryFn:  () => creditService.getCredits({ status: statusFilter, search: search || undefined }),
-    enabled:  isOpen,
+    enabled:  isOpen || inline,
   });
 
   const payMutation = useMutation({
@@ -158,52 +202,22 @@ const CreditsPanel = ({ isOpen, onClose }) => {
     .filter(c => c.status !== 'paid' && c.status !== 'cancelled')
     .reduce((s, c) => s + c.creditAmount, 0);
 
-  if (!isOpen) return null;
+  const sharedProps = { statusFilter, setStatusFilter, search, setSearch, credits, isLoading, payMutation, cancelMutation, totalPending, onClose, inline };
+
+  if (!isOpen && !inline) return null;
+
+  if (inline) {
+    return (
+      <div className="flex flex-col flex-1 overflow-hidden bg-white">
+        <CreditsPanelContent {...sharedProps} />
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[88vh]">
-
-        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-orange-600" />
-            <div>
-              <h2 className="font-bold text-gray-900">Créditos</h2>
-              {totalPending > 0 && (
-                <p className="text-xs text-orange-600">Total pendiente: {formatCurrency(totalPending)}</p>
-              )}
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="px-4 py-3 border-b flex gap-2 flex-shrink-0 flex-wrap">
-          {['pending', 'partial', 'paid', 'all'].map(s => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
-                statusFilter === s ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-              }`}>
-              {s === 'all' ? 'Todos' : STATUS_LABEL[s]}
-            </button>
-          ))}
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar cliente..." className="input text-sm flex-1 min-w-[120px]" />
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-          {isLoading ? (
-            <p className="text-center text-sm text-gray-400 py-8">Cargando...</p>
-          ) : credits.length === 0 ? (
-            <p className="text-center text-sm text-gray-400 py-8">Sin créditos</p>
-          ) : credits.map(c => (
-            <CreditRow key={c.id} credit={c}
-              onPayment={(id, body) => payMutation.mutate({ id, body })}
-              onCancel={(id) => cancelMutation.mutate(id)} />
-          ))}
-        </div>
-
+        <CreditsPanelContent {...sharedProps} />
       </div>
     </div>
   );
