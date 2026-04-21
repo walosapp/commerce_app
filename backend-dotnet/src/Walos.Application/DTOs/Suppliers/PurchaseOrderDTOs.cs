@@ -36,6 +36,8 @@ public class PurchaseOrderResponse
     public long BranchId { get; set; }
     public long SupplierId { get; set; }
     public string SupplierName { get; set; } = string.Empty;
+    public string? SupplierPhone { get; set; }
+    public string? SupplierEmail { get; set; }
     public string OrderNumber { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string? Notes { get; set; }

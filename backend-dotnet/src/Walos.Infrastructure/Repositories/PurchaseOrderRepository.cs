@@ -22,7 +22,8 @@ public class PurchaseOrderRepository : IPurchaseOrderRepository
                 po.notes AS Notes, po.expected_date AS ExpectedDate,
                 po.received_at AS ReceivedAt,
                 po.subtotal AS Subtotal, po.tax AS Tax, po.total AS Total,
-                po.created_at AS CreatedAt
+                po.created_at AS CreatedAt,
+                s.phone AS SupplierPhone, s.email AS SupplierEmail
             FROM suppliers.purchase_orders po
             JOIN suppliers.suppliers s ON s.id = po.supplier_id
             WHERE po.company_id = @CompanyId";
@@ -43,7 +44,8 @@ public class PurchaseOrderRepository : IPurchaseOrderRepository
                    po.notes AS Notes, po.expected_date AS ExpectedDate,
                    po.received_at AS ReceivedAt,
                    po.subtotal AS Subtotal, po.tax AS Tax, po.total AS Total,
-                   po.created_at AS CreatedAt
+                   po.created_at AS CreatedAt,
+                   s.phone AS SupplierPhone, s.email AS SupplierEmail
             FROM suppliers.purchase_orders po
             JOIN suppliers.suppliers s ON s.id = po.supplier_id
             WHERE po.id = @Id AND po.company_id = @CompanyId";
