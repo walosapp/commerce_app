@@ -218,8 +218,8 @@ public class SalesService : ISalesService
             }
         }
 
-        // Si hay credito, el monto realmente pagado ahora es CreditAmountPaid
-        var actualPaid = (request.HasCredit && request.CreditAmountPaid > 0 && request.CreditAmountPaid < finalTotalPaid)
+        // Si hay credito, el monto realmente pagado ahora es CreditAmountPaid (puede ser 0 = toda la cuenta queda como credito)
+        var actualPaid = (request.HasCredit && request.CreditAmountPaid >= 0 && request.CreditAmountPaid < finalTotalPaid)
             ? Math.Round(request.CreditAmountPaid, 2)
             : finalTotalPaid;
 
@@ -237,7 +237,7 @@ public class SalesService : ISalesService
         // Crear registro de credito si aplica
         long? creditId = null;
         decimal? creditAmount = null;
-        if (request.HasCredit && actualPaid < finalTotalPaid)
+        if (request.HasCredit && actualPaid < finalTotalPaid && actualPaid >= 0)
         {
             var remaining = Math.Round(finalTotalPaid - actualPaid, 2);
             var customerName = !string.IsNullOrWhiteSpace(request.CreditCustomerName)

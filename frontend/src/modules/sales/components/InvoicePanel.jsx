@@ -63,7 +63,7 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
   const perPerson       = splitCount > 1 ? finalTotal / splitCount : null;
 
   const creditPaid      = Number(creditAmountPaid || 0);
-  const creditRemaining = hasCredit && creditPaid > 0 && creditPaid < finalTotal
+  const creditRemaining = hasCredit && creditPaid < finalTotal
     ? Math.round((finalTotal - creditPaid) * 100) / 100
     : 0;
 
@@ -80,7 +80,7 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
     }
   }
   if (hasCredit) {
-    if (creditPaid <= 0) validationMessage = 'Ingresa el monto que paga ahora.';
+    if (creditPaid < 0) validationMessage = 'El monto no puede ser negativo.';
     else if (creditPaid >= finalTotal) validationMessage = 'El monto a pagar debe ser menor al total. Si paga todo, desmarca el credito.';
   }
 
@@ -277,7 +277,7 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
                       className="input pl-10 w-full" />
                   </div>
                 </div>
-                {creditPaid > 0 && creditPaid < finalTotal && (
+                {creditPaid >= 0 && creditPaid < finalTotal && (
                   <div className="rounded-lg bg-orange-100 border border-orange-200 px-3 py-2.5 flex items-center justify-between">
                     <span className="text-sm text-orange-700 font-medium">Queda como credito:</span>
                     <span className="text-lg font-bold text-orange-700">{formatCurrency(creditRemaining)}</span>
