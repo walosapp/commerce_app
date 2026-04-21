@@ -405,6 +405,8 @@ const SuppliersPage = () => {
           onClose={() => setSelectedId(null)}
           onEdit={s => setFormModal({ supplier: s })}
           onDelete={handleDelete}
+          onOpenOrderDetail={(orderId) => setSelectedOrderId(orderId)}
+          onNewOrder={() => setShowOrderModal(true)}
         />
       )}
 

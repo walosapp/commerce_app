@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Sparkles, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Sparkles, Loader2, ChevronDown, ChevronUp, RefreshCw, ShoppingCart } from 'lucide-react';
 import supplierService from '../../../services/supplierService';
 import ContactActions from './ContactActions';
 
-const SuggestedOrderPanel = ({ supplier }) => {
+const SuggestedOrderPanel = ({ supplier, onNewOrder }) => {
   const [open, setOpen] = useState(false);
   const [editedItems, setEditedItems] = useState(null);
 
@@ -49,7 +49,19 @@ const SuggestedOrderPanel = ({ supplier }) => {
             </span>
           )}
         </div>
-        {open ? <ChevronUp size={16} className="text-indigo-500" /> : <ChevronDown size={16} className="text-indigo-500" />}
+        <div className="flex items-center gap-1">
+          {open && (
+            <span
+              role="button"
+              onClick={e => { e.stopPropagation(); setEditedItems(null); refetch(); }}
+              className="p-1 rounded-md hover:bg-indigo-100 text-indigo-400 hover:text-indigo-600 transition-colors"
+              title="Volver a preguntar a la IA"
+            >
+              <RefreshCw size={13} />
+            </span>
+          )}
+          {open ? <ChevronUp size={16} className="text-indigo-500" /> : <ChevronDown size={16} className="text-indigo-500" />}
+        </div>
       </button>
 
       {open && (
@@ -102,9 +114,19 @@ const SuggestedOrderPanel = ({ supplier }) => {
                 </div>
               )}
 
-              <div className="pt-2">
-                <p className="text-xs text-gray-500 mb-2">Enviar pedido:</p>
-                <ContactActions supplier={supplier} suggestedItems={items} />
+              <div className="pt-2 flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">Enviar pedido:</p>
+                  <ContactActions supplier={supplier} suggestedItems={items} />
+                </div>
+                {onNewOrder && (
+                  <button
+                    onClick={() => onNewOrder(supplier)}
+                    className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors"
+                  >
+                    <ShoppingCart size={13} /> Generar pedido
+                  </button>
+                )}
               </div>
             </>
           )}
