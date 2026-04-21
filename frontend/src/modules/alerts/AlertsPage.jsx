@@ -155,23 +155,26 @@ const AlertsPage = () => {
 
   return (
     <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden">
-      <div className="mb-4 flex flex-shrink-0 items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Alertas</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Prioriza quiebres de stock y toma acción rápida sin salir del flujo operativo.
-          </p>
+      <div className="px-4 md:px-6 py-4 border-b bg-white flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
+            <Bell size={20} className="text-red-500" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Alertas</h1>
+            <p className="text-sm text-gray-500">Prioriza quiebres de stock y toma acción rápida</p>
+          </div>
         </div>
         <button
           onClick={() => refetch()}
-          className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+          className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
-          <RefreshCcw className="h-4 w-4" />
-          Actualizar
+          <RefreshCcw className="h-4 w-4" /> Actualizar
         </button>
       </div>
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
@@ -290,6 +293,8 @@ const AlertsPage = () => {
             })}
           </div>
         )}
+      </div>
+
       </div>
 
       <AddStockModal

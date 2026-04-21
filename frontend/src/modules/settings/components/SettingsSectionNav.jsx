@@ -1,68 +1,29 @@
 ﻿import { Palette, Store, Percent, LayoutList } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-const sections = [
-  {
-    key: 'branding',
-    label: 'Branding',
-    description: 'Logo, nombre y datos visibles del negocio',
-    path: '/settings/branding',
-    icon: Store,
-  },
-  {
-    key: 'themes',
-    label: 'Temas',
-    description: 'Look general y apariencia del sistema',
-    path: '/settings/themes',
-    icon: Palette,
-  },
-  {
-    key: 'discounts',
-    label: 'Descuentos',
-    description: 'Reglas operativas para facturacion',
-    path: '/settings/discounts',
-    icon: Percent,
-  },
-  {
-    key: 'catalog',
-    label: 'Catalogo',
-    description: 'Categorias y unidades de inventario',
-    path: '/settings/catalog',
-    icon: LayoutList,
-  },
+export const sections = [
+  { key: 'branding',  label: 'Branding',    path: '/settings/branding',  icon: Store },
+  { key: 'themes',    label: 'Temas',        path: '/settings/themes',    icon: Palette },
+  { key: 'discounts', label: 'Descuentos',   path: '/settings/discounts', icon: Percent },
+  { key: 'catalog',   label: 'Catalogo',     path: '/settings/catalog',   icon: LayoutList },
 ];
 
-const SettingsSectionNav = ({ activeSection }) => {
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {sections.map((section) => {
-        const Icon = section.icon;
-        const active = activeSection === section.key;
-
-        return (
-          <Link
-            key={section.key}
-            to={section.path}
-            className={`rounded-xl border p-4 transition-all ${
-              active
-                ? 'border-primary-300 bg-primary-50 shadow-sm'
-                : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
-            }`}
-          >
-            <div className="flex items-start gap-3">
-              <div className={`rounded-lg p-2 ${active ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-600'}`}>
-                <Icon className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{section.label}</p>
-                <p className="mt-1 text-xs text-gray-500">{section.description}</p>
-              </div>
-            </div>
-          </Link>
-        );
-      })}
-    </div>
-  );
-};
+const SettingsSectionNav = ({ activeSection }) => (
+  <div className="flex border-b bg-white px-6 flex-shrink-0">
+    {sections.map(({ key, label, icon: Icon }) => (
+      <Link
+        key={key}
+        to={`/settings/${key === 'branding' ? 'branding' : key}`}
+        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+          activeSection === key
+            ? 'border-primary-600 text-primary-600'
+            : 'border-transparent text-gray-500 hover:text-gray-700'
+        }`}
+      >
+        <Icon size={16} /> {label}
+      </Link>
+    ))}
+  </div>
+);
 
 export default SettingsSectionNav;
