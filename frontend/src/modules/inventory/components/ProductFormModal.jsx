@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Modal de Producto (Crear / Editar)
  * ¿Qué es? Formulario reutilizable para crear o editar productos
  * ¿Para qué? CRUD de productos con cálculo margen ↔ precio venta
@@ -165,6 +165,9 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
     if (!form.name?.trim()) { toast.error('El nombre es requerido'); return; }
     if (!form.categoryId) { toast.error('Selecciona una categoria. Si no hay opciones, crealas en Configuracion → Catalogo'); return; }
     if (!form.unitId) { toast.error('Selecciona una unidad de medida. Si no hay opciones, crealas en Configuracion → Catalogo'); return; }
+    if (!form.costPrice || Number(form.costPrice) <= 0) { toast.error('El costo debe ser mayor a 0'); return; }
+    const needsSalePrice = form.productType !== 'supply' && form.productType !== 'service';
+    if (needsSalePrice && (!form.salePrice || Number(form.salePrice) <= 0)) { toast.error('El precio de venta es requerido para este tipo de producto'); return; }
 
     setSaving(true);
     try {
@@ -191,6 +194,8 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
       onClose();
     } catch (err) {
       console.error('Error guardando producto:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Error al guardar el producto';
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -440,7 +445,6 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
                   </label>
                   <input
                     type="number"
-                    required={form.productType !== 'supply'}
                     min="0"
                     step="0.01"
                     value={form.salePrice}
@@ -587,3 +591,4 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
 };
 
 export default ProductFormModal;
+
