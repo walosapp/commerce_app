@@ -26,6 +26,16 @@ public class HourlySale
     public decimal Revenue { get; set; }
 }
 
+public class OrderItem
+{
+    public long Id { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public decimal Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal Subtotal { get; set; }
+    public string? Notes { get; set; }
+}
+
 public class CompletedOrder
 {
     public long Id { get; set; }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CreditCard, X, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
+import OrderItemsList from './OrderItemsList';
 import toast from 'react-hot-toast';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import api from '../../../config/api';
@@ -64,7 +65,8 @@ const CreditRow = ({ credit, onPayment, onCancel }) => {
 
       {expanded && (
         <div className="border-t bg-gray-50 px-4 py-3 space-y-3">
-          <div className="grid grid-cols-3 gap-2 text-sm">
+          <OrderItemsList orderId={credit.orderId} />
+          <div className="grid grid-cols-3 gap-2 text-sm border-t border-gray-200 pt-3">
             <div>
               <p className="text-xs text-gray-500">Total original</p>
               <p className="font-medium">{formatCurrency(credit.originalTotal)}</p>

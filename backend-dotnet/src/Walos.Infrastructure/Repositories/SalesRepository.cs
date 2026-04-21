@@ -261,10 +261,11 @@ public class SalesRepository : ISalesRepository
                 SELECT oi.id AS Id, oi.order_id AS OrderId, oi.product_id AS ProductId,
                        oi.product_name AS ProductName, oi.quantity AS Quantity,
                        oi.unit_price AS UnitPrice, oi.subtotal AS Subtotal,
-                       p.image_url AS ImageUrl
+                       oi.notes AS Notes, p.image_url AS ImageUrl
                 FROM sales.order_items oi
                 LEFT JOIN inventory.products p ON oi.product_id = p.id AND p.company_id = oi.company_id
-                WHERE oi.order_id = @OrderId AND oi.company_id = @CompanyId";
+                WHERE oi.order_id = @OrderId AND oi.company_id = @CompanyId
+                ORDER BY oi.id ASC";
 
             return await connection.QueryAsync<OrderItem>(sql, new { OrderId = orderId, CompanyId = companyId });
         }

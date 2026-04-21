@@ -89,6 +89,13 @@ public class SalesController : ControllerBase
         return Ok(ApiResponse.Ok("Mesa renombrada"));
     }
 
+    [HttpGet("orders/{id:long}/items")]
+    public async Task<IActionResult> GetOrderItems(long id)
+    {
+        var items = (await _salesRepo.GetOrderItemsAsync(id, _tenant.CompanyId)).ToList();
+        return Ok(ApiResponse<List<OrderItem>>.Ok(items, count: items.Count));
+    }
+
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary([FromQuery] long branchId, [FromQuery] string? date)
     {

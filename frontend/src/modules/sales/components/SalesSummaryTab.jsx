@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { TrendingUp, Receipt, DollarSign, Tag, CreditCard, ChevronDown, ChevronUp } from 'lucide-react';
+import OrderItemsList from './OrderItemsList';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import useAuthStore from '../../../stores/authStore';
 import api from '../../../config/api';
@@ -69,13 +70,16 @@ const OrderRow = ({ order }) => {
         {open ? <ChevronUp size={14} className="text-gray-400 shrink-0" /> : <ChevronDown size={14} className="text-gray-400 shrink-0" />}
       </button>
       {open && (
-        <div className="px-4 pb-3 bg-gray-50 text-xs text-gray-600 grid grid-cols-2 gap-2">
-          <div><span className="text-gray-400">Subtotal:</span> {formatCurrency(order.subtotal)}</div>
-          <div><span className="text-gray-400">Descuento:</span> {formatCurrency(order.discountAmount)}</div>
-          <div><span className="text-gray-400">Total pagado:</span> {formatCurrency(order.finalTotalPaid)}</div>
-          {order.splitReferenceCount > 1 && (
-            <div><span className="text-gray-400">Por persona:</span> {formatCurrency(order.finalTotalPaid / order.splitReferenceCount)}</div>
-          )}
+        <div className="px-4 pb-4 bg-gray-50 space-y-3">
+          <OrderItemsList orderId={order.id} />
+          <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 border-t border-gray-200 pt-3">
+            <div><span className="text-gray-400">Subtotal:</span> {formatCurrency(order.subtotal)}</div>
+            <div><span className="text-gray-400">Descuento:</span> {formatCurrency(order.discountAmount)}</div>
+            <div><span className="text-gray-400">Total pagado:</span> {formatCurrency(order.finalTotalPaid)}</div>
+            {order.splitReferenceCount > 1 && (
+              <div><span className="text-gray-400">Por persona:</span> {formatCurrency(order.finalTotalPaid / order.splitReferenceCount)}</div>
+            )}
+          </div>
         </div>
       )}
     </div>
