@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PlusCircle, Trash2, Loader2, ChefHat, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -30,7 +30,6 @@ const RecipeManager = ({ productId, productName }) => {
   const recipe = recipeData?.data ?? [];
   const existingIds = recipe.map(r => r.ingredientId);
 
-  // Only show supply-type products as ingredients (or all if no supply exists)
   const supplies = (stockData?.data ?? []).filter(p => {
     const isSupply = p.productType === 'supply' || p.productType === 'simple';
     const notAlreadyAdded = !existingIds.includes(p.productId);
@@ -50,7 +49,7 @@ const RecipeManager = ({ productId, productName }) => {
 
   const handleAdd = async () => {
     if (!form.ingredientId) { toast.error('Selecciona un insumo'); return; }
-    if (!form.quantity || Number(form.quantity) <= 0) { toast.error('Ingresa una cantidad válida'); return; }
+    if (!form.quantity || Number(form.quantity) <= 0) { toast.error('Ingresa una cantidad valida'); return; }
     setSaving(true);
     try {
       await recipeService.upsertIngredient(productId, {
@@ -86,11 +85,10 @@ const RecipeManager = ({ productId, productName }) => {
         <ChefHat size={18} className="text-indigo-600" />
         <h3 className="text-sm font-semibold text-indigo-800">Receta / Ingredientes</h3>
         <span className="text-xs text-indigo-500 font-normal">
-          — Al vender, se descontarán estos insumos del stock
+          — Al vender, se descontaran estos insumos del stock
         </span>
       </div>
 
-      {/* Current ingredients */}
       {loadingRecipe ? (
         <div className="flex items-center gap-2 text-sm text-gray-400">
           <Loader2 size={14} className="animate-spin" /> Cargando receta...
@@ -119,7 +117,6 @@ const RecipeManager = ({ productId, productName }) => {
         </div>
       )}
 
-      {/* Add ingredient */}
       <div className="border-t border-indigo-200 pt-3 space-y-2">
         <p className="text-xs font-medium text-indigo-700">Agregar ingrediente:</p>
         <div className="relative">
@@ -141,7 +138,7 @@ const RecipeManager = ({ productId, productName }) => {
                   className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 border-b border-gray-100 last:border-b-0"
                 >
                   <span className="font-medium">{p.productName}</span>
-                  <span className="ml-2 text-xs text-gray-400">stock: {p.quantity}</span>
+                  <span className="ml-2 text-xs text-gray-400">stock: {p.availableQuantity ?? p.quantity ?? 0}</span>
                 </button>
               ))}
             </div>
