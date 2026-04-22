@@ -366,6 +366,7 @@ public class SalesService : ISalesService
 
             var newItem = new OrderItem
             {
+                CompanyId = companyId,
                 OrderId = order.Id,
                 ProductId = item.ProductId,
                 ProductName = item.ProductName,
