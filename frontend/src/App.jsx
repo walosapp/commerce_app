@@ -83,7 +83,7 @@ function App() {
           <Route path="/settings/branding" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/themes" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/discounts" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-          <Route path="/settings/catalog" element={<ProtectedRoute allowedRoles={['dev','admin','manager']}><SettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/catalog" element={<ProtectedRoute allowedRoles={['dev','super_admin','admin','manager']}><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/plan" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/ai" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/payments" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
