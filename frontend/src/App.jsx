@@ -78,7 +78,7 @@ function App() {
           <Route path="/sales" element={<ProtectedRoute><SalesPage /></ProtectedRoute>} />
           <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
           <Route path="/suppliers" element={<ProtectedRoute><SuppliersPage /></ProtectedRoute>} />
-          <Route path="/users" element={<ProtectedRoute allowedRoles={['dev','admin','manager']}><UsersPage /></ProtectedRoute>} />
+          <Route path="/users" element={<ProtectedRoute allowedRoles={['dev','super_admin','admin','manager']}><UsersPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/branding" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/themes" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />

@@ -48,7 +48,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> Create([FromBody] CreateUserRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
@@ -80,7 +80,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpPut("{id:long}")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> Update(long id, [FromBody] UpdateUserRequest request)
     {
         var user = new User
@@ -101,7 +101,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpPatch("{id:long}/status")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> SetStatus(long id, [FromBody] bool isActive)
     {
         if (id == _tenant.UserId)
@@ -114,7 +114,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpDelete("{id:long}")]
-    [Authorize(Roles = "dev,admin")]
+    [Authorize(Roles = "dev,super_admin,admin")]
     public async Task<IActionResult> Delete(long id)
     {
         if (id == _tenant.UserId)

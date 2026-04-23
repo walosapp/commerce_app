@@ -101,7 +101,7 @@ const Layout = ({ children }) => {
     { name: 'Pedidos', path: '/delivery', icon: Bike },
     { name: 'Finanzas', path: '/finance', icon: Landmark },
     { name: 'Proveedores', path: '/suppliers', icon: Truck },
-    ...((['dev','admin','manager'].includes(user?.role)) ? [{ name: 'Usuarios', path: '/users', icon: Users }] : []),
+    ...((['dev','super_admin','admin','manager'].includes(user?.role)) ? [{ name: 'Usuarios', path: '/users', icon: Users }] : []),
     ...(user?.role === 'dev' ? [{ name: 'Comercios', path: '/admin/tenants', icon: Building2 }] : []),
     {
       name: 'Configuracion',
