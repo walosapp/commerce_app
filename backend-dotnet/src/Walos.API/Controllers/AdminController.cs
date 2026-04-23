@@ -83,6 +83,40 @@ public class AdminController : ControllerBase
         return Ok(ApiResponse<List<User>>.Ok(users, count: users.Count));
     }
 
+    [HttpGet("users/roles")]
+    public async Task<IActionResult> GetRolesForCompany([FromQuery] long companyId)
+    {
+        var roles = await _usersRepo.GetRolesAsync(companyId, excludeDev: true);
+        return Ok(ApiResponse<IEnumerable<RoleOption>>.Ok(roles));
+    }
+
+    [HttpPost("users")]
+    public async Task<IActionResult> CreateUserInTenant([FromBody] CreateUserInTenantRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
+            return BadRequest(ApiResponse.Fail("Nombre y apellido son requeridos"));
+        if (string.IsNullOrWhiteSpace(request.Email))
+            return BadRequest(ApiResponse.Fail("El email es requerido"));
+        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
+            return BadRequest(ApiResponse.Fail("La contraseña debe tener al menos 6 caracteres"));
+        if (await _usersRepo.EmailExistsAsync(request.Email))
+            return Conflict(ApiResponse.Fail("Ya existe un usuario con ese email"));
+
+        var hash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+        var user = new User
+        {
+            CompanyId = request.CompanyId,
+            BranchId  = request.BranchId,
+            RoleId    = request.RoleId,
+            FirstName = request.FirstName.Trim(),
+            LastName  = request.LastName.Trim(),
+            Email     = request.Email.Trim(),
+            Phone     = request.Phone,
+        };
+        var created = await _usersRepo.CreateAsync(user, hash);
+        return Created($"api/v1/admin/users/{created.Id}", ApiResponse<User>.Ok(created, "Usuario creado"));
+    }
+
     [HttpPatch("users/{id:long}/status")]
     public async Task<IActionResult> SetUserStatus(long id, [FromQuery] long companyId, [FromBody] bool isActive)
     {
@@ -105,4 +139,8 @@ public class AdminController : ControllerBase
 
     public record SetTenantStatusRequest(bool IsActive);
     public record ResetPasswordRequest(string NewPassword);
+    public record CreateUserInTenantRequest(
+        long CompanyId, long RoleId, long? BranchId,
+        string FirstName, string LastName, string Email,
+        string Password, string? Phone);
 }

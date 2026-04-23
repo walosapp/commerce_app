@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Loader2, UserPlus, Eye, EyeOff } from 'lucide-react';
 import userService from '../../../services/userService';
+import adminService from '../../../services/adminService';
 import useAuthStore from '../../../stores/authStore';
 
 const Field = ({ label, value, onChange, placeholder, type = 'text', required, children }) => (
@@ -21,21 +22,26 @@ const Field = ({ label, value, onChange, placeholder, type = 'text', required, c
   </div>
 );
 
-const empty = () => ({ firstName: '', lastName: '', email: '', password: '', phone: '', roleId: '', branchId: '' });
+const empty = () => ({ firstName: '', lastName: '', email: '', password: '', phone: '', roleId: '', branchId: '', companyId: '' });
 
-const UserFormModal = ({ user, onSave, onClose }) => {
-  const { tenantId } = useAuthStore();
+const UserFormModal = ({ user, onSave, onClose, companies = [] }) => {
+  const { tenantId, user: currentUser } = useAuthStore();
+  const isDev = currentUser?.role === 'dev';
   const isEdit = !!user;
   const [form, setForm] = useState(empty());
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const selectedCompanyId = form.companyId ? Number(form.companyId) : (isDev ? null : Number(tenantId));
+
   const { data: rolesData } = useQuery({
-    queryKey: ['user-roles', tenantId],
-    queryFn: () => userService.getRoles(),
-    enabled: !!tenantId,
-    staleTime: 5 * 60 * 1000,
+    queryKey: ['user-roles', selectedCompanyId ?? tenantId],
+    queryFn: () => isDev && selectedCompanyId
+      ? userService.adminGetRolesForCompany(selectedCompanyId)
+      : userService.getRoles(),
+    enabled: isDev ? !!selectedCompanyId : !!tenantId,
+    staleTime: 2 * 60 * 1000,
   });
   const roles = rolesData?.data ?? [];
 
@@ -49,6 +55,7 @@ const UserFormModal = ({ user, onSave, onClose }) => {
         phone: user.phone ?? '',
         roleId: String(user.roleId ?? ''),
         branchId: String(user.branchId ?? ''),
+        companyId: String(user.companyId ?? ''),
       });
     } else {
       setForm(empty());
@@ -63,6 +70,7 @@ const UserFormModal = ({ user, onSave, onClose }) => {
     if (!form.email.trim()) { setError('El email es requerido'); return; }
     if (!isEdit && (!form.password || form.password.length < 6)) { setError('La contraseña debe tener al menos 6 caracteres'); return; }
     if (!form.roleId) { setError('Selecciona un rol'); return; }
+    if (isDev && !isEdit && !form.companyId) { setError('Selecciona un comercio'); return; }
 
     setSaving(true);
     setError('');
@@ -75,6 +83,7 @@ const UserFormModal = ({ user, onSave, onClose }) => {
         roleId: Number(form.roleId),
         branchId: form.branchId ? Number(form.branchId) : undefined,
         ...(!isEdit && { password: form.password }),
+        ...(isDev && !isEdit && { companyId: Number(form.companyId) }),
       };
       await onSave(payload);
       onClose();
@@ -97,6 +106,21 @@ const UserFormModal = ({ user, onSave, onClose }) => {
         </div>
 
         <div className="px-6 py-5 space-y-4">
+          {isDev && !isEdit && (
+            <Field label="Comercio" required>
+              <select
+                value={form.companyId}
+                onChange={e => setForm(p => ({ ...p, companyId: e.target.value, roleId: '' }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Seleccionar comercio...</option>
+                {companies.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <Field label="Nombre" value={form.firstName} onChange={set('firstName')} placeholder="Carlos" required />
             <Field label="Apellido" value={form.lastName} onChange={set('lastName')} placeholder="López" required />
@@ -131,8 +155,9 @@ const UserFormModal = ({ user, onSave, onClose }) => {
                 value={form.roleId}
                 onChange={e => setForm(p => ({ ...p, roleId: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                disabled={isDev && !isEdit && !form.companyId}
               >
-                <option value="">Seleccionar rol...</option>
+                <option value="">{isDev && !isEdit && !form.companyId ? 'Primero selecciona un comercio' : 'Seleccionar rol...'}</option>
                 {roles.map(r => (
                   <option key={r.id} value={r.id}>{r.name}</option>
                 ))}
