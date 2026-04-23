@@ -21,6 +21,7 @@ import AlertsPage from './modules/alerts/AlertsPage';
 import FinancePage from './modules/finance/FinancePage';
 import TenantsPage from './modules/admin/TenantsPage';
 import CompaniesPage from './modules/admin/CompaniesPage';
+import AdminUsersPage from './modules/admin/AdminUsersPage';
 import DeliveryOrdersPage from './modules/delivery/DeliveryOrdersPage';
 import SuppliersPage from './modules/suppliers/SuppliersPage';
 import UsersPage from './modules/users/UsersPage';
@@ -90,6 +91,7 @@ function App() {
           <Route path="/alerts" element={<ProtectedRoute><AlertsPage /></ProtectedRoute>} />
           <Route path="/admin/tenants" element={<ProtectedRoute requiredRole="dev"><TenantsPage /></ProtectedRoute>} />
           <Route path="/admin/companies" element={<ProtectedRoute requiredRole="dev"><CompaniesPage /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute requiredRole="dev"><AdminUsersPage /></ProtectedRoute>} />
           <Route path="/delivery" element={<ProtectedRoute><DeliveryOrdersPage /></ProtectedRoute>} />
           <Route path="/login" element={<LoginPage />} />
         </Routes>

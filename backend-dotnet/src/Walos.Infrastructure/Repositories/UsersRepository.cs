@@ -42,6 +42,31 @@ public class UsersRepository : IUsersRepository
         return await conn.QueryAsync<User>(sql, new { CompanyId = companyId });
     }
 
+    public async Task<IEnumerable<User>> GetAllGlobalAsync(long? filterCompanyId = null)
+    {
+        using var conn = await _db.CreateConnectionAsync();
+        const string sql = @"
+            SELECT
+                u.id AS Id, u.company_id AS CompanyId, u.branch_id AS BranchId,
+                u.role_id AS RoleId, u.first_name AS FirstName, u.last_name AS LastName,
+                u.email AS Email, u.phone AS Phone, u.language AS Language,
+                u.avatar_url AS AvatarUrl, u.is_active AS IsActive,
+                u.email_verified AS EmailVerified, u.last_login_at AS LastLoginAt,
+                u.created_at AS CreatedAt, u.updated_at AS UpdatedAt,
+                r.code AS RoleCode, r.name AS RoleName,
+                b.name AS BranchName,
+                c.name AS CompanyName
+            FROM core.users u
+            JOIN core.roles r ON r.id = u.role_id
+            LEFT JOIN core.branches b ON b.id = u.branch_id
+            JOIN core.companies c ON c.id = u.company_id
+            WHERE u.deleted_at IS NULL
+              AND r.code != 'dev'
+              AND (@FilterCompanyId IS NULL OR u.company_id = @FilterCompanyId)
+            ORDER BY c.name, u.first_name, u.last_name";
+        return await conn.QueryAsync<User>(sql, new { FilterCompanyId = filterCompanyId });
+    }
+
     public async Task<User?> GetByIdAsync(long userId, long companyId)
     {
         using var conn = await _db.CreateConnectionAsync();
@@ -122,6 +147,15 @@ public class UsersRepository : IUsersRepository
             WHERE email = @Email AND deleted_at IS NULL
               AND (@ExcludeId IS NULL OR id != @ExcludeId)";
         return await conn.ExecuteScalarAsync<int>(sql, new { Email = email, ExcludeId = excludeUserId }) > 0;
+    }
+
+    public async Task<bool> ResetPasswordAsync(long userId, long companyId, string newPasswordHash)
+    {
+        using var conn = await _db.CreateConnectionAsync();
+        const string sql = @"
+            UPDATE core.users SET password_hash = @Hash, updated_at = NOW()
+            WHERE id = @UserId AND company_id = @CompanyId AND deleted_at IS NULL";
+        return await conn.ExecuteAsync(sql, new { Hash = newPasswordHash, UserId = userId, CompanyId = companyId }) > 0;
     }
 
     public async Task<IEnumerable<RoleOption>> GetRolesAsync(long companyId, bool excludeDev = true)

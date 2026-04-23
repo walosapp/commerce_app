@@ -1,8 +1,11 @@
+using BCrypt.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Admin;
 using Walos.Application.DTOs.Common;
+using Walos.Application.DTOs.Users;
 using Walos.Application.Services;
+using Walos.Domain.Entities;
 
 namespace Walos.API.Controllers;
 
@@ -12,10 +15,12 @@ namespace Walos.API.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly IAdminService _adminService;
+    private readonly IUsersRepository _usersRepo;
 
-    public AdminController(IAdminService adminService)
+    public AdminController(IAdminService adminService, IUsersRepository usersRepo)
     {
         _adminService = adminService;
+        _usersRepo = usersRepo;
     }
 
     [HttpGet("tenants")]
@@ -69,6 +74,33 @@ public class AdminController : ControllerBase
             return NotFound(ApiResponse.Fail("Comercio no encontrado"));
 
         return Ok(ApiResponse.Ok(request.IsActive ? "Comercio activado" : "Comercio desactivado"));
+    }
+
+    [HttpGet("users")]
+    public async Task<IActionResult> GetAllUsers([FromQuery] long? companyId)
+    {
+        var users = (await _usersRepo.GetAllGlobalAsync(companyId)).ToList();
+        return Ok(ApiResponse<List<User>>.Ok(users, count: users.Count));
+    }
+
+    [HttpPatch("users/{id:long}/status")]
+    public async Task<IActionResult> SetUserStatus(long id, [FromQuery] long companyId, [FromBody] bool isActive)
+    {
+        var ok = await _usersRepo.SetActiveAsync(id, companyId, isActive);
+        if (!ok) return NotFound(ApiResponse.Fail("Usuario no encontrado"));
+        return Ok(ApiResponse.Ok(isActive ? "Usuario activado" : "Usuario desactivado"));
+    }
+
+    [HttpPost("users/{id:long}/reset-password")]
+    public async Task<IActionResult> ResetUserPassword(long id, [FromQuery] long companyId, [FromBody] ResetPasswordRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
+            return BadRequest(ApiResponse.Fail("La contraseña debe tener al menos 6 caracteres"));
+
+        var hash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        var ok = await _usersRepo.ResetPasswordAsync(id, companyId, hash);
+        if (!ok) return NotFound(ApiResponse.Fail("Usuario no encontrado"));
+        return Ok(ApiResponse.Ok("Contraseña actualizada"));
     }
 
     public record SetTenantStatusRequest(bool IsActive);
