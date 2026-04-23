@@ -171,7 +171,7 @@ const Layout = ({ children }) => {
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
       >
-        <div className="flex h-16 items-center gap-3 border-b px-3">
+        <div className={`flex h-16 items-center border-b px-3 ${collapsed ? 'justify-center' : 'gap-3'}`}>
           <div
             className={`flex min-w-0 items-center gap-3 overflow-hidden transition-all duration-300 ${
               collapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'
