@@ -19,11 +19,8 @@ import {
   Menu,
   RefreshCw,
   Package,
-  Palette,
   Settings,
   ShoppingCart,
-  Store,
-  Percent,
   Truck,
   Users,
   X,
@@ -103,16 +100,7 @@ const Layout = ({ children }) => {
     { name: 'Proveedores', path: '/suppliers', icon: Truck },
     ...((['dev','super_admin','admin','manager'].includes(user?.role)) ? [{ name: 'Usuarios', path: '/users', icon: Users }] : []),
     ...(user?.role === 'dev' ? [{ name: 'Comercios', path: '/admin/tenants', icon: Building2 }] : []),
-    {
-      name: 'Configuracion',
-      path: '/settings',
-      icon: Settings,
-      children: [
-        { name: 'Branding', path: '/settings/branding', icon: Store },
-        { name: 'Temas', path: '/settings/themes', icon: Palette },
-        { name: 'Descuentos', path: '/settings/discounts', icon: Percent },
-      ],
-    },
+    { name: 'Configuracion', path: '/settings', icon: Settings },
   ];
 
   const displayName = companyName || 'Walos';
