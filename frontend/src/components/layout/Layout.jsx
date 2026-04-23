@@ -177,11 +177,19 @@ const Layout = ({ children }) => {
               collapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'
             }`}
           >
-            <img
-              src={walosLogoSrc}
-              alt="Walos"
-              className="h-10 w-10 flex-shrink-0 rounded-lg border border-gray-200 bg-white object-contain p-1"
-            />
+            {logoSrc ? (
+              <img
+                src={logoSrc}
+                alt={displayName}
+                className="h-10 w-10 flex-shrink-0 rounded-lg border border-gray-200 bg-white object-cover"
+              />
+            ) : (
+              <img
+                src={walosLogoSrc}
+                alt="Walos"
+                className="h-10 w-10 flex-shrink-0 rounded-lg border border-gray-200 bg-white object-contain p-1"
+              />
+            )}
           </div>
 
           {collapsed ? (
@@ -190,11 +198,19 @@ const Layout = ({ children }) => {
               className="mx-auto hidden flex-shrink-0 items-center justify-center lg:flex"
               title="Abrir barra lateral"
             >
-              <img
-                src={walosLogoSrc}
-                alt="Walos"
-                className="h-10 w-10 rounded-lg object-contain"
-              />
+              {logoSrc ? (
+                <img
+                  src={logoSrc}
+                  alt={displayName}
+                  className="h-10 w-10 rounded-lg border border-gray-200 object-cover"
+                />
+              ) : (
+                <img
+                  src={walosLogoSrc}
+                  alt="Walos"
+                  className="h-10 w-10 rounded-lg object-contain"
+                />
+              )}
             </button>
           ) : (
             <button
