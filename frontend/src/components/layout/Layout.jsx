@@ -287,22 +287,8 @@ const Layout = ({ children }) => {
               <Menu className="h-6 w-6" />
             </button>
 
-            <div className="flex min-w-0 items-center gap-3">
-              {logoSrc ? (
-                <img
-                  src={logoSrc}
-                  alt={displayName}
-                  className="h-9 w-9 rounded-xl border border-gray-200 bg-white object-contain p-1"
-                />
-              ) : (
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-sm font-bold text-primary-700">
-                  {displayName.charAt(0).toUpperCase()}
-                </div>
-              )}
-
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-gray-900">{displayName}</p>
-              </div>
+            <div className="flex min-w-0 items-center">
+              <p className="truncate text-sm font-semibold text-gray-900">{displayName}</p>
             </div>
           </div>
 
