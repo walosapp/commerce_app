@@ -128,4 +128,13 @@ public class CompanyService : ICompanyService
 
         return logoUrl;
     }
+
+    public async Task RemoveLogoAsync(long companyId, long userId)
+    {
+        var company = await _repository.GetCompanySettingsAsync(companyId)
+            ?? throw new NotFoundException("Empresa no encontrada");
+
+        await _repository.UpdateCompanyLogoAsync(companyId, null, userId);
+        _logger.LogInformation("Logo eliminado para empresa {CompanyId}", companyId);
+    }
 }

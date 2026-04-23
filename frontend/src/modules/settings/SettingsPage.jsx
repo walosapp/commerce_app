@@ -61,6 +61,7 @@ const SettingsPage = () => {
   });
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
+  const [logoRemoved, setLogoRemoved] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const { data: settingsData, isLoading: settingsLoading } = useQuery({
@@ -96,6 +97,7 @@ const SettingsPage = () => {
       businessCloseTime: settings.businessCloseTime?.slice(0, 5) ?? '23:59',
     });
     setLogoPreview(settings.logoUrl ? `${API_BASE}${settings.logoUrl}` : null);
+    setLogoRemoved(false);
     setTheme(settings.themePreference || 'light');
     setBranding({
       companyName: settings.displayName || settings.name || 'Walos',
@@ -143,6 +145,7 @@ const SettingsPage = () => {
     }
 
     setLogoFile(file);
+    setLogoRemoved(false);
     const reader = new FileReader();
     reader.onloadend = () => setLogoPreview(reader.result);
     reader.readAsDataURL(file);
@@ -151,6 +154,7 @@ const SettingsPage = () => {
   const handleRemoveLogo = () => {
     setLogoFile(null);
     setLogoPreview(null);
+    setLogoRemoved(true);
   };
 
   const handleSaveBranding = async () => {
@@ -165,7 +169,10 @@ const SettingsPage = () => {
       businessCloseTime: form.businessCloseTime || '23:59',
     });
 
-    if (logoFile) {
+    if (logoRemoved) {
+      await companyService.removeLogo();
+      setLogoRemoved(false);
+    } else if (logoFile) {
       await companyService.uploadLogo(logoFile);
       setLogoFile(null);
     }

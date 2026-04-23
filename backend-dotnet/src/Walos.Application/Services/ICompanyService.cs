@@ -10,4 +10,5 @@ public interface ICompanyService
     Task<CompanyOperationsSettings> GetOperationsSettingsAsync(long companyId);
     Task<CompanyOperationsSettings> UpdateOperationsSettingsAsync(long companyId, UpdateCompanyOperationsSettingsRequest request);
     Task<string> UploadLogoAsync(long companyId, long userId, Stream fileStream, string fileName, string contentType);
+    Task RemoveLogoAsync(long companyId, long userId);
 }

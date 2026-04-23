@@ -62,4 +62,11 @@ public class CompanyController : ControllerBase
 
         return Ok(ApiResponse<object>.Ok(new { logoUrl }, "Logo actualizado exitosamente"));
     }
+
+    [HttpDelete("settings/logo")]
+    public async Task<IActionResult> RemoveLogo()
+    {
+        await _companyService.RemoveLogoAsync(_tenant.CompanyId, _tenant.UserId);
+        return Ok(ApiResponse.Ok("Logo eliminado exitosamente"));
+    }
 }
