@@ -241,21 +241,12 @@ const Layout = ({ children }) => {
 
         <div className="border-t p-2">
           <div className="flex items-center gap-3 rounded-lg bg-gray-50 p-2">
-            {logoSrc ? (
-              <img
-                src={logoSrc}
-                alt={displayName}
-                className="h-10 w-10 flex-shrink-0 rounded-full border border-gray-200 object-cover"
-                title={collapsed ? displayName : undefined}
-              />
-            ) : (
-              <div
-                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary-500 font-semibold text-white"
-                title={collapsed ? userDisplayName : undefined}
-              >
-                {userInitial}
-              </div>
-            )}
+            <div
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary-500 font-semibold text-white"
+              title={collapsed ? userDisplayName : undefined}
+            >
+              {userInitial}
+            </div>
             <div
               className={`overflow-hidden transition-all duration-300 ${
                 collapsed ? 'lg:w-0 lg:opacity-0' : 'flex-1 opacity-100'
