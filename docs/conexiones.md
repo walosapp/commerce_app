@@ -57,12 +57,11 @@ Todas las peticiones autenticadas deben incluir:
 
 ```
 Authorization: Bearer <jwt_token>
-X-Tenant-ID: <company_id>      (respaldo, se extrae de JWT primero)
-X-Branch-ID: <branch_id>       (respaldo, se extrae de JWT primero)
+X-Branch-ID: <branch_id>       (override opcional, se extrae de JWT primero)
 Content-Type: application/json
 ```
 
-El frontend configura estos headers automáticamente en `src/config/api.js` usando interceptores de Axios, leyendo `token`, `tenantId` y `branchId` de `localStorage`.
+El frontend configura estos headers automáticamente en `src/config/api.js` usando interceptores de Axios, leyendo `token` y `branchId` del store de Zustand (`authStore` con persist).
 
 ## Autenticación para Desarrollo
 

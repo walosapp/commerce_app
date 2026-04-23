@@ -764,11 +764,11 @@ public async Task<IEnumerable<T>> GetAllAsync(long companyId, long branchId)
 
 - Columnas SQL: `snake_case` (`company_id`, `created_at`)
 - Alias Dapper: `PascalCase` (`AS CompanyId`, `AS CreatedAt`)
-- Esquemas: `[core]`, `[inventory]`, `[sales]`, `[suppliers]`
+- Esquemas: `core.`, `inventory.`, `sales.`, `finance.`, `suppliers.`, `delivery.`
 
 ### 21.4 Soft Delete
 
-Nunca `DELETE FROM`. Siempre `UPDATE ... SET deleted_at = GETDATE()`. Todos los queries deben filtrar `AND deleted_at IS NULL`.
+Nunca `DELETE FROM`. Siempre `UPDATE ... SET deleted_at = NOW()`. Todos los queries deben filtrar `AND deleted_at IS NULL`.
 
 ### 21.5 Multi-tenant
 
@@ -785,7 +785,7 @@ Antes de empezar cualquier módulo nuevo, verificar:
 - [ ] Crear `services/[modulo]Service.js`
 - [ ] Agregar ruta en `App.jsx` con `<ProtectedRoute>`
 - [ ] Verificar que el menú ya existe en `Layout.jsx` (sidebar)
-- [ ] Scripts SQL en `backend-dotnet/sql/` con numeración secuencial
+- [ ] Scripts SQL en `supabase/migrations/` con numeración secuencial
 - [ ] Entidades en `Domain/Entities/`
 - [ ] Interfaces en `Domain/Interfaces/`
 - [ ] Repository en `Infrastructure/Repositories/`

@@ -1,8 +1,8 @@
 # Esquema de Base de Datos - Walos
 
-> **Nota**: La base de datos en desarrollo se llama `SCM_App_Track_Me` (no `WalosDB`).
+> **Motor**: PostgreSQL (Supabase). Migraciones en `supabase/migrations/`.
 
-## Diagrama de Relaciones (Módulo Core + Inventario)
+## Diagrama de Relaciones
 
 ```mermaid
 erDiagram
@@ -11,127 +11,116 @@ erDiagram
     companies ||--o{ users : "emplea"
     branches ||--o{ users : "asigna"
     roles ||--o{ users : "asigna"
-    
+
     companies ||--o{ inventory_categories : "organiza"
     companies ||--o{ inventory_units : "define"
     companies ||--o{ inventory_products : "gestiona"
     inventory_categories ||--o{ inventory_products : "clasifica"
     inventory_units ||--o{ inventory_products : "mide"
-    
+
     branches ||--o{ inventory_stock : "almacena"
     inventory_products ||--o{ inventory_stock : "tiene"
-    
-    branches ||--o{ inventory_movements : "registra"
     inventory_products ||--o{ inventory_movements : "mueve"
-    
-    branches ||--o{ inventory_alerts : "genera"
-    inventory_products ||--o{ inventory_alerts : "alerta"
-    
-    users ||--o{ inventory_ai_interactions : "interactúa"
-    branches ||--o{ inventory_ai_interactions : "procesa"
+    inventory_products ||--o{ recipes : "producto preparado"
+    inventory_products ||--o{ recipes : "ingrediente"
+
+    companies ||--o{ sales_tables : "tiene"
+    sales_tables ||--o{ sales_orders : "genera"
+    sales_orders ||--o{ sales_order_items : "contiene"
+    sales_orders ||--o{ credits : "genera"
+    credits ||--o{ credit_payments : "recibe"
+
+    companies ||--o{ finance_categories : "define"
+    finance_categories ||--o{ finance_entries : "agrupa"
+
+    companies ||--o{ suppliers : "registra"
+    suppliers ||--o{ supplier_products : "asocia"
+    suppliers ||--o{ purchase_orders : "recibe"
+    purchase_orders ||--o{ purchase_order_items : "contiene"
+
+    companies ||--o{ delivery_orders : "gestiona"
+    delivery_orders ||--o{ delivery_order_items : "contiene"
+    delivery_orders ||--o{ delivery_status_history : "registra"
 
     companies {
         bigint id PK
-        nvarchar name
-        nvarchar tax_id UK
-        nvarchar currency
-        bit is_active
+        varchar name
+        varchar tax_id UK
+        varchar currency
+        boolean is_active
     }
-    
+
     branches {
         bigint id PK
         bigint company_id FK
-        nvarchar name
-        nvarchar code
-        nvarchar branch_type
-        bit is_active
+        varchar name
+        varchar code
+        varchar branch_type
+        boolean is_active
     }
-    
-    roles {
-        bigint id PK
-        bigint company_id FK
-        nvarchar code
-        nvarchar permissions
-        int access_level
-    }
-    
+
     users {
         bigint id PK
         bigint company_id FK
         bigint branch_id FK
         bigint role_id FK
-        nvarchar email UK
-        nvarchar username UK
-        nvarchar password_hash
-        bit is_active
+        varchar email UK
+        varchar password_hash
+        boolean is_active
     }
-    
+
     inventory_products {
         bigint id PK
         bigint company_id FK
         bigint category_id FK
         bigint unit_id FK
-        nvarchar sku UK
-        nvarchar name
-        nvarchar description
+        varchar sku UK
+        varchar name
+        varchar product_type
+        boolean track_stock
         decimal cost_price
         decimal sale_price
-        decimal margin_percentage "computed"
+        decimal margin_percentage
         decimal min_stock
-        decimal max_stock
-        bit is_active
+        boolean is_active
     }
-    
-    inventory_stock {
+
+    sales_orders {
         bigint id PK
         bigint company_id FK
-        bigint branch_id FK
-        bigint product_id FK
-        decimal quantity
-        decimal available_quantity
+        bigint table_id FK
+        varchar status
+        decimal total
+        decimal discount_amount
+        decimal final_total_paid
     }
-    
-    inventory_movements {
+
+    finance_entries {
         bigint id PK
         bigint company_id FK
-        bigint branch_id FK
-        bigint product_id FK
-        nvarchar movement_type
-        decimal quantity
-        decimal unit_cost
-        bit created_by_ai
-        decimal ai_confidence
-        nvarchar ai_metadata "JSON"
+        bigint category_id FK
+        varchar type
+        decimal amount
+        timestamptz entry_date
+        varchar status
+        varchar frequency
     }
-    
-    inventory_alerts {
+
+    suppliers {
         bigint id PK
         bigint company_id FK
-        bigint branch_id FK
-        bigint product_id FK
-        nvarchar alert_type
-        nvarchar severity
-        nvarchar message
-        nvarchar status
+        varchar name
+        varchar phone
+        varchar email
     }
-    
-    inventory_ai_interactions {
+
+    delivery_orders {
         bigint id PK
         bigint company_id FK
-        bigint branch_id FK
-        bigint user_id FK
-        nvarchar session_id
-        nvarchar interaction_type
-        nvarchar user_input
-        nvarchar ai_response
-        nvarchar ai_action
-        nvarchar processed_data "JSON"
-        nvarchar action_status
-        decimal confidence_score
-        nvarchar ai_model
-        int tokens_used
-        bit confirmed_by_user
-        datetime confirmed_at
+        varchar status
+        varchar customer_name
+        varchar customer_phone
+        text delivery_address
     }
 ```
 
@@ -142,30 +131,59 @@ erDiagram
 |---|---|---|
 | **companies** | Empresas multi-tenant | company_id base para aislamiento |
 | **branches** | Sucursales de cada empresa | branch_type: bar, restaurant, warehouse |
-| **roles** | Roles de usuario (RBAC) | permissions como JSON |
-| **users** | Usuarios del sistema | auth por username + password_hash |
+| **roles** | Roles de usuario (RBAC) | permissions como JSONB |
+| **users** | Usuarios del sistema | auth por email + password_hash (BCrypt) |
 
 ### Schema: `inventory`
 | Tabla | Descripción | Campos especiales |
 |---|---|---|
 | **categories** | Categorías de productos | name, is_active |
 | **units** | Unidades de medida | name, abbreviation (ej: "Botella", "Bot") |
-| **products** | Catálogo de productos | cost_price se actualiza con promedio ponderado |
-| **stock** | Stock actual por sucursal | quantity se incrementa con cada compra |
+| **products** | Catálogo de productos | product_type: simple/prepared/combo/service, track_stock |
+| **stock** | Stock actual por sucursal | quantity, reserved_quantity, available_quantity |
 | **movements** | Historial de movimientos | created_by_ai, ai_confidence, ai_metadata |
+| **recipes** | BOM de productos preparados | product_id (preparado) + ingredient_id (insumo) |
 | **ai_interactions** | Interacciones con IA | session_id para multi-turno, processed_data JSON |
 | **alerts** | Alertas (stock bajo, etc.) | severity: low/medium/high/critical |
+
+### Schema: `sales`
+| Tabla | Descripción | Campos especiales |
+|---|---|---|
+| **tables** | Mesas del establecimiento | name, position_x/y, status: open/invoiced/cancelled |
+| **orders** | Pedidos por mesa | total, discount_amount, final_total_paid, status |
+| **order_items** | Items de cada pedido | product_id, quantity, unit_price, subtotal |
+| **credits** | Créditos a clientes | customer_name, total_amount, paid_amount, status |
+| **credit_payments** | Pagos de créditos | amount, payment_method, notes |
+
+### Schema: `finance`
+| Tabla | Descripción | Campos especiales |
+|---|---|---|
+| **categories** | Categorías financieras (ingreso/gasto) | type, frequency, default_amount, day_of_month |
+| **entries** | Movimientos financieros | amount, entry_date, status: pending/posted/skipped |
+
+### Schema: `suppliers`
+| Tabla | Descripción | Campos especiales |
+|---|---|---|
+| **suppliers** | Proveedores | name, phone, email, contact_name |
+| **supplier_products** | Productos por proveedor | supplier_id + product_id |
+| **purchase_orders** | Órdenes de compra | status: draft/sent/received/cancelled, expected_date |
+| **purchase_order_items** | Items de órdenes | product_id, quantity, unit_cost |
+
+### Schema: `delivery`
+| Tabla | Descripción | Campos especiales |
+|---|---|---|
+| **orders** | Pedidos a domicilio | customer_name, delivery_address, status Kanban |
+| **order_items** | Items del pedido | product_id, quantity, unit_price |
+| **status_history** | Historial de estados | old_status, new_status, notes, changed_by |
 
 ## Campos Estándar
 
 Todas las tablas incluyen:
-- `id`: Primary key (BIGINT IDENTITY)
-- `company_id`: Multi-tenant (FK a companies)
-- `created_at`: Timestamp de creación (default GETDATE())
+- `id`: Primary key (BIGSERIAL)
+- `company_id`: Multi-tenant (FK a core.companies)
+- `created_at`: Timestamp de creación (default `NOW()`)
 - `updated_at`: Timestamp de actualización
 - `deleted_at`: Soft delete (NULL = activo)
-- `created_by`: Usuario que creó (FK a users)
-- `updated_by`: Usuario que actualizó (FK a users)
 
 ## Índices Principales
 

@@ -19,12 +19,15 @@ Sistema PWA para gestión integral de bar/restaurante con asistencia de IA. Mód
 - **Costo promedio ponderado**: recálculo automático al recibir stock a diferente precio
 - **Dashboard**: Vista general con métricas
 
-### Pendiente
-- **Módulo de Proveedores**: catálogo, órdenes de compra, contacto WhatsApp/email, IA pedidos
+- **Módulo de Proveedores**: catálogo, órdenes de compra, contacto WhatsApp/email, IA pedidos sugeridos
 - **Panel Onboarding**: creación de nuevos tenants desde la app
-- **Pedidos y Domicilios**: plataformas, IA, estados
+- **Pedidos y Domicilios**: tablero Kanban, estados, historial
+- **Tests**: 85 unitarios backend + 19 frontend + 14 E2E (Playwright)
+- **Recetas**: BOM de productos preparados (ingredientes)
+- **Créditos**: créditos a clientes con pagos parciales
+
+### Pendiente
 - **i18n**: preparado pero no implementado (Inglés, Español, Portugués)
-- **Tests**: 85 tests unitarios backend (services + validators + tenant isolation), falta frontend + E2E
 
 ## Principios de Diseño
 
@@ -109,7 +112,13 @@ Walos-app/
 │   │   │   │   ├── FinanceController.cs     # Entries, categories, templates, month init
 │   │   │   │   ├── HealthController.cs      # Health check + API info
 │   │   │   │   ├── InventoryController.cs   # Productos, stock, IA, alertas, reportes
-│   │   │   │   └── SalesController.cs       # Mesas, pedidos, facturación, descuentos
+│   │   │   │   ├── SalesController.cs       # Mesas, pedidos, facturación, descuentos
+│   │   │   │   ├── SuppliersController.cs   # Proveedores, productos asociados
+│   │   │   │   ├── PurchaseOrderController.cs # Pedidos de compra
+│   │   │   │   ├── DeliveryController.cs     # Domicilios, estados
+│   │   │   │   ├── AdminController.cs        # Gestión de tenants
+│   │   │   │   ├── CreditController.cs       # Créditos a clientes
+│   │   │   │   └── UsersController.cs        # Usuarios del sistema
 │   │   │   ├── Middleware/
 │   │   │   │   ├── ExceptionHandlingMiddleware.cs  # Manejo global de errores
 │   │   │   │   └── TenantContextMiddleware.cs      # Extrae tenant de JWT + headers
@@ -140,12 +149,13 @@ Walos-app/
 │   │   ├── Walos.Domain/
 │   │   │   ├── Entities/                    # 15 entidades (Product, Stock, Order, etc.)
 │   │   │   ├── Exceptions/                  # Business, NotFound, Validation
-│   │   │   └── Interfaces/                  # 8 interfaces (repos, AI, tenant, DB)
+│   │   │   └── Interfaces/                  # 14 interfaces (repos, AI, tenant, DB)
 │   │   └── Walos.Infrastructure/
 │   │       ├── Data/SqlConnectionFactory.cs # Npgsql connection factory
-│   │       ├── Repositories/               # 5 repos (Auth, Company, Finance, Inventory, Sales)
+│   │       ├── Repositories/               # 12 repos (Auth, Admin, Company, Credit, Delivery, Finance, Inventory, PurchaseOrder, Recipe, Sales, Suppliers, Users)
 │   │       └── Services/OpenAiService.cs   # System prompt, llamada API, parseo
 │   └── tests/Walos.Tests/                  # 85 unit tests (xUnit + Moq)
+│       └── e2e/                             # 14 E2E tests (Playwright)
 │
 ├── frontend/
 │   ├── src/
@@ -155,7 +165,7 @@ Walos-app/
 │   │   ├── stores/
 │   │   │   ├── authStore.js                 # Zustand: token, tenant, branch, permisos
 │   │   │   └── uiStore.js                   # Zustand: tema, sidebar, branding
-│   │   ├── services/                        # 5 services (auth, company, finance, inventory, sales)
+│   │   ├── services/                        # 9 services (auth, admin, company, finance, inventory, purchaseOrder, sales, supplier, delivery)
 │   │   ├── components/layout/Layout.jsx     # Sidebar colapsable, header, navegación
 │   │   ├── hooks/useSpeechRecognition.js    # Web Speech API
 │   │   └── modules/
@@ -166,7 +176,9 @@ Walos-app/
 │   │       ├── finance/                     # FinancePage + templates + month init
 │   │       ├── inventory/                   # InventoryPage + CRUD + stock + reportes
 │   │       ├── sales/                       # SalesPage + mesas + facturación
-│   │       └── settings/                    # SettingsPage + branding + temas + descuentos
+│   │       ├── settings/                    # SettingsPage + branding + temas + descuentos
+│   │       ├── suppliers/                   # SuppliersPage + pedidos compra
+│   │       └── delivery/                    # DeliveryPage + tablero Kanban
 │   ├── tailwind.config.js                   # Colores dinámicos via CSS variables
 │   └── vite.config.js                       # PWA config + proxy
 │
@@ -239,9 +251,21 @@ El `TenantContextMiddleware` extrae claims del JWT y los inyecta en `ITenantCont
 ### 6. Dashboard ✅
 - Vista general con métricas principales
 
-### 7. Proveedores (Pendiente)
-### 8. Pedidos y Domicilios (Pendiente)
-### 9. Panel Onboarding Tenant (Pendiente)
+### 7. Proveedores ✅
+- Catálogo de proveedores con contacto (teléfono, email)
+- Productos asociados por proveedor
+- Órdenes de compra con items, totales, estados
+- Contacto vía WhatsApp y Email con mensaje automático
+- Sugerencia de pedido por IA (análisis de stock bajo)
+
+### 8. Pedidos y Domicilios ✅
+- Tablero Kanban con estados (nuevo, confirmado, en preparación, en camino, entregado)
+- Historial de cambios de estado
+- Datos de cliente y dirección
+
+### 9. Panel Onboarding Tenant ✅
+- Creación de nuevos comercios desde la app
+- Configuración inicial de empresa
 
 ## Seguridad
 - JWT con expiración configurable + refresh tokens
