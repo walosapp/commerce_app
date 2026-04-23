@@ -13,6 +13,7 @@ using Walos.API.Services;
 using Walos.Application;
 using Walos.Domain.Interfaces;
 using Walos.Infrastructure;
+using Walos.Infrastructure.Services;
 
 // =============================================
 // LOAD .env FILE
@@ -61,6 +62,8 @@ try
         builder.Configuration["RateLimiting:MaxRequests"] = Environment.GetEnvironmentVariable("RATE_LIMIT_MAX_REQUESTS");
     if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PORT")))
         builder.Configuration["Port"] = Environment.GetEnvironmentVariable("PORT");
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AI_KEY_ENCRYPTION_SECRET")))
+        builder.Configuration["Security:AiKeyEncryptionSecret"] = Environment.GetEnvironmentVariable("AI_KEY_ENCRYPTION_SECRET");
 
     // Serilog
     builder.Host.UseSerilog((context, services, configuration) => configuration
@@ -196,6 +199,8 @@ try
     // APP PIPELINE
     // =============================================
     var app = builder.Build();
+
+    AesEncryptionHelper.Configure(app.Configuration);
 
     // Exception handling middleware
     app.UseMiddleware<ExceptionHandlingMiddleware>();

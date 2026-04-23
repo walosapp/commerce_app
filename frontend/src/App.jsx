@@ -20,6 +20,7 @@ import SettingsPage from './modules/settings/SettingsPage';
 import AlertsPage from './modules/alerts/AlertsPage';
 import FinancePage from './modules/finance/FinancePage';
 import TenantsPage from './modules/admin/TenantsPage';
+import CompaniesPage from './modules/admin/CompaniesPage';
 import DeliveryOrdersPage from './modules/delivery/DeliveryOrdersPage';
 import SuppliersPage from './modules/suppliers/SuppliersPage';
 import UsersPage from './modules/users/UsersPage';
@@ -83,8 +84,12 @@ function App() {
           <Route path="/settings/themes" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/discounts" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/catalog" element={<ProtectedRoute allowedRoles={['dev','admin','manager']}><SettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/plan" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/ai" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/payments" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/alerts" element={<ProtectedRoute><AlertsPage /></ProtectedRoute>} />
           <Route path="/admin/tenants" element={<ProtectedRoute requiredRole="dev"><TenantsPage /></ProtectedRoute>} />
+          <Route path="/admin/companies" element={<ProtectedRoute requiredRole="dev"><CompaniesPage /></ProtectedRoute>} />
           <Route path="/delivery" element={<ProtectedRoute><DeliveryOrdersPage /></ProtectedRoute>} />
           <Route path="/login" element={<LoginPage />} />
         </Routes>

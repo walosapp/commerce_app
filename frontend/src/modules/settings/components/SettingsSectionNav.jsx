@@ -1,4 +1,4 @@
-﻿import { Palette, Store, Percent, LayoutList } from 'lucide-react';
+﻿import { Palette, Store, Percent, LayoutList, CreditCard, Cpu, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const sections = [
@@ -6,6 +6,9 @@ export const sections = [
   { key: 'themes',    label: 'Temas',        path: '/settings/themes',    icon: Palette },
   { key: 'discounts', label: 'Descuentos',   path: '/settings/discounts', icon: Percent },
   { key: 'catalog',   label: 'Catalogo',     path: '/settings/catalog',   icon: LayoutList },
+  { key: 'plan',      label: 'Mi Plan',      path: '/settings/plan',      icon: FileText },
+  { key: 'ai',        label: 'IA',           path: '/settings/ai',        icon: Cpu },
+  { key: 'payments',  label: 'Pagos',        path: '/settings/payments',  icon: CreditCard },
 ];
 
 const SettingsSectionNav = ({ activeSection }) => (

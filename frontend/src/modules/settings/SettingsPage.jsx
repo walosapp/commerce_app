@@ -16,6 +16,9 @@ import BrandingForm from './components/BrandingForm';
 import ThemeSelector from './components/ThemeSelector';
 import DiscountSettings from './components/DiscountSettings';
 import CatalogSettings from './components/CatalogSettings';
+import PlanSettings from './components/PlanSettings';
+import AiSettings from './components/AiSettings';
+import PaymentSettings from './components/PaymentSettings';
 import SettingsSectionNav from './components/SettingsSectionNav';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -24,6 +27,9 @@ const getSectionFromPath = (pathname) => {
   if (pathname.includes('/settings/themes')) return 'themes';
   if (pathname.includes('/settings/discounts')) return 'discounts';
   if (pathname.includes('/settings/catalog')) return 'catalog';
+  if (pathname.includes('/settings/plan')) return 'plan';
+  if (pathname.includes('/settings/ai')) return 'ai';
+  if (pathname.includes('/settings/payments')) return 'payments';
   return 'branding';
 };
 
@@ -174,8 +180,8 @@ const SettingsPage = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (activeSection === 'catalog') {
-        toast.success('Los cambios en catalogo se guardan automaticamente');
+      if (['catalog', 'plan', 'ai', 'payments'].includes(activeSection)) {
+        toast.success('Los cambios se guardan automáticamente');
         return;
       } else if (activeSection === 'discounts') {
         await handleSaveOperations();
@@ -249,6 +255,9 @@ const SettingsPage = () => {
             {activeSection === 'discounts' && (
               <DiscountSettings values={operationsForm} onChange={handleOperationsChange} />
             )}
+            {activeSection === 'plan' && <PlanSettings />}
+            {activeSection === 'ai' && <AiSettings />}
+            {activeSection === 'payments' && <PaymentSettings />}
           </>
         )}
       </div>
