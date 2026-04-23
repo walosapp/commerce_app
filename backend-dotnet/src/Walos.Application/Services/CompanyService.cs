@@ -10,7 +10,7 @@ public class CompanyService : ICompanyService
 {
     private static readonly HashSet<string> AllowedThemes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "light", "dark", "grayscale", "neon", "pink", "purple"
+        "light", "dark", "grayscale", "neon", "pink", "purple", "glass"
     };
 
     private static readonly HashSet<string> AllowedLogoContentTypes = new(StringComparer.OrdinalIgnoreCase)
