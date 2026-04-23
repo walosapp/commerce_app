@@ -6,6 +6,8 @@ public class UpdateCompanySettingsRequest
     public string? Email { get; set; }
     public string? Phone { get; set; }
     public string ThemePreference { get; set; } = "light";
+    public string BusinessOpenTime { get; set; } = "00:00";
+    public string BusinessCloseTime { get; set; } = "23:59";
 }
 
 public class UpdateCompanyOperationsSettingsRequest

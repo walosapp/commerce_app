@@ -49,6 +49,8 @@ const SettingsPage = () => {
     email: '',
     phone: '',
     themePreference: 'light',
+    businessOpenTime: '00:00',
+    businessCloseTime: '23:59',
   });
   const [operationsForm, setOperationsForm] = useState({
     manualDiscountEnabled: true,
@@ -90,6 +92,8 @@ const SettingsPage = () => {
       email: settings.email || '',
       phone: settings.phone || '',
       themePreference: settings.themePreference || 'light',
+      businessOpenTime: settings.businessOpenTime?.slice(0, 5) ?? '00:00',
+      businessCloseTime: settings.businessCloseTime?.slice(0, 5) ?? '23:59',
     });
     setLogoPreview(settings.logoUrl ? `${API_BASE}${settings.logoUrl}` : null);
     setTheme(settings.themePreference || 'light');
@@ -155,7 +159,11 @@ const SettingsPage = () => {
       return;
     }
 
-    await companyService.updateSettings(form);
+    await companyService.updateSettings({
+      ...form,
+      businessOpenTime: form.businessOpenTime || '00:00',
+      businessCloseTime: form.businessCloseTime || '23:59',
+    });
 
     if (logoFile) {
       await companyService.uploadLogo(logoFile);

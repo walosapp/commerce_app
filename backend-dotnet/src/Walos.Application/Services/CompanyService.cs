@@ -57,6 +57,11 @@ public class CompanyService : ICompanyService
         settings.ThemePreference = request.ThemePreference.Trim().ToLowerInvariant();
         settings.UpdatedBy = userId;
 
+        if (TimeSpan.TryParseExact(request.BusinessOpenTime, @"hh\:mm", null, out var openTime))
+            settings.BusinessOpenTime = openTime;
+        if (TimeSpan.TryParseExact(request.BusinessCloseTime, @"hh\:mm", null, out var closeTime))
+            settings.BusinessCloseTime = closeTime;
+
         var updated = await _repository.UpdateCompanySettingsAsync(settings);
 
         _logger.LogInformation("Configuracion actualizada para empresa {CompanyId} por usuario {UserId}", companyId, userId);

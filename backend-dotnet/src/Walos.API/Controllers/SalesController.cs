@@ -16,12 +16,39 @@ public class SalesController : ControllerBase
     private readonly ISalesRepository _salesRepo;
     private readonly ISalesService _salesService;
     private readonly ITenantContext _tenant;
+    private readonly ICompanyRepository _companyRepo;
 
-    public SalesController(ISalesService salesService, ITenantContext tenant, ISalesRepository salesRepo)
+    public SalesController(ISalesService salesService, ITenantContext tenant, ISalesRepository salesRepo, ICompanyRepository companyRepo)
     {
         _salesService = salesService;
         _tenant = tenant;
         _salesRepo = salesRepo;
+        _companyRepo = companyRepo;
+    }
+
+    private async Task<(DateTime dateFrom, DateTime dateTo)> GetBusinessDayRangeAsync(DateTime requestedDate)
+    {
+        var settings = await _companyRepo.GetCompanySettingsAsync(_tenant.CompanyId);
+        var openTime  = settings?.BusinessOpenTime  ?? TimeSpan.Zero;
+        var closeTime = settings?.BusinessCloseTime ?? new TimeSpan(23, 59, 59);
+
+        var crossesMidnight = closeTime <= openTime;
+
+        DateTime dateFrom;
+        DateTime dateTo;
+
+        if (!crossesMidnight)
+        {
+            dateFrom = requestedDate.Date + openTime;
+            dateTo   = requestedDate.Date + closeTime;
+        }
+        else
+        {
+            dateFrom = requestedDate.Date + openTime;
+            dateTo   = requestedDate.Date.AddDays(1) + closeTime;
+        }
+
+        return (dateFrom, dateTo);
     }
 
     [HttpGet("tables")]
@@ -100,9 +127,8 @@ public class SalesController : ControllerBase
     public async Task<IActionResult> GetSummary([FromQuery] long branchId, [FromQuery] string? date)
     {
         var parsedDate = DateTime.TryParse(date, out var d) ? d.Date : DateTime.UtcNow.Date;
-        var dateFrom = parsedDate;
-        var dateTo   = parsedDate.AddDays(1);
-        var summary  = await _salesRepo.GetSalesSummaryAsync(_tenant.CompanyId, branchId, dateFrom, dateTo);
+        var (dateFrom, dateTo) = await GetBusinessDayRangeAsync(parsedDate);
+        var summary = await _salesRepo.GetSalesSummaryAsync(_tenant.CompanyId, branchId, dateFrom, dateTo);
         return Ok(ApiResponse<SalesSummary>.Ok(summary));
     }
 
@@ -110,9 +136,8 @@ public class SalesController : ControllerBase
     public async Task<IActionResult> GetCompletedOrders([FromQuery] long branchId, [FromQuery] string? date)
     {
         var parsedDate = DateTime.TryParse(date, out var d) ? d.Date : DateTime.UtcNow.Date;
-        var dateFrom = parsedDate;
-        var dateTo   = parsedDate.AddDays(1);
-        var orders   = (await _salesRepo.GetCompletedOrdersAsync(_tenant.CompanyId, branchId, dateFrom, dateTo)).ToList();
+        var (dateFrom, dateTo) = await GetBusinessDayRangeAsync(parsedDate);
+        var orders = (await _salesRepo.GetCompletedOrdersAsync(_tenant.CompanyId, branchId, dateFrom, dateTo)).ToList();
         return Ok(ApiResponse<List<CompletedOrder>>.Ok(orders, count: orders.Count));
     }
 }

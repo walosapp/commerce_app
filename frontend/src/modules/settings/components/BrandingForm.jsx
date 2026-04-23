@@ -4,7 +4,7 @@
  * ¿Para qué? Personalizar la identidad visible de la app
  */
 
-import { Camera, ImageIcon, Trash2, Upload } from 'lucide-react';
+import { Camera, Clock, ImageIcon, Trash2, Upload } from 'lucide-react';
 
 const BrandingForm = ({
   values,
@@ -158,6 +158,42 @@ const BrandingForm = ({
             placeholder="+57 300 123 4567"
             className="input"
           />
+        </div>
+      </div>
+
+      <div className="border-t border-gray-100 pt-5">
+        <div className="flex items-center gap-2 mb-1">
+          <Clock className="h-4 w-4 text-gray-500" />
+          <h3 className="text-sm font-semibold text-gray-800">Horario del negocio</h3>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">
+          Defina el rango de su turno. Si cierra después de medianoche (ej: abre 5pm, cierra 3am), las ventas de madrugada quedarán en el mismo día comercial.
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Hora de apertura</label>
+            <input
+              type="time"
+              value={values.businessOpenTime ?? '00:00'}
+              onChange={(event) => onChange('businessOpenTime', event.target.value)}
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Hora de cierre</label>
+            <input
+              type="time"
+              value={values.businessCloseTime ?? '23:59'}
+              onChange={(event) => onChange('businessCloseTime', event.target.value)}
+              className="input"
+            />
+            {values.businessCloseTime && values.businessOpenTime &&
+             values.businessCloseTime <= values.businessOpenTime && (
+              <p className="mt-1 text-xs text-blue-600">
+                Turno cruza medianoche — las ventas hasta las {values.businessCloseTime} del día siguiente se agrupan en el mismo día.
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </section>

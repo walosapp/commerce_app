@@ -19,6 +19,8 @@ public class CompanySettings
     public decimal MaxDiscountAmount { get; set; } = 50000;
     public bool DiscountRequiresOverride { get; set; }
     public decimal DiscountOverrideThresholdPercent { get; set; } = 10;
+    public TimeSpan BusinessOpenTime { get; set; } = TimeSpan.Zero;
+    public TimeSpan BusinessCloseTime { get; set; } = new TimeSpan(23, 59, 59);
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }

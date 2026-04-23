@@ -42,6 +42,8 @@ public class CompanyRepository : ICompanyRepository
                     max_discount_amount AS MaxDiscountAmount,
                     discount_requires_override AS DiscountRequiresOverride,
                     discount_override_threshold_percent AS DiscountOverrideThresholdPercent,
+                    business_open_time AS BusinessOpenTime,
+                    business_close_time AS BusinessCloseTime,
                     is_active AS IsActive,
                     created_at AS CreatedAt,
                     updated_at AS UpdatedAt,
@@ -98,6 +100,8 @@ public class CompanyRepository : ICompanyRepository
                     email = @Email,
                     phone = @Phone,
                     theme_preference = @ThemePreference,
+                    business_open_time = @BusinessOpenTime,
+                    business_close_time = @BusinessCloseTime,
                     updated_at = NOW(),
                     updated_by = @UpdatedBy
                 WHERE id = @Id AND deleted_at IS NULL";
@@ -110,6 +114,8 @@ public class CompanyRepository : ICompanyRepository
                 settings.Email,
                 settings.Phone,
                 settings.ThemePreference,
+                settings.BusinessOpenTime,
+                settings.BusinessCloseTime,
                 settings.UpdatedBy
             });
 
