@@ -77,7 +77,7 @@ const ThemeSelector = ({ selectedTheme, onSelect }) => {
               }`}
             >
               {isActive && (
-                <span className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white shadow-sm">
+                <span className="absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white shadow-sm">
                   <Check className="h-3.5 w-3.5" />
                 </span>
               )}
