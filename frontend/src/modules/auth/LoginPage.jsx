@@ -39,7 +39,7 @@ const LoginPage = () => {
         });
 
         toast.success(`Bienvenido, ${result.data.user.name}`);
-        navigate('/inventory');
+        navigate('/sales');
       }
     } catch (error) {
       const msg = error.response?.data?.message || 'Error al iniciar sesión';
