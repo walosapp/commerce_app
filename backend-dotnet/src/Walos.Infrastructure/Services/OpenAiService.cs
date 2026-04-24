@@ -276,6 +276,65 @@ Responde en JSON con estructura clara.";
         }
     }
 
+    public async Task<string> ClassifyAsync(string prompt)
+    {
+        var request = new OpenAiChatRequest
+        {
+            Model = _model,
+            Messages = new List<OpenAiMessage>
+            {
+                new() { Role = "user", Content = prompt }
+            },
+            Temperature = 0.0,
+            MaxTokens = 10
+        };
+
+        var response = await _httpClient.PostAsJsonAsync("https://api.openai.com/v1/chat/completions", request, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        });
+
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<OpenAiChatResponse>(new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        });
+
+        return result?.Choices?.FirstOrDefault()?.Message?.Content?.Trim() ?? "general";
+    }
+
+    public async Task<string> ChatAsync(string systemPrompt, string userMessage)
+    {
+        var request = new OpenAiChatRequest
+        {
+            Model = _model,
+            Messages = new List<OpenAiMessage>
+            {
+                new() { Role = "system", Content = systemPrompt },
+                new() { Role = "user", Content = userMessage }
+            },
+            Temperature = _temperature,
+            MaxTokens = _maxTokens
+        };
+
+        var response = await _httpClient.PostAsJsonAsync("https://api.openai.com/v1/chat/completions", request, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        });
+
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<OpenAiChatResponse>(new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        });
+
+        return result?.Choices?.FirstOrDefault()?.Message?.Content?.Trim() ?? string.Empty;
+    }
+
     // Internal DTOs for OpenAI API
     private class OpenAiChatRequest
     {

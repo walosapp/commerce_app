@@ -5,6 +5,8 @@ public interface IAiService
     Task<AiInventoryResponse> ProcessInventoryInputAsync(string userInput, AiContext context, List<AiConversationMessage>? history = null);
     Task<string> GenerateAlertSuggestionAsync(AlertData alert);
     Task<object> AnalyzeSalesTrendsAsync(object salesData);
+    Task<string> ClassifyAsync(string prompt);
+    Task<string> ChatAsync(string systemPrompt, string userMessage);
 }
 
 public class AiConversationMessage

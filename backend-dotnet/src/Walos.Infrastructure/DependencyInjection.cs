@@ -29,7 +29,10 @@ public static class DependencyInjection
         services.AddScoped<ICreditRepository, CreditRepository>();
         services.AddScoped<IFinanceRepository, FinanceRepository>();
         services.AddScoped<IPlatformRepository, PlatformRepository>();
+        services.AddScoped<IAiSessionRepository, AiSessionRepository>();
+        services.AddScoped<OrchestratorService>();
         services.AddHostedService<BillingJobService>();
+        services.AddHostedService<AiSessionCleanupService>();
 
         services.AddHttpClient<IAiService, OpenAiService>(client =>
         {
