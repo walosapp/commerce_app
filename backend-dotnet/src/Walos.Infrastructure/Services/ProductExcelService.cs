@@ -9,6 +9,7 @@ public record ProductImportRow(
     decimal CostPrice, decimal SalePrice, decimal? MarginPercentage,
     string ProductType, bool TrackStock, bool IsForSale,
     decimal MinStock, decimal MaxStock, decimal ReorderPoint,
+    decimal Quantity,  // NUEVO: cantidad inicial de stock
     int RowNumber, string? Error = null);
 
 public class ProductExcelService
@@ -30,6 +31,7 @@ public class ProductExcelService
         ("stock_minimo",      12),
         ("stock_maximo",      12),
         ("punto_reorden",     12),
+        ("cantidad_inicial",  14),  // NUEVO: stock inicial al crear
     ];
 
     private static readonly string[] ValidTypes = ["simple", "supply", "prepared", "service"];
@@ -68,6 +70,7 @@ public class ProductExcelService
         row2.Cell(13).Value = 5;
         row2.Cell(14).Value = 100;
         row2.Cell(15).Value = 10;
+        row2.Cell(16).Value = 0;  // cantidad inicial
         row2.Style.Fill.BackgroundColor = XLColor.FromArgb(243, 244, 246);
 
         // ── Instructions sheet ──────────────────────────────────────────
@@ -85,6 +88,7 @@ public class ProductExcelService
             ("A7",  "controlar_stock: si / no"),
             ("A8",  "disponible_venta: si / no"),
             ("A9",  "stock_minimo / stock_maximo / punto_reorden: numeros (default 0)"),
+            ("A10", "cantidad_inicial: stock inicial al crear el producto (0 = sin stock)"),
             ("A11", "CATEGORIAS DISPONIBLES:"),
             ("A12", string.Join(", ", categories.Any() ? categories : ["(ninguna - crear en Configuracion > Catalogo)"])),
             ("A14", "UNIDADES DISPONIBLES:"),
@@ -165,6 +169,7 @@ public class ProductExcelService
                 MinStock: Dec(13),
                 MaxStock: Dec(14),
                 ReorderPoint: Dec(15),
+                Quantity: Dec(16),
                 RowNumber: r,
                 Error: err.Count > 0 ? string.Join("; ", err) : null
             );

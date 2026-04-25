@@ -20,6 +20,9 @@ Sistema integral que gestiona inventario, ventas, finanzas y proveedores para ne
 | **Alertas** | ✅ Completo | Vista detallada por severidad, acciones rápidas, badge en header |
 | **Stock Comprometido** | ✅ Completo | Mesas abiertas reservan stock; inventario muestra disponible real |
 | **Auth** | ✅ Completo | Login JWT, middleware multi-tenant, session con company/branch |
+| **Créditos** | ✅ Completo | Pago parcial, abonos, panel de gestión |
+| **Control de Caja** | ✅ Backend | Turnos de caja, apertura/cierre, arqueo, reporte Z |
+| **Métodos de Pago POS** | ✅ Backend | Efectivo, tarjeta, transferencia, mixto en facturación |
 | **Layout** | ✅ Completo | Sidebar colapsable, responsive mobile-first, Lucide icons |
 
 ### Pendiente / Roadmap
@@ -29,7 +32,11 @@ Sistema integral que gestiona inventario, ventas, finanzas y proveedores para ne
 | **Multi-tenant SaaS** | P0 | Auditoría de tenant, middleware, hardening de queries, onboarding |
 | **Proveedores** | P2 | CRUD, contacto WhatsApp/email, pedido sugerido por IA |
 | **Pedidos y Domicilios** | P1 | Tablero Kanban, estados operativos, IA de toma de pedidos, integraciones |
-| **i18n** | P3 | Estructura preparada, traducciones pendientes (EN, ES, PT) |
+| **Control de Caja** | P1 | Frontend: Modales apertura/cierre, barra de estado |
+| **Métodos de Pago POS** | P1 | Frontend: Selector en facturación, pago mixto, propinas |
+| **Devoluciones/Anulaciones** | P2 | Reversión de ventas, reversión de stock |
+| **Impresión de Tickets** | P2 | Recibos térmicos, comandas cocina, pre-cuenta |
+| **i18n** | P3 | preparado pero no implementado (Inglés, Español, Portugués) |
 | **PWA offline** | P3 | Service worker para operación sin conexión |
 
 > Detalle completo de pendientes en [PENDING.md](PENDING.md)

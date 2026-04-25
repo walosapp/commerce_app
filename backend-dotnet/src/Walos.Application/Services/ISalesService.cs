@@ -32,8 +32,10 @@ public class InvoiceResult
     public decimal DiscountAmount { get; set; }
     public decimal Total { get; set; }
     public decimal FinalTotalPaid { get; set; }
+    public decimal TipAmount { get; set; }
     public int SplitCount { get; set; }
     public List<OrderItem> Items { get; set; } = new();
+    public List<PaymentLineDto> Payments { get; set; } = new();
     public DateTime InvoicedAt { get; set; }
     public long? CreditId { get; set; }
     public decimal? CreditAmount { get; set; }

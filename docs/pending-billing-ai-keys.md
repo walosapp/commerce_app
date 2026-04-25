@@ -1,8 +1,24 @@
-# Pending: Módulo Billing B2B + API Keys de IA
+# Módulo Billing B2B + API Keys de IA
 
-> Estado: **PENDIENTE — No ejecutar hasta aprobación**  
+> Estado: **✅ IMPLEMENTADO — Backend completo, Frontend operativo**  
 > Creado: 2026-04-21  
-> Aprobado por: pendiente
+> Implementado: 2026-04-25  
+> Aprobado por: Walos Team
+
+---
+
+## Resumen de Implementación
+
+| Componente | Estado | Archivos |
+|------------|--------|----------|
+| Esquema DB | ✅ | `013_platform_billing.sql` - Tablas `service_catalog`, `company_subscriptions`, `billing_invoices`, `payment_methods` |
+| Entidades | ✅ | `CompanySubscription`, `BillingInvoice`, `PaymentMethod`, `CompanyAiSettings` |
+| Repositorios | ✅ | `PlatformRepository` (catálogo, facturas, pagos, AI) |
+| Servicios | ✅ | `BillingJobService` - generación mensual de facturas |
+| Controladores | ✅ | `PlatformController`, `PlatformAdminController` |
+| Frontend | ✅ | `PlanSettings.jsx`, `AiSettings.jsx`, `PaymentSettings.jsx`, `CompanyPlanPanel.jsx` |
+| Encriptación | ✅ | `AesEncryptionHelper` - cifrado AES para API keys |
+| Background Jobs | ✅ | `BillingJobService` ejecuta cada 10 minutos |
 
 ---
 

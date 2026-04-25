@@ -73,7 +73,8 @@ public class CompanyRepository : ICompanyRepository
                     max_discount_percent AS MaxDiscountPercent,
                     max_discount_amount AS MaxDiscountAmount,
                     discount_requires_override AS DiscountRequiresOverride,
-                    discount_override_threshold_percent AS DiscountOverrideThresholdPercent
+                    discount_override_threshold_percent AS DiscountOverrideThresholdPercent,
+                    require_cash_register AS RequireCashRegister
                 FROM core.companies
                 WHERE id = @CompanyId AND deleted_at IS NULL";
 

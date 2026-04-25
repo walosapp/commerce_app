@@ -34,6 +34,10 @@
 | 18 | Auditoria de Codigo — Seguridad y Clean Code | `[x]` Completado | P0 |
 | 19 | Cobertura de Tests (unitarios + integracion + E2E) | `[x]` Completado | P0 |
 | 20 | Service Layer para Sales, Finance, Company | `[x]` Completado | P1 |
+| 21 | Módulo Billing B2B + API Keys IA | `[x]` Completado | P1 |
+| 22 | Módulo Créditos en Mesas | `[x]` Completado | P1 |
+| 23 | Control de Caja Backend | `[x]` Completado | P1 |
+| 24 | Métodos de Pago POS Backend | `[x]` Completado | P1 |
 
 ---
 

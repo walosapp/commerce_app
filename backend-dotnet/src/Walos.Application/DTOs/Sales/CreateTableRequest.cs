@@ -28,4 +28,11 @@ public class InvoiceTableRequest
     public decimal CreditAmountPaid { get; set; } = 0;
     public string? CreditCustomerName { get; set; }
     public string? CreditNotes { get; set; }
+
+    // Pagos
+    public List<PaymentLineDto> Payments { get; set; } = new();
+
+    // Propina
+    public decimal TipAmount { get; set; }
+    public bool TipIncluded { get; set; }
 }

@@ -8,4 +8,5 @@ public class CompanyOperationsSettings
     public decimal MaxDiscountAmount { get; set; } = 50000;
     public bool DiscountRequiresOverride { get; set; }
     public decimal DiscountOverrideThresholdPercent { get; set; } = 10;
+    public bool RequireCashRegister { get; set; } = true;
 }

@@ -1,7 +1,22 @@
-# Pending: Módulo de Crédito en Mesas
+# Módulo de Crédito en Mesas
 
-> Estado: **PENDIENTE — No ejecutar hasta aprobación**  
-> Creado: 2026-04-21
+> Estado: **✅ IMPLEMENTADO — Backend y Frontend completos**  
+> Creado: 2026-04-21  
+> Implementado: 2026-04-25
+
+---
+
+## Resumen de Implementación
+
+| Componente | Estado | Archivos |
+|------------|--------|----------|
+| Esquema DB | ✅ | `012_credits.sql` - Tablas `sales.credits`, `sales.credit_payments` |
+| Entidades | ✅ | `Credit.cs`, `CreditPayment.cs` |
+| Repositorio | ✅ | `ICreditRepository` / `CreditRepository` |
+| Servicio | ✅ | `ICreditService` / `CreditService` |
+| Controlador | ✅ | `CreditController.cs` - endpoints REST |
+| Frontend | ✅ | `CreditsPanel.jsx` - gestión de créditos, abonos |
+| Integración Ventas | ✅ | `SalesService.InvoiceTableAsync` crea crédito con pago parcial |
 
 ---
 

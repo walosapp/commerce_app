@@ -18,6 +18,7 @@ Sistema PWA para gestión integral de bar/restaurante con asistencia de IA. Mód
 - **PWA**: Service Worker con Workbox, manifest, iconos, `NetworkOnly` para API
 - **Costo promedio ponderado**: recálculo automático al recibir stock a diferente precio
 - **Dashboard**: Vista general con métricas
+- **Billing B2B**: facturación SaaS, suscripciones, API keys IA con encriptación AES
 
 - **Módulo de Proveedores**: catálogo, órdenes de compra, contacto WhatsApp/email, IA pedidos sugeridos
 - **Panel Onboarding**: creación de nuevos tenants desde la app
@@ -25,8 +26,14 @@ Sistema PWA para gestión integral de bar/restaurante con asistencia de IA. Mód
 - **Tests**: 85 unitarios backend + 19 frontend + 14 E2E (Playwright)
 - **Recetas**: BOM de productos preparados (ingredientes)
 - **Créditos**: créditos a clientes con pagos parciales
+- **Control de Caja**: turnos de caja, apertura/cierre, arqueo, reporte Z
+- **Métodos de Pago POS**: efectivo, tarjeta, transferencia, mixto en facturación
 
-### Pendiente
+### Pendiente Frontend
+- **Control de Caja**: Modales apertura/cierre, barra de estado en ventas
+- **Métodos de Pago**: Selector en facturación, pago mixto, propinas
+- **Devoluciones**: Anulación de ventas, reversión de stock
+- **Impresión**: Tickets térmicos, comandas cocina
 - **i18n**: preparado pero no implementado (Inglés, Español, Portugués)
 
 ## Principios de Diseño

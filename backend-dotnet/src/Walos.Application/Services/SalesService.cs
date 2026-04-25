@@ -13,6 +13,8 @@ public class SalesService : ISalesService
     private readonly ICompanyRepository _companyRepo;
     private readonly IRecipeRepository _recipeRepo;
     private readonly ICreditRepository _creditRepo;
+    private readonly ICashRegisterRepository _cashRegisterRepo;
+    private readonly IOrderPaymentRepository _orderPaymentRepo;
     private readonly ILogger<SalesService> _logger;
 
     public SalesService(
@@ -21,6 +23,8 @@ public class SalesService : ISalesService
         ICompanyRepository companyRepo,
         IRecipeRepository recipeRepo,
         ICreditRepository creditRepo,
+        ICashRegisterRepository cashRegisterRepo,
+        IOrderPaymentRepository orderPaymentRepo,
         ILogger<SalesService> logger)
     {
         _salesRepo = salesRepo;
@@ -28,6 +32,8 @@ public class SalesService : ISalesService
         _companyRepo = companyRepo;
         _recipeRepo = recipeRepo;
         _creditRepo = creditRepo;
+        _cashRegisterRepo = cashRegisterRepo;
+        _orderPaymentRepo = orderPaymentRepo;
         _logger = logger;
     }
 
@@ -161,6 +167,27 @@ public class SalesService : ISalesService
         if (request.FinalTotalPaid > 0 && Math.Abs(request.FinalTotalPaid - finalTotalPaid) > 1)
             throw new ValidationException("El total final no coincide con el descuento aplicado");
 
+        // Validar caja abierta (si la compania lo requiere)
+        CashRegister? activeRegister = null;
+        if (operations?.RequireCashRegister ?? true) // Default: requiere caja
+        {
+            activeRegister = await _cashRegisterRepo.GetActiveByUserAsync(companyId, branchId, userId);
+            if (activeRegister == null)
+                throw new BusinessException("Debes abrir una caja antes de facturar");
+        }
+
+        // Validar pagos: deben sumar al total cobrado (actualPaid)
+        var actualPaid = (request.HasCredit && request.CreditAmountPaid >= 0 && request.CreditAmountPaid < finalTotalPaid)
+            ? Math.Round(request.CreditAmountPaid, 2)
+            : finalTotalPaid;
+
+        if (request.Payments == null || request.Payments.Count == 0)
+            throw new ValidationException("Debe especificar al menos un metodo de pago");
+
+        var paymentsSum = request.Payments.Sum(p => p.Amount);
+        if (Math.Abs(paymentsSum - actualPaid) > 1)
+            throw new ValidationException($"La suma de los pagos ({paymentsSum:N2}) no coincide con el total a cobrar ({actualPaid:N2})");
+
         // Calcular descuentos de insumos para productos preparados (recetas)
         var soldTuples = items.Select(i => (i.ProductId, i.Quantity));
         var ingredientDeductions = (await _recipeRepo.GetAllIngredientsForSaleAsync(soldTuples, companyId)).ToList();
@@ -218,11 +245,6 @@ public class SalesService : ISalesService
             }
         }
 
-        // Si hay credito, el monto realmente pagado ahora es CreditAmountPaid (puede ser 0 = toda la cuenta queda como credito)
-        var actualPaid = (request.HasCredit && request.CreditAmountPaid >= 0 && request.CreditAmountPaid < finalTotalPaid)
-            ? Math.Round(request.CreditAmountPaid, 2)
-            : finalTotalPaid;
-
         await _salesRepo.UpdateOrderInvoiceSummaryAsync(
             order.Id,
             companyId,
@@ -233,6 +255,55 @@ public class SalesService : ISalesService
             Math.Max(1, request.SplitCount));
         await _salesRepo.UpdateOrderStatusAsync(order.Id, companyId, "completed");
         await _salesRepo.UpdateTableStatusAsync(tableId, companyId, "invoiced");
+
+        // Registrar pagos y asociar a caja
+        if (activeRegister != null)
+        {
+            // Registrar cada pago individual
+            foreach (var payment in request.Payments)
+            {
+                await _orderPaymentRepo.CreateAsync(new OrderPayment
+                {
+                    CompanyId = companyId,
+                    OrderId = order.Id,
+                    Method = payment.Method.ToLowerInvariant(),
+                    Amount = payment.Amount,
+                    Reference = payment.Reference,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+
+            // Calcular totales por método de pago para actualizar caja
+            var totalCashSales = request.Payments
+                .Where(p => p.Method.Equals("cash", StringComparison.OrdinalIgnoreCase))
+                .Sum(p => p.Amount);
+            var totalCardSales = request.Payments
+                .Where(p => p.Method.Equals("card", StringComparison.OrdinalIgnoreCase))
+                .Sum(p => p.Amount);
+            var totalTransferSales = request.Payments
+                .Where(p => p.Method.Equals("transfer", StringComparison.OrdinalIgnoreCase))
+                .Sum(p => p.Amount);
+            var totalNequiSales = request.Payments
+                .Where(p => p.Method.Equals("nequi", StringComparison.OrdinalIgnoreCase))
+                .Sum(p => p.Amount);
+            var totalOtherSales = request.Payments
+                .Where(p => !new[] { "cash", "card", "transfer", "nequi" }.Contains(p.Method.ToLowerInvariant()))
+                .Sum(p => p.Amount);
+
+            // Actualizar totales de la caja (incrementamos en 1 el orderCount)
+            await _cashRegisterRepo.UpdateTotalsAsync(
+                activeRegister.Id,
+                companyId,
+                actualPaid,
+                totalCashSales,
+                totalCardSales,
+                totalTransferSales + totalNequiSales, // Agrupar transferencias digitales
+                totalOtherSales,
+                discountAmount,
+                request.HasCredit ? Math.Round(finalTotalPaid - actualPaid, 2) : 0,
+                request.TipAmount,
+                1); // orderCount increment
+        }
 
         // Crear registro de credito si aplica
         long? creditId = null;
@@ -278,8 +349,10 @@ public class SalesService : ISalesService
             DiscountAmount = discountAmount,
             Total = actualPaid,
             FinalTotalPaid = actualPaid,
+            TipAmount = request.TipAmount,
             SplitCount = Math.Max(1, request.SplitCount),
             Items = items,
+            Payments = request.Payments ?? new List<PaymentLineDto>(),
             InvoicedAt = DateTime.UtcNow,
             CreditId = creditId,
             CreditAmount = creditAmount

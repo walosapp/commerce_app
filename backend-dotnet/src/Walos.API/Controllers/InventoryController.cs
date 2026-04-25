@@ -238,7 +238,7 @@ public class InventoryController : ControllerBase
     /// GET /api/v1/inventory/products/template - Descargar plantilla Excel
     /// </summary>
     [HttpGet("products/template")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> DownloadTemplate()
     {
         var companyId = _tenant.CompanyId;
@@ -252,7 +252,7 @@ public class InventoryController : ControllerBase
     /// POST /api/v1/inventory/products/import - Importar productos desde Excel
     /// </summary>
     [HttpPost("products/import")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> ImportProducts(IFormFile file)
     {
         if (file is null || file.Length == 0)
@@ -300,8 +300,28 @@ public class InventoryController : ControllerBase
                 };
                 var savedProduct = await _repository.CreateProductAsync(product);
 
+                // Crear entrada de stock con cantidad inicial si se especificó
                 if (branchId.HasValue)
-                    await _repository.CreateStockEntryAsync(branchId.Value, savedProduct.Id, 0, companyId);
+                {
+                    var initialQty = row.Quantity > 0 ? row.Quantity : 0;
+                    await _repository.CreateStockEntryAsync(branchId.Value, savedProduct.Id, initialQty, companyId);
+
+                    // Si hay cantidad inicial, crear movimiento de tipo 'purchase' para trazabilidad
+                    if (initialQty > 0)
+                    {
+                        await _repository.CreateMovementAsync(new Movement
+                        {
+                            CompanyId = companyId,
+                            ProductId = savedProduct.Id,
+                            BranchId = branchId.Value,
+                            Quantity = initialQty,
+                            UnitCost = savedProduct.CostPrice,
+                            MovementType = "purchase",
+                            Notes = "Stock inicial por importación de Excel",
+                            CreatedBy = userId
+                        });
+                    }
+                }
 
                 savedCount++;
             }

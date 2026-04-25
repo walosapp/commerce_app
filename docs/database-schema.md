@@ -42,6 +42,11 @@ erDiagram
     delivery_orders ||--o{ delivery_order_items : "contiene"
     delivery_orders ||--o{ delivery_status_history : "registra"
 
+    companies ||--o{ cash_registers : "operan"
+    cash_registers ||--o{ cash_movements : "registran"
+    sales_orders ||--o{ order_payments : "tienen"
+    sales_orders ||--o{ refunds : "pueden_tener"
+
     companies {
         bigint id PK
         varchar name
@@ -269,3 +274,76 @@ El `margin_percentage` es un campo computado en DB: `(sale_price - cost_price) /
   "reports": {"read": true}
 }
 ```
+
+---
+
+## Tablas de Control de Caja (Nuevas - Abril 2026)
+
+### cash_registers
+Turnos de caja con apertura/cierre y arqueo.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `id` | bigint PK | Identificador único |
+| `company_id` | bigint FK | Multi-tenant |
+| `branch_id` | bigint FK | Sucursal |
+| `opened_by` | bigint FK | Usuario que abrió |
+| `closed_by` | bigint FK | Usuario que cerró |
+| `status` | varchar(20) | `open` / `closed` |
+| `opening_amount` | decimal(18,2) | Efectivo inicial |
+| `closing_amount` | decimal(18,2) | Conteo real al cierre |
+| `expected_cash` | decimal(18,2) | Calculado: opening + ventas + entradas - salidas - créditos |
+| `difference` | decimal(18,2) | Sobrante (+) o faltante (-) |
+| `total_sales` | decimal(18,2) | Total vendido en el turno |
+| `total_cash_sales` | decimal(18,2) | Ventas en efectivo |
+| `total_card_sales` | decimal(18,2) | Ventas con tarjeta |
+| `total_transfer_sales` | decimal(18,2) | Transferencias |
+| `total_tips` | decimal(18,2) | Propinas recibidas |
+| `cash_in` / `cash_out` | decimal(18,2) | Entradas/salidas manuales |
+| `order_count` | int | Número de órdenes |
+| `opened_at` / `closed_at` | timestamptz | Fechas de apertura/cierre |
+
+### cash_movements
+Entradas y salidas manuales de caja.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `cash_register_id` | bigint FK | Caja afectada |
+| `type` | varchar(10) | `in` (entrada) / `out` (salida) |
+| `amount` | decimal(18,2) | Monto del movimiento |
+| `reason` | varchar(300) | Motivo obligatorio |
+
+### order_payments
+Pagos individuales por método de pago.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `order_id` | bigint FK | Orden asociada |
+| `method` | varchar(20) | `cash`, `card`, `transfer`, `nequi`, `other` |
+| `amount` | decimal(18,2) | Monto pagado con este método |
+| `reference` | varchar(200) | Referencia (aprobación TC, ref transferencia) |
+
+### refunds
+Devoluciones/anulaciones de ventas.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `order_id` | bigint FK | Orden anulada |
+| `refund_type` | varchar(20) | `full` (total) / `partial` (parcial) |
+| `refund_amount` | decimal(18,2) | Monto devuelto |
+| `reason` | varchar(500) | Motivo obligatorio |
+| `status` | varchar(20) | `completed` / `pending_approval` |
+
+---
+
+## Migraciones
+
+Las migraciones SQL están en `supabase/migrations/` con formato `NNN_descripcion.sql`:
+
+| Script | Contenido |
+|--------|-----------|
+| `001_create_schemas.sql` | Esquemas: core, inventory, sales, finance, suppliers, delivery |
+| `004_sales_tables.sql` | Tablas de ventas: tables, orders, order_items |
+| `012_credits.sql` | Créditos: credits, credit_payments |
+| `013_platform_billing.sql` | Billing B2B: subscriptions, invoices, payment_methods |
+| `016_cash_registers.sql` | **Nuevo**: cash_registers, cash_movements, order_payments, refunds |

@@ -27,9 +27,16 @@ public static class DependencyInjection
         services.AddScoped<IInventoryRepository, InventoryRepository>();
         services.AddScoped<ISalesRepository, SalesRepository>();
         services.AddScoped<ICreditRepository, CreditRepository>();
+        services.AddScoped<ICashRegisterRepository, CashRegisterRepository>();
+        services.AddScoped<IOrderPaymentRepository, OrderPaymentRepository>();
         services.AddScoped<IFinanceRepository, FinanceRepository>();
         services.AddScoped<IPlatformRepository, PlatformRepository>();
         services.AddScoped<IAiSessionRepository, AiSessionRepository>();
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<ISalesService, SalesService>();
+        services.AddScoped<ICreditService, CreditService>();
+        services.AddScoped<ICashRegisterService, CashRegisterService>();
+        services.AddScoped<IFinanceService, FinanceService>();
         services.AddScoped<OrchestratorService>();
         services.AddHostedService<BillingJobService>();
         services.AddHostedService<AiSessionCleanupService>();
