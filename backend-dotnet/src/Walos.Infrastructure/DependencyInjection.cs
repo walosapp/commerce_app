@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<ICreditRepository, CreditRepository>();
         services.AddScoped<ICashRegisterRepository, CashRegisterRepository>();
         services.AddScoped<IOrderPaymentRepository, OrderPaymentRepository>();
+        services.AddScoped<IRefundRepository, RefundRepository>();
         services.AddScoped<IFinanceRepository, FinanceRepository>();
         services.AddScoped<IPlatformRepository, PlatformRepository>();
         services.AddScoped<IAiSessionRepository, AiSessionRepository>();
@@ -36,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<ISalesService, SalesService>();
         services.AddScoped<ICreditService, CreditService>();
         services.AddScoped<ICashRegisterService, CashRegisterService>();
+        services.AddScoped<IRefundService, RefundService>();
         services.AddScoped<IFinanceService, FinanceService>();
         services.AddScoped<OrchestratorService>();
         services.AddHostedService<BillingJobService>();

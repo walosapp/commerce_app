@@ -16,6 +16,7 @@ public class Order : BaseEntity
     public int SplitReferenceCount { get; set; } = 1;
     public string? Notes { get; set; }
     public long? CreatedBy { get; set; }
+    public string? RefundStatus { get; set; } // null | partial_refund | full_refund
 
     // Navigation
     public List<OrderItem>? Items { get; set; }

@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, Receipt, DollarSign, Tag, CreditCard, ChevronDown, ChevronUp } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { TrendingUp, Receipt, DollarSign, Tag, CreditCard, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
+import toast from 'react-hot-toast';
+import RefundModal from './RefundModal';
+import refundService from '../../../services/refundService';
 import OrderItemsList from './OrderItemsList';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import useAuthStore from '../../../stores/authStore';
@@ -34,8 +37,10 @@ const StatCard = ({ icon: Icon, label, value, sub, color = 'primary' }) => {
   );
 };
 
-const OrderRow = ({ order }) => {
+const OrderRow = ({ order, onRefund }) => {
   const [open, setOpen] = useState(false);
+  const isRefunded = order.refundStatus === 'full_refund';
+  const isPartialRefund = order.refundStatus === 'partial_refund';
   return (
     <div className="border-b border-gray-100 last:border-0">
       <button
@@ -44,8 +49,14 @@ const OrderRow = ({ order }) => {
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-gray-900">{order.tableName}</span>
+            <span className={`text-sm font-semibold ${isRefunded ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{order.tableName}</span>
             <span className="text-xs text-gray-400">{order.orderNumber}</span>
+            {isRefunded && (
+              <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">Anulada</span>
+            )}
+            {isPartialRefund && (
+              <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">Dev. parcial</span>
+            )}
             {order.hasCredit && (
               <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full flex items-center gap-1">
                 <CreditCard size={10} /> Crédito
@@ -62,7 +73,7 @@ const OrderRow = ({ order }) => {
           </p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-sm font-bold text-gray-900">{formatCurrency(order.finalTotalPaid)}</p>
+          <p className={`text-sm font-bold ${isRefunded ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{formatCurrency(order.finalTotalPaid)}</p>
           {order.discountAmount > 0 && (
             <p className="text-xs text-red-500">-{formatCurrency(order.discountAmount)}</p>
           )}
@@ -80,6 +91,14 @@ const OrderRow = ({ order }) => {
               <div><span className="text-gray-400">Por persona:</span> {formatCurrency(order.finalTotalPaid / order.splitReferenceCount)}</div>
             )}
           </div>
+          {!isRefunded && onRefund && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRefund(order); }}
+              className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 transition-colors"
+            >
+              <RotateCcw size={12} /> Anular / Devolver
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -88,7 +107,9 @@ const OrderRow = ({ order }) => {
 
 const SalesSummaryTab = () => {
   const { branchId } = useAuthStore();
+  const queryClient = useQueryClient();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [refundTarget, setRefundTarget] = useState(null);
 
   const { data: summaryData, isLoading: loadingSummary } = useQuery({
     queryKey: ['sales-summary', branchId, date],
@@ -203,9 +224,21 @@ const SalesSummaryTab = () => {
         ) : orders.length === 0 ? (
           <p className="text-center text-sm text-gray-400 py-8">Sin ventas en esta fecha</p>
         ) : (
-          orders.map(o => <OrderRow key={o.id} order={o} />)
+          orders.map(o => <OrderRow key={o.id} order={o} onRefund={setRefundTarget} />)
         )}
       </div>
+
+      <RefundModal
+        isOpen={!!refundTarget}
+        onClose={() => setRefundTarget(null)}
+        onConfirm={async (payload) => {
+          await refundService.create(payload);
+          toast.success('Devolucion procesada exitosamente');
+          queryClient.invalidateQueries({ queryKey: ['sales-completed'] });
+          queryClient.invalidateQueries({ queryKey: ['sales-summary'] });
+        }}
+        order={refundTarget}
+      />
 
     </div>
   );
