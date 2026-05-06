@@ -1,9 +1,10 @@
 # Funcionalidades POS — Roadmap y Estado
 
-> Estado: **Fase 1 Backend COMPLETADO — Frontend Pendiente**  
+> Estado: **Fase 1 ✅ | Fase 2 ✅ | Fase 3 ⏳ Pendiente**  
 > Creado: 2026-04-25  
-> Última actualización: 2026-04-25  
-> Contexto: Auditoría completa del proyecto Walos contra estándares de sistema POS
+> Última actualización: 2026-05-06  
+> Contexto: Auditoría completa del proyecto Walos contra estándares de sistema POS  
+> Guía de ejecución Fase 3: `docs/fase3-execution-guide.md`
 
 ---
 
@@ -14,8 +15,10 @@
 | Ventas / Mesas | Crear, renombrar, cancelar, facturar, agregar ítems | ✅ Completo |
 | Descuentos | Porcentaje/fijo, límites, override, reglas por empresa | ✅ Completo |
 | Crédito en Mesas | Pago parcial, abonos, panel de gestión | ✅ Completo |
-| **Control de Caja** | Apertura/cierre, arqueo, reporte Z | ✅ **Backend** / ⏳ Frontend |
-| **Métodos de Pago POS** | Efectivo, tarjeta, transferencia, mixto | ✅ **Backend** / ⏳ Frontend |
+| **Control de Caja** | Apertura/cierre, arqueo, reporte Z | ✅ Completo (Fase 1) |
+| **Métodos de Pago POS** | Efectivo, tarjeta, transferencia, mixto | ✅ Completo (Fase 1) |
+| **Propinas** | Propina voluntaria 10%/15%/custom en InvoicePanel | ✅ Completo (Fase 2) |
+| **Devoluciones** | Anulación total/parcial, reversión stock, RefundModal | ✅ Completo (Fase 2) |
 | Inventario | CRUD productos, stock multi-sucursal, movimientos, recetas, import Excel | ✅ Completo |
 | Delivery | Pedidos con flujo de estados completo | ✅ Completo |
 | Finanzas | Categorías recurrentes, entradas I/E, resumen | ✅ Completo |
