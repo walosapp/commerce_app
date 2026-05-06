@@ -6,9 +6,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusCircle, ShoppingCart, LayoutGrid, CreditCard, TableProperties, TrendingUp } from 'lucide-react';
+import { PlusCircle, ShoppingCart, LayoutGrid, CreditCard, TableProperties, TrendingUp, Wallet } from 'lucide-react';
 import toast from 'react-hot-toast';
 import salesService from '../../services/salesService';
+import { cashRegisterService } from '../../services/cashRegisterService';
 import inventoryService from '../../services/inventoryService';
 import useAuthStore from '../../stores/authStore';
 import AddTablePanel from './components/AddTablePanel';
@@ -16,6 +17,66 @@ import TableCard from './components/TableCard';
 import InvoicePanel from './components/InvoicePanel';
 import CreditsPanel from './components/CreditsPanel';
 import SalesSummaryTab from './components/SalesSummaryTab';
+import CashRegisterBar from './components/CashRegisterBar';
+import OpenCashRegisterModal from './components/OpenCashRegisterModal';
+import CloseCashRegisterModal from './components/CloseCashRegisterModal';
+import CashMovementModal from './components/CashMovementModal';
+import CashRegisterHistory from './components/CashRegisterHistory';
+
+import { formatCurrency } from '../../utils/formatCurrency';
+
+const CashSummaryView = ({ register }) => {
+  const elapsed = Math.floor((Date.now() - new Date(register.openedAt).getTime()) / 60000);
+  const hours = Math.floor(elapsed / 60);
+  const mins = elapsed % 60;
+  const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  const expectedCash = register.openingAmount + register.totalCashSales + register.cashIn - register.cashOut - register.totalCredits;
+
+  const stats = [
+    { label: 'Ventas totales', value: formatCurrency(register.totalSales), color: 'text-gray-900' },
+    { label: 'Efectivo', value: formatCurrency(register.totalCashSales), color: 'text-green-600' },
+    { label: 'Tarjeta', value: formatCurrency(register.totalCardSales), color: 'text-blue-600' },
+    { label: 'Transferencia', value: formatCurrency(register.totalTransferSales), color: 'text-purple-600' },
+    { label: 'Entradas manuales', value: `+${formatCurrency(register.cashIn)}`, color: 'text-green-600' },
+    { label: 'Salidas manuales', value: `-${formatCurrency(register.cashOut)}`, color: 'text-red-600' },
+    { label: 'Descuentos', value: `-${formatCurrency(register.totalDiscounts)}`, color: 'text-orange-600' },
+    { label: 'Órdenes', value: register.orderCount, color: 'text-gray-900' },
+  ];
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-4">
+      <div className="rounded-xl bg-white border border-gray-200 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-base font-bold text-gray-900">Turno actual</h3>
+            <p className="text-xs text-gray-500">Abierta hace {timeStr} · {register.openedByName || 'Usuario'}</p>
+          </div>
+          <span className="bg-green-100 text-green-700 text-xs font-medium px-2.5 py-1 rounded-full">Abierta</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {stats.map(({ label, value, color }) => (
+            <div key={label} className="rounded-lg bg-gray-50 p-3">
+              <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+              <p className={`text-sm font-bold ${color}`}>{value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-xl bg-white border border-gray-200 p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-gray-500">Efectivo esperado en caja</p>
+            <p className="text-xl font-bold text-gray-900">{formatCurrency(expectedCash)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Monto apertura</p>
+            <p className="text-lg font-semibold text-gray-600">{formatCurrency(register.openingAmount)}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const SalesPage = () => {
   const { branchId } = useAuthStore();
@@ -29,6 +90,21 @@ const SalesPage = () => {
   const [arrangeKey, setArrangeKey] = useState(0);
   const [showCredits, setShowCredits] = useState(false);
   const [activeTab, setActiveTab] = useState('tables');
+
+  // Cash register state
+  const [showOpenCash, setShowOpenCash] = useState(false);
+  const [showCloseCash, setShowCloseCash] = useState(false);
+  const [cashMovementType, setCashMovementType] = useState(null);
+  const [showCashHistory, setShowCashHistory] = useState(false);
+
+  // Cash register query
+  const { data: cashRegData, isLoading: cashLoading } = useQuery({
+    queryKey: ['cash-register-active', branchId],
+    queryFn: () => cashRegisterService.getActive(),
+    enabled: !!branchId,
+    refetchInterval: 60000,
+  });
+  const activeRegister = cashRegData?.data || null;
 
   const { data: tablesData, isLoading: tablesLoading } = useQuery({
     queryKey: ['sales-tables', branchId],
@@ -73,6 +149,29 @@ const SalesPage = () => {
     queryClient.invalidateQueries({ queryKey: ['stock'] });
     queryClient.invalidateQueries({ queryKey: ['lowStock'] });
     queryClient.invalidateQueries({ queryKey: ['alerts'] });
+  };
+
+  const refetchCashRegister = () => {
+    queryClient.invalidateQueries({ queryKey: ['cash-register-active'] });
+    queryClient.invalidateQueries({ queryKey: ['cash-register-history'] });
+  };
+
+  const handleOpenCash = async (data) => {
+    await cashRegisterService.open(data);
+    toast.success('Caja abierta exitosamente');
+    refetchCashRegister();
+  };
+
+  const handleCloseCash = async (id, data) => {
+    await cashRegisterService.close(id, data);
+    toast.success('Caja cerrada exitosamente');
+    refetchCashRegister();
+  };
+
+  const handleCashMovement = async (id, data) => {
+    await cashRegisterService.addMovement(id, data);
+    toast.success(data.type === 'in' ? 'Entrada registrada' : 'Salida registrada');
+    refetchCashRegister();
   };
 
   const updateTableItemQuantityInCache = (tableId, itemId, nextQuantity) => {
@@ -201,10 +300,20 @@ const SalesPage = () => {
     { k: 'tables',  label: 'Mesas',   icon: TableProperties },
     { k: 'credits', label: 'Créditos', icon: CreditCard },
     { k: 'sales',   label: 'Ventas',   icon: TrendingUp },
+    { k: 'cash',    label: 'Caja',     icon: Wallet },
   ];
 
   return (
     <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden">
+
+      {/* Cash register bar */}
+      <CashRegisterBar
+        register={activeRegister}
+        onOpen={() => setShowOpenCash(true)}
+        onClose={() => setShowCloseCash(true)}
+        onMovement={(type) => setCashMovementType(type)}
+        onHistory={() => setShowCashHistory(true)}
+      />
 
       {/* Top bar */}
       <div className="px-4 md:px-6 py-4 border-b bg-white flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
@@ -337,6 +446,27 @@ const SalesPage = () => {
           <SalesSummaryTab />
         )}
 
+        {/* ── CAJA TAB ── */}
+        {activeTab === 'cash' && (
+          <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            {!activeRegister ? (
+              <div className="flex flex-col items-center justify-center h-60 text-gray-400">
+                <Wallet size={48} className="mb-3 opacity-50" />
+                <p className="text-lg font-medium">No hay caja abierta</p>
+                <p className="text-sm mt-1">Abre una caja para ver el resumen del turno</p>
+                <button
+                  onClick={() => setShowOpenCash(true)}
+                  className="mt-4 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
+                >
+                  Abrir Caja
+                </button>
+              </div>
+            ) : (
+              <CashSummaryView register={activeRegister} />
+            )}
+          </div>
+        )}
+
       </div>
 
       <AddTablePanel
@@ -362,6 +492,32 @@ const SalesPage = () => {
         onClose={() => setInvoiceTarget(null)}
         onConfirm={handleInvoice}
         table={invoiceTarget}
+      />
+
+      <OpenCashRegisterModal
+        isOpen={showOpenCash}
+        onClose={() => setShowOpenCash(false)}
+        onConfirm={handleOpenCash}
+      />
+
+      <CloseCashRegisterModal
+        isOpen={showCloseCash}
+        onClose={() => setShowCloseCash(false)}
+        onConfirm={handleCloseCash}
+        register={activeRegister}
+      />
+
+      <CashMovementModal
+        isOpen={!!cashMovementType}
+        onClose={() => setCashMovementType(null)}
+        onConfirm={handleCashMovement}
+        registerId={activeRegister?.id}
+        type={cashMovementType || 'in'}
+      />
+
+      <CashRegisterHistory
+        isOpen={showCashHistory}
+        onClose={() => setShowCashHistory(false)}
       />
     </div>
   );
