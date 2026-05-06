@@ -6,12 +6,14 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, ChevronDown, ChevronUp, Clock, User, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, Clock, User, ArrowDownCircle, ArrowUpCircle, Printer } from 'lucide-react';
 import { cashRegisterService } from '../../../services/cashRegisterService';
 import { formatCurrency } from '../../../utils/formatCurrency';
+import ZReportPrint from './ZReportPrint';
 
 const CashRegisterHistory = ({ isOpen, onClose }) => {
   const [expandedId, setExpandedId] = useState(null);
+  const [zReportId, setZReportId] = useState(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -45,6 +47,8 @@ const CashRegisterHistory = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
+    <>
+    {zReportId && <ZReportPrint registerId={zReportId} onClose={() => setZReportId(null)} />}
     <div className="fixed inset-0 z-[70] flex justify-end bg-black/50" onClick={onClose}>
       <div
         className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col"
@@ -156,6 +160,13 @@ const CashRegisterHistory = ({ isOpen, onClose }) => {
                           <p className="text-xs text-gray-500 italic">{reg.notes}</p>
                         )}
 
+                        <button
+                          onClick={() => setZReportId(reg.id)}
+                          className="flex items-center gap-1.5 text-xs font-medium text-primary-600 hover:text-primary-700 transition-colors"
+                        >
+                          <Printer size={12} /> Imprimir Reporte Z
+                        </button>
+
                         {/* Movements */}
                         {movements.length > 0 && (
                           <div>
@@ -187,6 +198,7 @@ const CashRegisterHistory = ({ isOpen, onClose }) => {
         </div>
       </div>
     </div>
+  </>
   );
 };
 

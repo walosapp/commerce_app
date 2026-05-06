@@ -238,6 +238,11 @@ public class SalesRepository : ISalesRepository
                 SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId,
                        table_id AS TableId, order_number AS OrderNumber, status AS Status,
                        subtotal AS Subtotal, tax AS Tax, total AS Total, notes AS Notes,
+                       discount_type AS DiscountType, discount_value AS DiscountValue,
+                       discount_amount AS DiscountAmount, final_total_paid AS FinalTotalPaid,
+                       split_reference_count AS SplitReferenceCount,
+                       tip_amount AS TipAmount, tip_included AS TipIncluded,
+                       refund_status AS RefundStatus,
                        created_by AS CreatedBy, created_at AS CreatedAt
                 FROM sales.orders
                 WHERE id = @OrderId AND company_id = @CompanyId";
@@ -590,6 +595,113 @@ public class SalesRepository : ISalesRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error obteniendo ordenes completadas");
+            throw;
+        }
+    }
+
+    public async Task<IEnumerable<Order>> SearchOrdersAsync(long companyId, long branchId,
+        DateTime? dateFrom, DateTime? dateTo,
+        string? status, string? refundStatus, string? paymentMethod, string? search,
+        decimal? minTotal, decimal? maxTotal, string sortBy, string sortDir, int offset, int limit)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            var allowedSorts = new HashSet<string> { "created_at", "final_total_paid", "order_number" };
+            var col = allowedSorts.Contains(sortBy) ? sortBy : "created_at";
+            var dir = sortDir.Equals("asc", StringComparison.OrdinalIgnoreCase) ? "ASC" : "DESC";
+
+            var sql = $@"
+                SELECT o.id AS Id, o.company_id AS CompanyId, o.branch_id AS BranchId,
+                       o.table_id AS TableId, o.order_number AS OrderNumber, o.status AS Status,
+                       o.subtotal AS Subtotal, o.tax AS Tax, o.total AS Total,
+                       o.discount_type AS DiscountType, o.discount_value AS DiscountValue,
+                       o.discount_amount AS DiscountAmount, o.final_total_paid AS FinalTotalPaid,
+                       o.split_reference_count AS SplitReferenceCount,
+                       o.tip_amount AS TipAmount, o.tip_included AS TipIncluded,
+                       o.refund_status AS RefundStatus, o.payment_method AS PaymentMethod,
+                       o.created_by AS CreatedBy, o.created_at AS CreatedAt,
+                       t.name AS TableName, t.table_number AS TableNumber
+                FROM sales.orders o
+                LEFT JOIN sales.tables t ON t.id = o.table_id
+                WHERE o.company_id = @CompanyId AND o.branch_id = @BranchId
+                  AND o.status IN ('invoiced','cancelled')
+                  {(dateFrom.HasValue ? "AND o.created_at >= @DateFrom" : "")}
+                  {(dateTo.HasValue ? "AND o.created_at <= @DateTo" : "")}
+                  {(!string.IsNullOrEmpty(status) ? "AND o.status = @Status" : "")}
+                  {(!string.IsNullOrEmpty(refundStatus) ? "AND o.refund_status = @RefundStatus" : "")}
+                  {(!string.IsNullOrEmpty(paymentMethod) ? "AND o.payment_method = @PaymentMethod" : "")}
+                  {(!string.IsNullOrEmpty(search) ? "AND (o.order_number ILIKE @Search OR t.name ILIKE @Search)" : "")}
+                  {(minTotal.HasValue ? "AND o.final_total_paid >= @MinTotal" : "")}
+                  {(maxTotal.HasValue ? "AND o.final_total_paid <= @MaxTotal" : "")}
+                ORDER BY o.{col} {dir}
+                LIMIT @Limit OFFSET @Offset";
+
+            return await connection.QueryAsync<Order>(sql, new
+            {
+                CompanyId = companyId,
+                BranchId = branchId,
+                DateFrom = dateFrom,
+                DateTo = dateTo,
+                Status = status,
+                RefundStatus = refundStatus,
+                PaymentMethod = paymentMethod,
+                Search = !string.IsNullOrEmpty(search) ? $"%{search}%" : null,
+                MinTotal = minTotal,
+                MaxTotal = maxTotal,
+                Limit = limit,
+                Offset = offset
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error buscando ordenes");
+            throw;
+        }
+    }
+
+    public async Task<int> SearchOrdersCountAsync(long companyId, long branchId,
+        DateTime? dateFrom, DateTime? dateTo,
+        string? status, string? refundStatus, string? paymentMethod, string? search,
+        decimal? minTotal, decimal? maxTotal)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            var sql = $@"
+                SELECT COUNT(*)
+                FROM sales.orders o
+                LEFT JOIN sales.tables t ON t.id = o.table_id
+                WHERE o.company_id = @CompanyId AND o.branch_id = @BranchId
+                  AND o.status IN ('invoiced','cancelled')
+                  {(dateFrom.HasValue ? "AND o.created_at >= @DateFrom" : "")}
+                  {(dateTo.HasValue ? "AND o.created_at <= @DateTo" : "")}
+                  {(!string.IsNullOrEmpty(status) ? "AND o.status = @Status" : "")}
+                  {(!string.IsNullOrEmpty(refundStatus) ? "AND o.refund_status = @RefundStatus" : "")}
+                  {(!string.IsNullOrEmpty(paymentMethod) ? "AND o.payment_method = @PaymentMethod" : "")}
+                  {(!string.IsNullOrEmpty(search) ? "AND (o.order_number ILIKE @Search OR t.name ILIKE @Search)" : "")}
+                  {(minTotal.HasValue ? "AND o.final_total_paid >= @MinTotal" : "")}
+                  {(maxTotal.HasValue ? "AND o.final_total_paid <= @MaxTotal" : "")}";
+
+            return await connection.ExecuteScalarAsync<int>(sql, new
+            {
+                CompanyId = companyId,
+                BranchId = branchId,
+                DateFrom = dateFrom,
+                DateTo = dateTo,
+                Status = status,
+                RefundStatus = refundStatus,
+                PaymentMethod = paymentMethod,
+                Search = !string.IsNullOrEmpty(search) ? $"%{search}%" : null,
+                MinTotal = minTotal,
+                MaxTotal = maxTotal
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error contando ordenes en busqueda");
             throw;
         }
     }

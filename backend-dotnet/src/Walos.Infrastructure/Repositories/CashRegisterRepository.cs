@@ -211,15 +211,15 @@ public class CashRegisterRepository : ICashRegisterRepository
 
         const string sql = @"
             UPDATE sales.cash_registers SET
-                total_sales = @TotalSales,
-                total_cash_sales = @TotalCashSales,
-                total_card_sales = @TotalCardSales,
-                total_transfer_sales = @TotalTransferSales,
-                total_other_sales = @TotalOtherSales,
-                total_discounts = @TotalDiscounts,
-                total_credits = @TotalCredits,
-                total_tips = @TotalTips,
-                order_count = @OrderCount,
+                total_sales = total_sales + @TotalSales,
+                total_cash_sales = total_cash_sales + @TotalCashSales,
+                total_card_sales = total_card_sales + @TotalCardSales,
+                total_transfer_sales = total_transfer_sales + @TotalTransferSales,
+                total_other_sales = total_other_sales + @TotalOtherSales,
+                total_discounts = total_discounts + @TotalDiscounts,
+                total_credits = total_credits + @TotalCredits,
+                total_tips = total_tips + @TotalTips,
+                order_count = order_count + @OrderCount,
                 updated_at = NOW()
             WHERE id = @Id AND company_id = @CompanyId";
 

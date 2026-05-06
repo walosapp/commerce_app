@@ -17,7 +17,13 @@ public class Order : BaseEntity
     public string? Notes { get; set; }
     public long? CreatedBy { get; set; }
     public string? RefundStatus { get; set; } // null | partial_refund | full_refund
+    public decimal TipAmount { get; set; }
+    public bool TipIncluded { get; set; }
 
-    // Navigation
+    public string? PaymentMethod { get; set; }
+
+    // Navigation (from JOINs)
+    public string? TableName { get; set; }
+    public int? TableNumber { get; set; }
     public List<OrderItem>? Items { get; set; }
 }

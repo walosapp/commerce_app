@@ -17,6 +17,8 @@ public class SalesServiceTests
     private readonly Mock<ICreditRepository> _creditRepoMock;
     private readonly Mock<ICashRegisterRepository> _cashRegisterRepoMock;
     private readonly Mock<IOrderPaymentRepository> _orderPaymentRepoMock;
+    private readonly Mock<IUsersRepository> _usersRepoMock;
+    private readonly Mock<IRefundRepository> _refundRepoMock;
     private readonly Mock<ILogger<SalesService>> _loggerMock;
     private readonly SalesService _service;
 
@@ -33,6 +35,8 @@ public class SalesServiceTests
         _creditRepoMock = new Mock<ICreditRepository>();
         _cashRegisterRepoMock = new Mock<ICashRegisterRepository>();
         _orderPaymentRepoMock = new Mock<IOrderPaymentRepository>();
+        _usersRepoMock = new Mock<IUsersRepository>();
+        _refundRepoMock = new Mock<IRefundRepository>();
         _loggerMock = new Mock<ILogger<SalesService>>();
         _service = new SalesService(
             _salesRepoMock.Object,
@@ -42,6 +46,8 @@ public class SalesServiceTests
             _creditRepoMock.Object,
             _cashRegisterRepoMock.Object,
             _orderPaymentRepoMock.Object,
+            _usersRepoMock.Object,
+            _refundRepoMock.Object,
             _loggerMock.Object);
     }
 

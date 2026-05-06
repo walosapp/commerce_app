@@ -13,6 +13,11 @@ public interface ISalesService
     Task UpdateItemQuantityAsync(long companyId, long branchId, long itemId, UpdateItemQuantityRequest request);
     Task AddItemsToTableAsync(long companyId, long tableId, List<CreateTableItemDto> items);
     Task RenameTableAsync(long companyId, long tableId, string name);
+    Task<ReceiptData> GetReceiptAsync(long companyId, long orderId);
+    Task<KitchenTicketData> GetKitchenTicketAsync(long companyId, long orderId);
+    Task<(List<OrderDetailResponse> Items, int TotalCount)> SearchOrdersAsync(long companyId, OrderSearchRequest request);
+    Task<byte[]> ExportOrdersCsvAsync(long companyId, OrderSearchRequest request);
+    Task<OrderDetailResponse> GetOrderDetailAsync(long companyId, long orderId);
 }
 
 public class CreateTableResult

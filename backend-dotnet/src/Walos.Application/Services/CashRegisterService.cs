@@ -147,24 +147,24 @@ public class CashRegisterService : ICashRegisterService
 
     public async Task UpdateTotalsFromOrderAsync(long cashRegisterId, long companyId, decimal totalSales, decimal totalCashSales, decimal totalCardSales, decimal totalTransferSales, decimal totalOtherSales, decimal totalDiscounts, decimal totalCredits, decimal totalTips)
     {
-        // Obtener caja actual para sumar
         var register = await _cashRegisterRepo.GetByIdAsync(cashRegisterId, companyId)
             ?? throw new NotFoundException("Caja no encontrada");
 
         if (register.Status != "open")
             throw new BusinessException("No se puede facturar en una caja cerrada");
 
+        // UpdateTotalsAsync uses incremental SQL (total_sales = total_sales + @TotalSales)
         await _cashRegisterRepo.UpdateTotalsAsync(
             cashRegisterId, companyId,
-            register.TotalSales + totalSales,
-            register.TotalCashSales + totalCashSales,
-            register.TotalCardSales + totalCardSales,
-            register.TotalTransferSales + totalTransferSales,
-            register.TotalOtherSales + totalOtherSales,
-            register.TotalDiscounts + totalDiscounts,
-            register.TotalCredits + totalCredits,
-            register.TotalTips + totalTips,
-            register.OrderCount + 1);
+            totalSales,
+            totalCashSales,
+            totalCardSales,
+            totalTransferSales,
+            totalOtherSales,
+            totalDiscounts,
+            totalCredits,
+            totalTips,
+            1);
     }
 
     private static CashRegisterResponse MapToResponse(CashRegister r) => new(

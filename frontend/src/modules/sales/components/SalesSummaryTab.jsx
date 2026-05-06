@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, Receipt, DollarSign, Tag, CreditCard, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
+import { TrendingUp, Receipt, DollarSign, Tag, CreditCard, ChevronDown, ChevronUp, RotateCcw, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import RefundModal from './RefundModal';
+import ReceiptPreview from './ReceiptPreview';
 import refundService from '../../../services/refundService';
 import OrderItemsList from './OrderItemsList';
 import { formatCurrency } from '../../../utils/formatCurrency';
@@ -37,7 +38,7 @@ const StatCard = ({ icon: Icon, label, value, sub, color = 'primary' }) => {
   );
 };
 
-const OrderRow = ({ order, onRefund }) => {
+const OrderRow = ({ order, onRefund, onPrintReceipt }) => {
   const [open, setOpen] = useState(false);
   const isRefunded = order.refundStatus === 'full_refund';
   const isPartialRefund = order.refundStatus === 'partial_refund';
@@ -91,14 +92,22 @@ const OrderRow = ({ order, onRefund }) => {
               <div><span className="text-gray-400">Por persona:</span> {formatCurrency(order.finalTotalPaid / order.splitReferenceCount)}</div>
             )}
           </div>
-          {!isRefunded && onRefund && (
+          <div className="flex items-center gap-3">
             <button
-              onClick={(e) => { e.stopPropagation(); onRefund(order); }}
-              className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onPrintReceipt?.(order); }}
+              className="flex items-center gap-1.5 text-xs font-medium text-primary-600 hover:text-primary-700 transition-colors"
             >
-              <RotateCcw size={12} /> Anular / Devolver
+              <Printer size={12} /> Imprimir recibo
             </button>
-          )}
+            {!isRefunded && onRefund && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onRefund(order); }}
+                className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 transition-colors"
+              >
+                <RotateCcw size={12} /> Anular / Devolver
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -110,6 +119,7 @@ const SalesSummaryTab = () => {
   const queryClient = useQueryClient();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [refundTarget, setRefundTarget] = useState(null);
+  const [receiptOrderId, setReceiptOrderId] = useState(null);
 
   const { data: summaryData, isLoading: loadingSummary } = useQuery({
     queryKey: ['sales-summary', branchId, date],
@@ -224,9 +234,13 @@ const SalesSummaryTab = () => {
         ) : orders.length === 0 ? (
           <p className="text-center text-sm text-gray-400 py-8">Sin ventas en esta fecha</p>
         ) : (
-          orders.map(o => <OrderRow key={o.id} order={o} onRefund={setRefundTarget} />)
+          orders.map(o => <OrderRow key={o.id} order={o} onRefund={setRefundTarget} onPrintReceipt={(order) => setReceiptOrderId(order.id)} />)
         )}
       </div>
+
+      {receiptOrderId && (
+        <ReceiptPreview orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />
+      )}
 
       <RefundModal
         isOpen={!!refundTarget}

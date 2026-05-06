@@ -140,6 +140,97 @@ public class SalesController : ControllerBase
         var orders = (await _salesRepo.GetCompletedOrdersAsync(_tenant.CompanyId, branchId, dateFrom, dateTo)).ToList();
         return Ok(ApiResponse<List<CompletedOrder>>.Ok(orders, count: orders.Count));
     }
+
+    [HttpGet("orders/{id:long}/receipt")]
+    public async Task<IActionResult> GetReceipt(long id)
+    {
+        var result = await _salesService.GetReceiptAsync(_tenant.CompanyId, id);
+        return Ok(ApiResponse<ReceiptData>.Ok(result));
+    }
+
+    [HttpGet("orders/{id:long}/kitchen")]
+    public async Task<IActionResult> GetKitchenTicket(long id)
+    {
+        var result = await _salesService.GetKitchenTicketAsync(_tenant.CompanyId, id);
+        return Ok(ApiResponse<KitchenTicketData>.Ok(result));
+    }
+
+    [HttpGet("orders/search")]
+    public async Task<IActionResult> SearchOrders(
+        [FromQuery] long branchId,
+        [FromQuery] string? dateFrom,
+        [FromQuery] string? dateTo,
+        [FromQuery] string? status,
+        [FromQuery] string? refundStatus,
+        [FromQuery] string? paymentMethod,
+        [FromQuery] string? search,
+        [FromQuery] decimal? minTotal,
+        [FromQuery] decimal? maxTotal,
+        [FromQuery] string sortBy = "created_at",
+        [FromQuery] string sortDir = "desc",
+        [FromQuery] int page = 1,
+        [FromQuery] int limit = 20)
+    {
+        var request = new OrderSearchRequest
+        {
+            BranchId = branchId,
+            DateFrom = DateTime.TryParse(dateFrom, out var df) ? df : null,
+            DateTo = DateTime.TryParse(dateTo, out var dt) ? dt.Date.AddDays(1).AddTicks(-1) : null,
+            Status = status,
+            RefundStatus = refundStatus,
+            PaymentMethod = paymentMethod,
+            Search = search,
+            MinTotal = minTotal,
+            MaxTotal = maxTotal,
+            Page = page,
+            Limit = Math.Min(limit, 100),
+            SortBy = sortBy,
+            SortDir = sortDir
+        };
+
+        var (items, totalCount) = await _salesService.SearchOrdersAsync(_tenant.CompanyId, request);
+        return Ok(ApiResponse<List<OrderDetailResponse>>.Ok(items, count: totalCount));
+    }
+
+    [HttpGet("orders/{id:long}/detail")]
+    public async Task<IActionResult> GetOrderDetail(long id)
+    {
+        var result = await _salesService.GetOrderDetailAsync(_tenant.CompanyId, id);
+        return Ok(ApiResponse<OrderDetailResponse>.Ok(result));
+    }
+
+    [HttpGet("orders/export")]
+    public async Task<IActionResult> ExportOrders(
+        [FromQuery] long branchId,
+        [FromQuery] string? dateFrom,
+        [FromQuery] string? dateTo,
+        [FromQuery] string? status,
+        [FromQuery] string? refundStatus,
+        [FromQuery] string? paymentMethod,
+        [FromQuery] string? search,
+        [FromQuery] decimal? minTotal,
+        [FromQuery] decimal? maxTotal,
+        [FromQuery] string sortBy = "created_at",
+        [FromQuery] string sortDir = "desc")
+    {
+        var request = new OrderSearchRequest
+        {
+            BranchId = branchId,
+            DateFrom = DateTime.TryParse(dateFrom, out var df) ? df : null,
+            DateTo = DateTime.TryParse(dateTo, out var dt) ? dt.Date.AddDays(1).AddTicks(-1) : null,
+            Status = status,
+            RefundStatus = refundStatus,
+            PaymentMethod = paymentMethod,
+            Search = search,
+            MinTotal = minTotal,
+            MaxTotal = maxTotal,
+            SortBy = sortBy,
+            SortDir = sortDir
+        };
+
+        var csv = await _salesService.ExportOrdersCsvAsync(_tenant.CompanyId, request);
+        return File(csv, "text/csv", $"ventas-{DateTime.UtcNow:yyyyMMdd}.csv");
+    }
 }
 
 public record RenameTableRequest(string? Name);

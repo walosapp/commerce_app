@@ -23,4 +23,10 @@ public interface ISalesRepository
     Task RenameTableAsync(long tableId, long companyId, string name);
     Task<SalesSummary> GetSalesSummaryAsync(long companyId, long branchId, DateTime dateFrom, DateTime dateTo);
     Task<IEnumerable<CompletedOrder>> GetCompletedOrdersAsync(long companyId, long branchId, DateTime dateFrom, DateTime dateTo);
+    Task<IEnumerable<Order>> SearchOrdersAsync(long companyId, long branchId, DateTime? dateFrom, DateTime? dateTo,
+        string? status, string? refundStatus, string? paymentMethod, string? search,
+        decimal? minTotal, decimal? maxTotal, string sortBy, string sortDir, int offset, int limit);
+    Task<int> SearchOrdersCountAsync(long companyId, long branchId, DateTime? dateFrom, DateTime? dateTo,
+        string? status, string? refundStatus, string? paymentMethod, string? search,
+        decimal? minTotal, decimal? maxTotal);
 }

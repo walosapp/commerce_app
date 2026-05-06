@@ -13,11 +13,13 @@ namespace Walos.API.Controllers;
 public class CashRegisterController : ControllerBase
 {
     private readonly ICashRegisterService _cashRegisterService;
+    private readonly ICompanyRepository _companyRepo;
     private readonly ITenantContext _tenant;
 
-    public CashRegisterController(ICashRegisterService cashRegisterService, ITenantContext tenant)
+    public CashRegisterController(ICashRegisterService cashRegisterService, ICompanyRepository companyRepo, ITenantContext tenant)
     {
         _cashRegisterService = cashRegisterService;
+        _companyRepo = companyRepo;
         _tenant = tenant;
     }
 
@@ -97,5 +99,41 @@ public class CashRegisterController : ControllerBase
 
         var list = items.ToList();
         return Ok(ApiResponse<List<CashRegisterResponse>>.Ok(list, count: totalCount));
+    }
+
+    [HttpGet("{id:long}/z-report")]
+    public async Task<IActionResult> GetZReport(long id)
+    {
+        var summary = await _cashRegisterService.GetSummaryAsync(id, _tenant.CompanyId);
+        var company = await _companyRepo.GetCompanySettingsAsync(_tenant.CompanyId);
+
+        var zReport = new ZReportData(
+            CashRegisterId: summary.Register.Id,
+            OpenedAt: summary.Register.OpenedAt,
+            ClosedAt: summary.Register.ClosedAt,
+            OpenedByName: summary.Register.OpenedByName ?? "Cajero",
+            ClosedByName: summary.Register.ClosedByName,
+            OpeningAmount: summary.Register.OpeningAmount,
+            ClosingAmount: summary.Register.ClosingAmount,
+            ExpectedCash: summary.Register.ExpectedCash,
+            Difference: summary.Register.Difference,
+            TotalSales: summary.Register.TotalSales,
+            OrderCount: summary.Register.OrderCount,
+            TotalCashSales: summary.Register.TotalCashSales,
+            TotalCardSales: summary.Register.TotalCardSales,
+            TotalTransferSales: summary.Register.TotalTransferSales,
+            TotalOtherSales: summary.Register.TotalOtherSales,
+            TotalDiscounts: summary.Register.TotalDiscounts,
+            TotalCredits: summary.Register.TotalCredits,
+            TotalTips: summary.Register.TotalTips,
+            CashIn: summary.Register.CashIn,
+            CashOut: summary.Register.CashOut,
+            PaymentBreakdown: summary.PaymentBreakdown,
+            Movements: summary.Movements,
+            CompanyName: company?.Name ?? "Empresa",
+            CompanyLegalName: company?.LegalName
+        );
+
+        return Ok(ApiResponse<ZReportData>.Ok(zReport));
     }
 }

@@ -41,6 +41,21 @@ export const salesService = {
     const response = await api.patch(`/sales/tables/${tableId}/name`, { name });
     return response.data;
   },
+
+  searchOrders: async (params) => {
+    const response = await api.get('/sales/orders/search', { params });
+    return response.data;
+  },
+
+  getOrderDetail: async (orderId) => {
+    const response = await api.get(`/sales/orders/${orderId}/detail`);
+    return response.data;
+  },
+
+  exportOrders: async (params) => {
+    const response = await api.get('/sales/orders/export', { params, responseType: 'blob' });
+    return response.data;
+  },
 };
 
 export default salesService;

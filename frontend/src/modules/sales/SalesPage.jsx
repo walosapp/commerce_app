@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusCircle, ShoppingCart, LayoutGrid, CreditCard, TableProperties, TrendingUp, Wallet } from 'lucide-react';
+import { PlusCircle, ShoppingCart, LayoutGrid, CreditCard, TableProperties, TrendingUp, Wallet, ClipboardList } from 'lucide-react';
 import toast from 'react-hot-toast';
 import salesService from '../../services/salesService';
 import { cashRegisterService } from '../../services/cashRegisterService';
@@ -22,6 +22,7 @@ import OpenCashRegisterModal from './components/OpenCashRegisterModal';
 import CloseCashRegisterModal from './components/CloseCashRegisterModal';
 import CashMovementModal from './components/CashMovementModal';
 import CashRegisterHistory from './components/CashRegisterHistory';
+import OrderHistoryTab from './components/OrderHistoryTab';
 
 import { formatCurrency } from '../../utils/formatCurrency';
 
@@ -300,6 +301,7 @@ const SalesPage = () => {
     { k: 'tables',  label: 'Mesas',   icon: TableProperties },
     { k: 'credits', label: 'Créditos', icon: CreditCard },
     { k: 'sales',   label: 'Ventas',   icon: TrendingUp },
+    { k: 'history', label: 'Historial', icon: ClipboardList },
     { k: 'cash',    label: 'Caja',     icon: Wallet },
   ];
 
@@ -444,6 +446,11 @@ const SalesPage = () => {
         {/* ── VENTAS TAB ── */}
         {activeTab === 'sales' && (
           <SalesSummaryTab />
+        )}
+
+        {/* ── HISTORIAL TAB ── */}
+        {activeTab === 'history' && (
+          <OrderHistoryTab />
         )}
 
         {/* ── CAJA TAB ── */}

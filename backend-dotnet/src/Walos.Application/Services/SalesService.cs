@@ -15,6 +15,8 @@ public class SalesService : ISalesService
     private readonly ICreditRepository _creditRepo;
     private readonly ICashRegisterRepository _cashRegisterRepo;
     private readonly IOrderPaymentRepository _orderPaymentRepo;
+    private readonly IUsersRepository _usersRepo;
+    private readonly IRefundRepository _refundRepo;
     private readonly ILogger<SalesService> _logger;
 
     public SalesService(
@@ -25,6 +27,8 @@ public class SalesService : ISalesService
         ICreditRepository creditRepo,
         ICashRegisterRepository cashRegisterRepo,
         IOrderPaymentRepository orderPaymentRepo,
+        IUsersRepository usersRepo,
+        IRefundRepository refundRepo,
         ILogger<SalesService> logger)
     {
         _salesRepo = salesRepo;
@@ -34,6 +38,8 @@ public class SalesService : ISalesService
         _creditRepo = creditRepo;
         _cashRegisterRepo = cashRegisterRepo;
         _orderPaymentRepo = orderPaymentRepo;
+        _usersRepo = usersRepo;
+        _refundRepo = refundRepo;
         _logger = logger;
     }
 
@@ -472,6 +478,190 @@ public class SalesService : ISalesService
 
         await _salesRepo.RenameTableAsync(tableId, companyId, name.Trim());
         _logger.LogInformation("Mesa {TableId} renombrada a '{Name}'", tableId, name.Trim());
+    }
+
+    public async Task<ReceiptData> GetReceiptAsync(long companyId, long orderId)
+    {
+        var order = await _salesRepo.GetOrderByIdAsync(orderId, companyId)
+            ?? throw new NotFoundException("Orden no encontrada");
+
+        var company = await _companyRepo.GetCompanySettingsAsync(companyId);
+        var items = (await _salesRepo.GetOrderItemsAsync(orderId, companyId)).ToList();
+        var payments = (await _orderPaymentRepo.GetByOrderAsync(orderId, companyId)).ToList();
+        var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId);
+
+        var cashierName = "Cajero";
+        if (order.CreatedBy.HasValue)
+        {
+            var user = await _usersRepo.GetByIdAsync(order.CreatedBy.Value, companyId);
+            if (user != null) cashierName = $"{user.FirstName} {user.LastName}".Trim();
+        }
+
+        // Buscar credito asociado
+        bool hasCredit = false;
+        decimal? creditAmount = null;
+        string? creditCustomerName = null;
+        var credits = await _creditRepo.GetCreditsAsync(companyId, null, order.OrderNumber);
+        var credit = credits.FirstOrDefault();
+        if (credit != null)
+        {
+            hasCredit = true;
+            creditAmount = credit.CreditAmount;
+            creditCustomerName = credit.CustomerName;
+        }
+
+        return new ReceiptData(
+            CompanyName: company?.Name ?? "Empresa",
+            CompanyLegalName: company?.LegalName,
+            CompanyPhone: company?.Phone,
+            CompanyLogoUrl: company?.LogoUrl,
+            OrderId: order.Id,
+            OrderNumber: order.OrderNumber,
+            TableName: table?.Name ?? $"Mesa {table?.TableNumber ?? 0}",
+            TableNumber: table?.TableNumber ?? 0,
+            CreatedAt: order.CreatedAt,
+            CashierName: cashierName,
+            Items: items.Select(i => new ReceiptItemDto(i.ProductName, i.Quantity, i.UnitPrice, i.Subtotal)).ToList(),
+            Subtotal: order.Subtotal,
+            DiscountType: order.DiscountType,
+            DiscountValue: order.DiscountValue,
+            DiscountAmount: order.DiscountAmount,
+            FinalTotalPaid: order.FinalTotalPaid,
+            TipAmount: order.TipAmount,
+            TipIncluded: order.TipIncluded,
+            SplitCount: order.SplitReferenceCount,
+            Payments: payments.Select(p => new ReceiptPaymentDto(p.Method, p.Amount, p.Reference)).ToList(),
+            HasCredit: hasCredit,
+            CreditAmount: creditAmount,
+            CreditCustomerName: creditCustomerName
+        );
+    }
+
+    public async Task<KitchenTicketData> GetKitchenTicketAsync(long companyId, long orderId)
+    {
+        var order = await _salesRepo.GetOrderByIdAsync(orderId, companyId)
+            ?? throw new NotFoundException("Orden no encontrada");
+
+        var items = (await _salesRepo.GetOrderItemsAsync(orderId, companyId)).ToList();
+        var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId);
+
+        var cashierName = "Cajero";
+        if (order.CreatedBy.HasValue)
+        {
+            var user = await _usersRepo.GetByIdAsync(order.CreatedBy.Value, companyId);
+            if (user != null) cashierName = $"{user.FirstName} {user.LastName}".Trim();
+        }
+
+        return new KitchenTicketData(
+            TableName: table?.Name ?? $"Mesa {table?.TableNumber ?? 0}",
+            TableNumber: table?.TableNumber ?? 0,
+            OrderNumber: order.OrderNumber,
+            CreatedAt: order.CreatedAt,
+            CashierName: cashierName,
+            Items: items.Select(i => new KitchenItemDto(i.ProductName, i.Quantity, i.Notes)).ToList()
+        );
+    }
+
+    public async Task<(List<OrderDetailResponse> Items, int TotalCount)> SearchOrdersAsync(long companyId, OrderSearchRequest request)
+    {
+        var offset = (request.Page - 1) * request.Limit;
+        var count = await _salesRepo.SearchOrdersCountAsync(companyId, request.BranchId,
+            request.DateFrom, request.DateTo, request.Status, request.RefundStatus,
+            request.PaymentMethod, request.Search, request.MinTotal, request.MaxTotal);
+
+        var orders = await _salesRepo.SearchOrdersAsync(companyId, request.BranchId,
+            request.DateFrom, request.DateTo, request.Status, request.RefundStatus,
+            request.PaymentMethod, request.Search, request.MinTotal, request.MaxTotal,
+            request.SortBy, request.SortDir, offset, request.Limit);
+
+        var results = new List<OrderDetailResponse>();
+        foreach (var o in orders)
+        {
+            results.Add(await MapToOrderDetail(companyId, o, includeRefunds: false));
+        }
+
+        return (results, count);
+    }
+
+    public async Task<OrderDetailResponse> GetOrderDetailAsync(long companyId, long orderId)
+    {
+        var order = await _salesRepo.GetOrderByIdAsync(orderId, companyId)
+            ?? throw new NotFoundException("Orden no encontrada");
+
+        var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId);
+        order.TableName = table?.Name;
+        order.TableNumber = table?.TableNumber;
+
+        return await MapToOrderDetail(companyId, order, includeRefunds: true);
+    }
+
+    public async Task<byte[]> ExportOrdersCsvAsync(long companyId, OrderSearchRequest request)
+    {
+        var orders = await _salesRepo.SearchOrdersAsync(companyId, request.BranchId,
+            request.DateFrom, request.DateTo, request.Status, request.RefundStatus,
+            request.PaymentMethod, request.Search, request.MinTotal, request.MaxTotal,
+            request.SortBy, request.SortDir, 0, 10000);
+
+        using var ms = new System.IO.MemoryStream();
+        using var sw = new System.IO.StreamWriter(ms, System.Text.Encoding.UTF8);
+
+        sw.WriteLine("ID,Número Orden,Mesa,Estado,Subtotal,Descuento,Total Pagado,Propina,Método de Pago,Estado Devolución,Fecha");
+        foreach (var o in orders)
+        {
+            sw.WriteLine($"{o.Id},{o.OrderNumber},{o.TableName ?? ""},{o.Status},{o.Subtotal:F2},{o.DiscountAmount:F2},{o.FinalTotalPaid:F2},{o.TipAmount:F2},{o.PaymentMethod ?? ""},{o.RefundStatus ?? ""},{o.CreatedAt:yyyy-MM-dd HH:mm:ss}");
+        }
+
+        sw.Flush();
+        return ms.ToArray();
+    }
+
+    private async Task<OrderDetailResponse> MapToOrderDetail(long companyId, Order order, bool includeRefunds)
+    {
+        var items = (await _salesRepo.GetOrderItemsAsync(order.Id, companyId)).ToList();
+        var payments = (await _orderPaymentRepo.GetByOrderAsync(order.Id, companyId)).ToList();
+
+        var cashierName = "Cajero";
+        if (order.CreatedBy.HasValue)
+        {
+            var user = await _usersRepo.GetByIdAsync(order.CreatedBy.Value, companyId);
+            if (user != null) cashierName = $"{user.FirstName} {user.LastName}".Trim();
+        }
+
+        List<RefundSummaryDto>? refunds = null;
+        if (includeRefunds)
+        {
+            var refundList = await _refundRepo.GetByOrderIdAsync(order.Id, companyId);
+            refunds = refundList.Select(r => new RefundSummaryDto(
+                r.Id, r.RefundType, r.RefundAmount, r.Reason, r.Status, r.CreatedAt
+            )).ToList();
+        }
+
+        var credits = await _creditRepo.GetCreditsAsync(companyId, null, order.OrderNumber);
+        var hasCredit = credits.Any();
+
+        return new OrderDetailResponse(
+            Id: order.Id,
+            OrderNumber: order.OrderNumber,
+            TableName: order.TableName ?? $"Mesa {order.TableNumber ?? 0}",
+            TableNumber: order.TableNumber ?? 0,
+            Status: order.Status,
+            Subtotal: order.Subtotal,
+            DiscountType: order.DiscountType,
+            DiscountValue: order.DiscountValue,
+            DiscountAmount: order.DiscountAmount,
+            FinalTotalPaid: order.FinalTotalPaid,
+            TipAmount: order.TipAmount,
+            TipIncluded: order.TipIncluded,
+            SplitReferenceCount: order.SplitReferenceCount,
+            RefundStatus: order.RefundStatus,
+            PaymentMethod: order.PaymentMethod,
+            HasCredit: hasCredit,
+            CreatedAt: order.CreatedAt,
+            CashierName: cashierName,
+            Items: items.Select(i => new ReceiptItemDto(i.ProductName, i.Quantity, i.UnitPrice, i.Subtotal)).ToList(),
+            Payments: payments.Select(p => new ReceiptPaymentDto(p.Method, p.Amount, p.Reference)).ToList(),
+            Refunds: refunds
+        );
     }
 
     private async Task ValidateItemAvailabilityAsync(
