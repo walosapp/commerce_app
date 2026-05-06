@@ -15,6 +15,7 @@ public abstract class IntegrationTestBase : IDisposable
     protected readonly IInventoryRepository InventoryRepository;
     protected readonly ISalesRepository SalesRepository;
     protected readonly IFinanceRepository FinanceRepository;
+    protected readonly IUsersRepository UsersRepository;
 
     protected IntegrationTestBase()
     {
@@ -41,6 +42,7 @@ public abstract class IntegrationTestBase : IDisposable
         InventoryRepository = new InventoryRepository(ConnectionFactory, NullLogger<InventoryRepository>.Instance);
         SalesRepository = new SalesRepository(ConnectionFactory, NullLogger<SalesRepository>.Instance);
         FinanceRepository = new FinanceRepository(ConnectionFactory, NullLogger<FinanceRepository>.Instance);
+        UsersRepository = new UsersRepository(ConnectionFactory, NullLogger<UsersRepository>.Instance);
     }
 
     private static void TestConnection(string connectionString)
