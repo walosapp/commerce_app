@@ -44,3 +44,17 @@ public class AiDeliveryPayload
     public string CustomerName { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
 }
+
+public class AiConfirmationPayload
+{
+    public string Action { get; set; } = string.Empty;
+    public string Data { get; set; } = string.Empty;
+    public string Prompt { get; set; } = string.Empty;
+}
+
+public class PendingStockItem
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Sku { get; set; }
+    public decimal Quantity { get; set; }
+}
