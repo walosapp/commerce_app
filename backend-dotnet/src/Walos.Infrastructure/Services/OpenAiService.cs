@@ -305,18 +305,28 @@ Responde en JSON con estructura clara.";
         return result?.Choices?.FirstOrDefault()?.Message?.Content?.Trim() ?? "general";
     }
 
-    public async Task<string> ChatAsync(string systemPrompt, string userMessage)
+    public async Task<string> ChatAsync(string systemPrompt, string userMessage, List<AiConversationMessage>? history = null)
     {
+        var messages = new List<OpenAiMessage>
+        {
+            new() { Role = "system", Content = systemPrompt }
+        };
+
+        if (history?.Count > 0)
+        {
+            foreach (var msg in history.TakeLast(10))
+                messages.Add(new OpenAiMessage { Role = msg.Role, Content = msg.Content });
+        }
+
+        messages.Add(new OpenAiMessage { Role = "user", Content = userMessage });
+
         var request = new OpenAiChatRequest
         {
             Model = _model,
-            Messages = new List<OpenAiMessage>
-            {
-                new() { Role = "system", Content = systemPrompt },
-                new() { Role = "user", Content = userMessage }
-            },
+            Messages = messages,
             Temperature = _temperature,
-            MaxTokens = _maxTokens
+            MaxTokens = _maxTokens,
+            ResponseFormat = new OpenAiResponseFormat { Type = "json_object" }
         };
 
         var response = await _httpClient.PostAsJsonAsync("https://api.openai.com/v1/chat/completions", request, new JsonSerializerOptions

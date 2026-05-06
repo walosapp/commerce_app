@@ -6,7 +6,7 @@ public interface IAiService
     Task<string> GenerateAlertSuggestionAsync(AlertData alert);
     Task<object> AnalyzeSalesTrendsAsync(object salesData);
     Task<string> ClassifyAsync(string prompt);
-    Task<string> ChatAsync(string systemPrompt, string userMessage);
+    Task<string> ChatAsync(string systemPrompt, string userMessage, List<AiConversationMessage>? history = null);
 }
 
 public class AiConversationMessage

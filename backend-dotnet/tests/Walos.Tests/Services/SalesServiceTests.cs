@@ -13,6 +13,10 @@ public class SalesServiceTests
     private readonly Mock<ISalesRepository> _salesRepoMock;
     private readonly Mock<IInventoryRepository> _inventoryRepoMock;
     private readonly Mock<ICompanyRepository> _companyRepoMock;
+    private readonly Mock<IRecipeRepository> _recipeRepoMock;
+    private readonly Mock<ICreditRepository> _creditRepoMock;
+    private readonly Mock<ICashRegisterRepository> _cashRegisterRepoMock;
+    private readonly Mock<IOrderPaymentRepository> _orderPaymentRepoMock;
     private readonly Mock<ILogger<SalesService>> _loggerMock;
     private readonly SalesService _service;
 
@@ -25,11 +29,19 @@ public class SalesServiceTests
         _salesRepoMock = new Mock<ISalesRepository>();
         _inventoryRepoMock = new Mock<IInventoryRepository>();
         _companyRepoMock = new Mock<ICompanyRepository>();
+        _recipeRepoMock = new Mock<IRecipeRepository>();
+        _creditRepoMock = new Mock<ICreditRepository>();
+        _cashRegisterRepoMock = new Mock<ICashRegisterRepository>();
+        _orderPaymentRepoMock = new Mock<IOrderPaymentRepository>();
         _loggerMock = new Mock<ILogger<SalesService>>();
         _service = new SalesService(
             _salesRepoMock.Object,
             _inventoryRepoMock.Object,
             _companyRepoMock.Object,
+            _recipeRepoMock.Object,
+            _creditRepoMock.Object,
+            _cashRegisterRepoMock.Object,
+            _orderPaymentRepoMock.Object,
             _loggerMock.Object);
     }
 
@@ -201,7 +213,7 @@ public class SalesServiceTests
         _salesRepoMock.Setup(r => r.GetOrderItemsAsync(10, CompanyId))
             .ReturnsAsync(new List<OrderItem>());
         _companyRepoMock.Setup(r => r.GetCompanyOperationsSettingsAsync(CompanyId))
-            .ReturnsAsync(new CompanyOperationsSettings { ManualDiscountEnabled = false });
+            .ReturnsAsync(new CompanyOperationsSettings { ManualDiscountEnabled = false, RequireCashRegister = false });
 
         await Assert.ThrowsAsync<BusinessException>(() =>
             _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 1,
@@ -220,8 +232,16 @@ public class SalesServiceTests
             {
                 new() { ProductId = 1, Quantity = 2, UnitPrice = 100 }
             });
+        _companyRepoMock.Setup(r => r.GetCompanyOperationsSettingsAsync(CompanyId))
+            .ReturnsAsync(new CompanyOperationsSettings { RequireCashRegister = false });
+        _recipeRepoMock.Setup(r => r.GetAllIngredientsForSaleAsync(It.IsAny<IEnumerable<(long, decimal)>>(), CompanyId))
+            .ReturnsAsync(new List<Recipe>());
 
-        var result = await _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 1, new InvoiceTableRequest());
+        var result = await _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 1,
+            new InvoiceTableRequest
+            {
+                Payments = new List<PaymentLineDto> { new("cash", 200, null) }
+            });
 
         Assert.Equal(200, result.FinalTotalPaid);
         Assert.Equal(0, result.DiscountAmount);
