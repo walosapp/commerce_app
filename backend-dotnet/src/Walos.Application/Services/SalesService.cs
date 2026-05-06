@@ -185,8 +185,9 @@ public class SalesService : ISalesService
             throw new ValidationException("Debe especificar al menos un metodo de pago");
 
         var paymentsSum = request.Payments.Sum(p => p.Amount);
-        if (Math.Abs(paymentsSum - actualPaid) > 1)
-            throw new ValidationException($"La suma de los pagos ({paymentsSum:N2}) no coincide con el total a cobrar ({actualPaid:N2})");
+        var expectedPayment = actualPaid + (request.TipIncluded ? request.TipAmount : 0);
+        if (Math.Abs(paymentsSum - expectedPayment) > 1)
+            throw new ValidationException($"La suma de los pagos ({paymentsSum:N2}) no coincide con el total a cobrar ({expectedPayment:N2})");
 
         // Calcular descuentos de insumos para productos preparados (recetas)
         var soldTuples = items.Select(i => (i.ProductId, i.Quantity));
