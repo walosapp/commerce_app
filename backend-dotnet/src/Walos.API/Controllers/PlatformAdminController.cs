@@ -9,7 +9,7 @@ namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/platform/admin")]
-[Authorize]
+[Authorize(Roles = "dev")]
 public class PlatformAdminController : ControllerBase
 {
     private readonly IPlatformRepository _platformRepo;

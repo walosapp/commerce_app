@@ -27,11 +27,9 @@ public class TenantContextMiddleware
             if (long.TryParse(context.User.FindFirst("userId")?.Value, out var userId))
                 tenant.UserId = userId;
 
-            // BranchId: header > JWT claim
-            var branchHeader = context.Request.Headers["X-Branch-ID"].FirstOrDefault();
-            if (long.TryParse(branchHeader, out var headerBranch))
-                tenant.BranchId = headerBranch;
-            else if (long.TryParse(context.User.FindFirst("branchId")?.Value, out var claimBranch))
+            // Security rule: branch context comes from JWT claims, not from client headers.
+            // Headers are client-controlled and must not be allowed to override authenticated identity.
+            if (long.TryParse(context.User.FindFirst("branchId")?.Value, out var claimBranch))
                 tenant.BranchId = claimBranch;
 
             tenant.Role = context.User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
