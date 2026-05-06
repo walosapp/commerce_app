@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Receipt, Users, Printer, Percent, DollarSign, ShieldAlert, CreditCard, Banknote, ArrowRightLeft, Plus, Trash2 } from 'lucide-react';
+import { X, Receipt, Users, Printer, Percent, DollarSign, ShieldAlert, CreditCard, Banknote, ArrowRightLeft, Plus, Trash2, Heart } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import companyService from '../../../services/companyService';
@@ -162,6 +162,10 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
   // Pagos
   const [payments, setPayments]               = useState([{ method: 'cash', amount: '', reference: '' }]);
 
+  // Propina
+  const [tipIncluded, setTipIncluded]         = useState(false);
+  const [tipAmount, setTipAmount]             = useState('');
+
   // Credito
   const [hasCredit, setHasCredit]             = useState(false);
   const [creditAmountPaid, setCreditAmountPaid] = useState('');
@@ -181,6 +185,8 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
       setDiscountValue('');
       setOverrideConfirmed(false);
       setPayments([{ method: 'cash', amount: '', reference: '' }]);
+      setTipIncluded(false);
+      setTipAmount('');
       setHasCredit(false);
       setCreditAmountPaid('');
       setCreditCustomerName('');
@@ -205,15 +211,19 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
   const finalTotal      = Math.max(0, subtotal - discountAmount);
   const perPerson       = splitCount > 1 ? finalTotal / splitCount : null;
 
+  const tipNum          = Number(tipAmount || 0);
+  const suggestedTip     = Math.round(finalTotal * 0.10);
+
   const creditPaid      = Number(creditAmountPaid || 0);
   const creditRemaining = hasCredit && creditPaid < finalTotal
     ? Math.round((finalTotal - creditPaid) * 100) / 100
     : 0;
 
-  // Monto que se debe pagar con metodos de pago
+  // Monto que se debe pagar con metodos de pago (incluye propina)
+  const totalWithTip = finalTotal + (tipIncluded ? tipNum : 0);
   const amountToPay = hasCredit && creditPaid >= 0 && creditPaid < finalTotal
     ? Math.round(creditPaid * 100) / 100
-    : finalTotal;
+    : totalWithTip;
   const paymentsSum = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const paymentsDiff = Math.round((paymentsSum - amountToPay) * 100) / 100;
 
@@ -271,6 +281,8 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
         creditCustomerName: hasCredit ? creditCustomerName : null,
         creditNotes: hasCredit ? creditNotes : null,
         payments: paymentLines,
+        tipAmount: tipIncluded ? tipNum : 0,
+        tipIncluded,
       });
       onClose();
     } catch (err) {
@@ -306,6 +318,7 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
         <p style="text-align:right">Subtotal: ${formatCurrency(subtotal)}</p>
         ${discountAmount > 0 ? `<p style="text-align:right;color:#dc2626">Descuento: -${formatCurrency(discountAmount)}</p>` : ''}
         <p class="total" style="text-align:right">Total: ${formatCurrency(finalTotal)}</p>
+        ${tipIncluded && tipNum > 0 ? `<p style="text-align:right;font-size:13px;color:#ec4899">Propina: +${formatCurrency(tipNum)}</p><p style="text-align:right;font-weight:600">Total a cobrar: ${formatCurrency(totalWithTip)}</p>` : ''}
         ${hasCredit && creditRemaining > 0 ? `<p style="text-align:right;color:#dc2626;font-size:13px">Pago ahora: ${formatCurrency(creditPaid)}</p><p style="text-align:right;color:#dc2626;font-size:13px">Credito pendiente: ${formatCurrency(creditRemaining)}</p>` : ''}
         ${splitCount > 1 ? `<p style="text-align:right;font-size:13px">Por persona (${splitCount}): ${formatCurrency(perPerson)}</p>` : ''}
         <p style="text-align:center;font-size:11px;color:#999;margin-top:16px">Gracias por su visita</p>
@@ -408,6 +421,18 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
               <span className="text-sm text-gray-500">Total final</span>
               <span className="text-2xl font-bold text-gray-900">{formatCurrency(finalTotal)}</span>
             </div>
+            {tipIncluded && tipNum > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-pink-500">Propina</span>
+                <span className="font-medium text-pink-600">+{formatCurrency(tipNum)}</span>
+              </div>
+            )}
+            {tipIncluded && tipNum > 0 && (
+              <div className="flex items-center justify-between text-sm font-semibold">
+                <span className="text-gray-500">Total a cobrar</span>
+                <span className="text-gray-900">{formatCurrency(totalWithTip)}</span>
+              </div>
+            )}
           </div>
 
           {/* Credito */}
@@ -453,6 +478,55 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
                 {validationMessage && (
                   <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{validationMessage}</div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Propina */}
+          <div className={`rounded-lg border p-4 transition-colors ${tipIncluded ? 'border-pink-300 bg-pink-50' : 'border-gray-200'}`}>
+            <label className="flex items-center justify-between cursor-pointer">
+              <div className="flex items-center gap-3">
+                <input type="checkbox" checked={tipIncluded} onChange={(e) => {
+                  setTipIncluded(e.target.checked);
+                  if (e.target.checked && !tipAmount) setTipAmount(suggestedTip.toString());
+                }}
+                  className="h-4 w-4 rounded border-gray-300 text-pink-500 focus:ring-pink-400" />
+                <div className="flex items-center gap-2">
+                  <Heart className="h-4 w-4 text-pink-500" />
+                  <span className="text-sm font-medium text-gray-700">Propina voluntaria</span>
+                </div>
+              </div>
+              {!tipIncluded && (
+                <span className="text-xs text-gray-400">Sugerido: {formatCurrency(suggestedTip)} (10%)</span>
+              )}
+            </label>
+            {tipIncluded && (
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setTipAmount(suggestedTip.toString())}
+                    className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                      tipNum === suggestedTip ? 'bg-pink-100 border-pink-300 text-pink-700' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                    }`}>
+                    10% ({formatCurrency(suggestedTip)})
+                  </button>
+                  <button type="button" onClick={() => setTipAmount(Math.round(finalTotal * 0.15).toString())}
+                    className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                      tipNum === Math.round(finalTotal * 0.15) ? 'bg-pink-100 border-pink-300 text-pink-700' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                    }`}>
+                    15% ({formatCurrency(Math.round(finalTotal * 0.15))})
+                  </button>
+                  <button type="button" onClick={() => setTipAmount('')}
+                    className="rounded-full px-3 py-1 text-xs font-medium border bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors">
+                    Otro
+                  </button>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input type="number" min="0" step="100" value={tipAmount}
+                    onChange={(e) => setTipAmount(e.target.value)}
+                    placeholder="Monto propina"
+                    className="w-full rounded-lg border border-gray-300 pl-7 pr-3 py-2 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
+                </div>
               </div>
             )}
           </div>
