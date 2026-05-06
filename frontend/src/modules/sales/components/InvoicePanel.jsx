@@ -6,11 +6,150 @@
 
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Receipt, Users, Printer, Percent, DollarSign, ShieldAlert, CreditCard } from 'lucide-react';
+import { X, Receipt, Users, Printer, Percent, DollarSign, ShieldAlert, CreditCard, Banknote, ArrowRightLeft, Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import companyService from '../../../services/companyService';
 import useAuthStore from '../../../stores/authStore';
+
+const PAYMENT_METHODS = [
+  { key: 'cash',     label: 'Efectivo',      icon: Banknote,        active: 'bg-green-100 border-green-300 text-green-700' },
+  { key: 'card',     label: 'Tarjeta',       icon: CreditCard,      active: 'bg-blue-100 border-blue-300 text-blue-700' },
+  { key: 'transfer', label: 'Transferencia', icon: ArrowRightLeft,  active: 'bg-purple-100 border-purple-300 text-purple-700' },
+  { key: 'nequi',    label: 'Nequi',         icon: ArrowRightLeft,  active: 'bg-pink-100 border-pink-300 text-pink-700' },
+];
+
+const PaymentMethodsSection = ({ payments, setPayments, amountToPay, paymentsDiff }) => {
+  const updatePayment = (idx, field, value) => {
+    setPayments(prev => prev.map((p, i) => i === idx ? { ...p, [field]: value } : p));
+  };
+
+  const addPayment = () => {
+    setPayments(prev => [...prev, { method: 'cash', amount: '', reference: '' }]);
+  };
+
+  const removePayment = (idx) => {
+    if (payments.length <= 1) return;
+    setPayments(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const fillRemaining = (idx) => {
+    const otherSum = payments.reduce((s, p, i) => i === idx ? s : s + (Number(p.amount) || 0), 0);
+    const remaining = Math.max(0, Math.round((amountToPay - otherSum) * 100) / 100);
+    updatePayment(idx, 'amount', remaining.toString());
+  };
+
+  return (
+    <div className="rounded-lg border border-gray-200 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Banknote className="h-4 w-4 text-primary-600" />
+          <span className="text-sm font-medium text-gray-700">Metodo de pago</span>
+        </div>
+        <span className="text-xs text-gray-400">
+          A cobrar: <span className="font-semibold text-gray-700">{formatCurrency(amountToPay)}</span>
+        </span>
+      </div>
+
+      <div className="space-y-3">
+        {payments.map((payment, idx) => {
+          const showRef = payment.method && payment.method !== 'cash';
+          return (
+            <div key={idx} className="space-y-2">
+              <div className="flex items-center gap-2">
+                {/* Method pills */}
+                <div className="flex flex-wrap gap-1 flex-1">
+                  {PAYMENT_METHODS.map(({ key, label, icon: Icon, active }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => updatePayment(idx, 'method', key)}
+                      className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors ${
+                        payment.method === key
+                          ? active
+                          : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Icon size={12} /> {label}
+                    </button>
+                  ))}
+                </div>
+                {payments.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removePayment(idx)}
+                    className="rounded p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="100"
+                    value={payment.amount}
+                    onChange={(e) => updatePayment(idx, 'amount', e.target.value)}
+                    onFocus={() => {
+                      if (!payment.amount && payments.length === 1) fillRemaining(idx);
+                    }}
+                    placeholder="0"
+                    className="w-full rounded-lg border border-gray-300 pl-7 pr-3 py-2 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fillRemaining(idx)}
+                  title="Completar restante"
+                  className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-medium text-gray-500 hover:bg-gray-50 transition-colors whitespace-nowrap"
+                >
+                  Resto
+                </button>
+              </div>
+              {showRef && (
+                <input
+                  type="text"
+                  value={payment.reference}
+                  onChange={(e) => updatePayment(idx, 'reference', e.target.value)}
+                  placeholder="Referencia / aprobacion"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                />
+              )}
+              {idx < payments.length - 1 && <hr className="border-gray-100" />}
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={addPayment}
+        className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary-600 hover:text-primary-700 transition-colors"
+      >
+        <Plus size={14} /> Agregar otro metodo
+      </button>
+
+      {/* Validation indicator */}
+      {amountToPay > 0 && payments.some(p => Number(p.amount) > 0) && (
+        <div className={`mt-3 rounded-lg px-3 py-2 text-xs font-medium ${
+          Math.abs(paymentsDiff) <= 1
+            ? 'bg-green-50 text-green-700'
+            : 'bg-red-50 text-red-700'
+        }`}>
+          {Math.abs(paymentsDiff) <= 1
+            ? 'Los pagos cuadran correctamente'
+            : paymentsDiff > 0
+              ? `Sobran ${formatCurrency(paymentsDiff)}`
+              : `Faltan ${formatCurrency(Math.abs(paymentsDiff))}`
+          }
+        </div>
+      )}
+    </div>
+  );
+};
 
 const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
   const { tenantId } = useAuthStore();
@@ -19,6 +158,9 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
   const [discountType, setDiscountType]       = useState('none');
   const [discountValue, setDiscountValue]     = useState('');
   const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+
+  // Pagos
+  const [payments, setPayments]               = useState([{ method: 'cash', amount: '', reference: '' }]);
 
   // Credito
   const [hasCredit, setHasCredit]             = useState(false);
@@ -38,6 +180,7 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
       setDiscountType('none');
       setDiscountValue('');
       setOverrideConfirmed(false);
+      setPayments([{ method: 'cash', amount: '', reference: '' }]);
       setHasCredit(false);
       setCreditAmountPaid('');
       setCreditCustomerName('');
@@ -67,6 +210,13 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
     ? Math.round((finalTotal - creditPaid) * 100) / 100
     : 0;
 
+  // Monto que se debe pagar con metodos de pago
+  const amountToPay = hasCredit && creditPaid >= 0 && creditPaid < finalTotal
+    ? Math.round(creditPaid * 100) / 100
+    : finalTotal;
+  const paymentsSum = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const paymentsDiff = Math.round((paymentsSum - amountToPay) * 100) / 100;
+
   let validationMessage = '';
   if (discountType !== 'none') {
     if (!settings?.manualDiscountEnabled) {
@@ -82,6 +232,12 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
   if (hasCredit) {
     if (creditPaid < 0) validationMessage = 'El monto no puede ser negativo.';
     else if (creditPaid >= finalTotal) validationMessage = 'El monto a pagar debe ser menor al total. Si paga todo, desmarca el credito.';
+  }
+  if (!validationMessage && amountToPay > 0 && Math.abs(paymentsDiff) > 1) {
+    validationMessage = `La suma de pagos (${formatCurrency(paymentsSum)}) no coincide con el total a cobrar (${formatCurrency(amountToPay)})`;
+  }
+  if (!validationMessage && payments.some(p => !p.method)) {
+    validationMessage = 'Selecciona un metodo de pago para cada linea.';
   }
 
   const requiresOverride =
@@ -99,6 +255,10 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
 
     setInvoicing(true);
     try {
+      const paymentLines = payments
+        .filter(p => Number(p.amount) > 0)
+        .map(p => ({ method: p.method, amount: Number(p.amount), reference: p.reference || null }));
+
       await onConfirm(table.id, {
         discountType,
         discountValue: discountType === 'none' ? 0 : rawDiscountValue,
@@ -110,6 +270,7 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
         creditAmountPaid: hasCredit ? creditPaid : 0,
         creditCustomerName: hasCredit ? creditCustomerName : null,
         creditNotes: hasCredit ? creditNotes : null,
+        payments: paymentLines,
       });
       onClose();
     } catch (err) {
@@ -295,6 +456,14 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
               </div>
             )}
           </div>
+
+          {/* Metodos de pago */}
+          <PaymentMethodsSection
+            payments={payments}
+            setPayments={setPayments}
+            amountToPay={amountToPay}
+            paymentsDiff={paymentsDiff}
+          />
 
           {/* Dividir cuenta */}
           <div className="rounded-lg border border-gray-200 p-4">
