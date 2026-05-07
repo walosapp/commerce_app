@@ -9,8 +9,13 @@ import toast from 'react-hot-toast';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import ProductGrid from './ProductGrid';
 
-const DEFAULT_DESKTOP_WIDTH = 560;
 const MIN_DESKTOP_WIDTH = 480;
+
+const getDefaultDesktopWidth = () => {
+  if (typeof window === 'undefined') return 560;
+  const maxWidth = Math.floor(window.innerWidth * 0.9);
+  return Math.max(MIN_DESKTOP_WIDTH, Math.floor(maxWidth * 0.9));
+};
 
 const AddTablePanel = ({
   isOpen,
@@ -23,9 +28,9 @@ const AddTablePanel = ({
 }) => {
   const [selectedItems, setSelectedItems] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [desktopWidth, setDesktopWidth] = useState(DEFAULT_DESKTOP_WIDTH);
+  const [desktopWidth, setDesktopWidth] = useState(getDefaultDesktopWidth);
   const [isResizing, setIsResizing] = useState(false);
-  const resizeStateRef = useRef({ startX: 0, startWidth: DEFAULT_DESKTOP_WIDTH });
+  const resizeStateRef = useRef({ startX: 0, startWidth: getDefaultDesktopWidth() });
 
   const handleUpdateItem = useCallback((item) => {
     setSelectedItems((prev) => {
@@ -48,13 +53,20 @@ const AddTablePanel = ({
   const effectiveDesktopWidth = useMemo(() => {
     if (typeof window === 'undefined') return desktopWidth;
 
-    const maxWidth = Math.floor(window.innerWidth * 0.78);
+    const maxWidth = Math.floor(window.innerWidth * 0.9);
     return Math.max(MIN_DESKTOP_WIDTH, Math.min(desktopWidth, maxWidth));
   }, [desktopWidth]);
 
   useEffect(() => {
     if (!isOpen) {
       setIsResizing(false);
+      return;
+    }
+
+    if (window.innerWidth >= 1024) {
+      const nextDefaultWidth = getDefaultDesktopWidth();
+      setDesktopWidth(nextDefaultWidth);
+      resizeStateRef.current = { startX: 0, startWidth: nextDefaultWidth };
     }
   }, [isOpen]);
 
@@ -63,7 +75,7 @@ const AddTablePanel = ({
 
     const handlePointerMove = (event) => {
       const viewportWidth = window.innerWidth;
-      const maxWidth = Math.floor(viewportWidth * 0.78);
+      const maxWidth = Math.floor(viewportWidth * 0.9);
       const delta = resizeStateRef.current.startX - event.clientX;
       const nextWidth = resizeStateRef.current.startWidth + delta;
       setDesktopWidth(Math.max(MIN_DESKTOP_WIDTH, Math.min(nextWidth, maxWidth)));
@@ -145,7 +157,7 @@ const AddTablePanel = ({
               <h2 className="text-lg font-bold text-gray-900">{title}</h2>
               <p className="text-xs text-gray-500">
                 Selecciona productos para la mesa
-                <span className="hidden lg:inline">. Puedes ajustar el ancho arrastrando su borde.</span>
+                <span className="hidden lg:inline">. Se abre amplio por defecto y puedes ajustar el ancho arrastrando su borde.</span>
               </p>
             </div>
             <button onClick={handleClose} className="rounded-lg p-1.5 hover:bg-gray-100 transition-colors">
