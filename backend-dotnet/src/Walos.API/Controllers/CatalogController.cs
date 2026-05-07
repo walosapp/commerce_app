@@ -31,7 +31,7 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPost("categories")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> CreateCategory([FromBody] SaveCategoryRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -42,7 +42,7 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPut("categories/{id:long}")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> UpdateCategory(long id, [FromBody] SaveCategoryRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -54,7 +54,7 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPatch("categories/{id:long}/status")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> SetCategoryStatus(long id, [FromBody] SetStatusRequest request)
     {
         var ok = await _repo.SetCategoryActiveAsync(id, _tenant.CompanyId, request.IsActive);
@@ -63,7 +63,7 @@ public class CatalogController : ControllerBase
     }
 
     [HttpDelete("categories/{id:long}")]
-    [Authorize(Roles = "dev,admin")]
+    [Authorize(Roles = "dev,super_admin,admin")]
     public async Task<IActionResult> DeleteCategory(long id)
     {
         try
@@ -88,7 +88,7 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPost("units")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> CreateUnit([FromBody] SaveUnitRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Abbreviation))
@@ -105,7 +105,7 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPut("units/{id:long}")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> UpdateUnit(long id, [FromBody] SaveUnitRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -117,7 +117,7 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPatch("units/{id:long}/status")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> SetUnitStatus(long id, [FromBody] SetStatusRequest request)
     {
         var ok = await _repo.SetUnitActiveAsync(id, _tenant.CompanyId, request.IsActive);
@@ -126,7 +126,7 @@ public class CatalogController : ControllerBase
     }
 
     [HttpDelete("units/{id:long}")]
-    [Authorize(Roles = "dev,admin")]
+    [Authorize(Roles = "dev,super_admin,admin")]
     public async Task<IActionResult> DeleteUnit(long id)
     {
         try
