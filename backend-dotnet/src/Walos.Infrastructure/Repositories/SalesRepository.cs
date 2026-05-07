@@ -626,7 +626,7 @@ public class SalesRepository : ISalesRepository
                 FROM sales.orders o
                 LEFT JOIN sales.tables t ON t.id = o.table_id
                 WHERE o.company_id = @CompanyId AND o.branch_id = @BranchId
-                  AND o.status IN ('invoiced','cancelled')
+                  AND o.status IN ('completed','cancelled')
                   {(dateFrom.HasValue ? "AND o.created_at >= @DateFrom" : "")}
                   {(dateTo.HasValue ? "AND o.created_at <= @DateTo" : "")}
                   {(!string.IsNullOrEmpty(status) ? "AND o.status = @Status" : "")}
@@ -675,7 +675,7 @@ public class SalesRepository : ISalesRepository
                 FROM sales.orders o
                 LEFT JOIN sales.tables t ON t.id = o.table_id
                 WHERE o.company_id = @CompanyId AND o.branch_id = @BranchId
-                  AND o.status IN ('invoiced','cancelled')
+                  AND o.status IN ('completed','cancelled')
                   {(dateFrom.HasValue ? "AND o.created_at >= @DateFrom" : "")}
                   {(dateTo.HasValue ? "AND o.created_at <= @DateTo" : "")}
                   {(!string.IsNullOrEmpty(status) ? "AND o.status = @Status" : "")}

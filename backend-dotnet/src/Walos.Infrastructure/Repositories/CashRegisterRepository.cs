@@ -264,8 +264,8 @@ public class CashRegisterRepository : ICashRegisterRepository
             WHERE cr.company_id = @CompanyId 
               AND cr.branch_id = @BranchId
               AND cr.deleted_at IS NULL
-              AND (@DateFrom IS NULL OR cr.opened_at >= @DateFrom)
-              AND (@DateTo IS NULL OR cr.opened_at <= @DateTo)
+              AND (@DateFrom::timestamp IS NULL OR cr.opened_at >= @DateFrom)
+              AND (@DateTo::timestamp IS NULL OR cr.opened_at <= @DateTo)
             ORDER BY cr.opened_at DESC
             LIMIT @Limit OFFSET @Offset";
 
@@ -290,8 +290,8 @@ public class CashRegisterRepository : ICashRegisterRepository
             WHERE company_id = @CompanyId 
               AND branch_id = @BranchId
               AND deleted_at IS NULL
-              AND (@DateFrom IS NULL OR opened_at >= @DateFrom)
-              AND (@DateTo IS NULL OR opened_at <= @DateTo)";
+              AND (@DateFrom::timestamp IS NULL OR opened_at >= @DateFrom)
+              AND (@DateTo::timestamp IS NULL OR opened_at <= @DateTo)";
 
         return await connection.ExecuteScalarAsync<int>(sql, new
         {

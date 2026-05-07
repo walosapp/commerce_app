@@ -7,7 +7,7 @@ import useAuthStore from '../../../stores/authStore';
 import ReceiptPreview from './ReceiptPreview';
 
 const PAYMENT_LABELS = { cash: 'Efectivo', card: 'Tarjeta', transfer: 'Transferencia', nequi: 'Nequi' };
-const STATUS_LABELS = { invoiced: 'Facturada', cancelled: 'Cancelada' };
+const STATUS_LABELS = { completed: 'Facturada', cancelled: 'Cancelada' };
 const REFUND_LABELS = { partial_refund: 'Parcial', full_refund: 'Anulada' };
 
 const OrderHistoryTab = () => {
@@ -127,7 +127,7 @@ const OrderHistoryTab = () => {
               className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="">Todos</option>
-              <option value="invoiced">Facturada</option>
+              <option value="completed">Facturada</option>
               <option value="cancelled">Cancelada</option>
             </select>
           </div>
@@ -219,7 +219,7 @@ const OrderHistoryTab = () => {
                       </td>
                       <td className="px-4 py-2.5 text-center">
                         <div className="flex items-center justify-center gap-1 flex-wrap">
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${order.status === 'invoiced' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${order.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                             {STATUS_LABELS[order.status] || order.status}
                           </span>
                           {order.refundStatus && (

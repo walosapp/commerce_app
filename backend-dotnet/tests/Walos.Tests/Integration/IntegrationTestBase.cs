@@ -21,6 +21,9 @@ public abstract class IntegrationTestBase : IDisposable
     protected readonly ISuppliersRepository SuppliersRepository;
     protected readonly IPurchaseOrderRepository PurchaseOrderRepository;
     protected readonly ICreditRepository CreditRepository;
+    protected readonly ICashRegisterRepository CashRegisterRepository;
+    protected readonly IOrderPaymentRepository OrderPaymentRepository;
+    protected readonly ICatalogRepository CatalogRepository;
 
     protected IntegrationTestBase()
     {
@@ -52,6 +55,9 @@ public abstract class IntegrationTestBase : IDisposable
         SuppliersRepository = new SuppliersRepository(ConnectionFactory, NullLogger<SuppliersRepository>.Instance);
         PurchaseOrderRepository = new PurchaseOrderRepository(ConnectionFactory);
         CreditRepository = new CreditRepository(ConnectionFactory, NullLogger<CreditRepository>.Instance);
+        CashRegisterRepository = new CashRegisterRepository(ConnectionFactory, NullLogger<CashRegisterRepository>.Instance);
+        OrderPaymentRepository = new OrderPaymentRepository(ConnectionFactory, NullLogger<OrderPaymentRepository>.Instance);
+        CatalogRepository = new CatalogRepository(ConnectionFactory);
     }
 
     private static void TestConnection(string connectionString)
