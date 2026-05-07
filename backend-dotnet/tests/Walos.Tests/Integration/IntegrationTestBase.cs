@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using Walos.Application.Services;
 using Walos.Domain.Interfaces;
 using Walos.Infrastructure.Data;
 using Walos.Infrastructure.Repositories;
@@ -16,6 +17,10 @@ public abstract class IntegrationTestBase : IDisposable
     protected readonly ISalesRepository SalesRepository;
     protected readonly IFinanceRepository FinanceRepository;
     protected readonly IUsersRepository UsersRepository;
+    protected readonly IDeliveryRepository DeliveryRepository;
+    protected readonly ISuppliersRepository SuppliersRepository;
+    protected readonly IPurchaseOrderRepository PurchaseOrderRepository;
+    protected readonly ICreditRepository CreditRepository;
 
     protected IntegrationTestBase()
     {
@@ -43,6 +48,10 @@ public abstract class IntegrationTestBase : IDisposable
         SalesRepository = new SalesRepository(ConnectionFactory, NullLogger<SalesRepository>.Instance);
         FinanceRepository = new FinanceRepository(ConnectionFactory, NullLogger<FinanceRepository>.Instance);
         UsersRepository = new UsersRepository(ConnectionFactory, NullLogger<UsersRepository>.Instance);
+        DeliveryRepository = new DeliveryRepository(ConnectionFactory, NullLogger<DeliveryRepository>.Instance);
+        SuppliersRepository = new SuppliersRepository(ConnectionFactory, NullLogger<SuppliersRepository>.Instance);
+        PurchaseOrderRepository = new PurchaseOrderRepository(ConnectionFactory);
+        CreditRepository = new CreditRepository(ConnectionFactory, NullLogger<CreditRepository>.Instance);
     }
 
     private static void TestConnection(string connectionString)

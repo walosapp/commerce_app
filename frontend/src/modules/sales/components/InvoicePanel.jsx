@@ -241,7 +241,7 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
   }
   if (hasCredit) {
     if (creditPaid < 0) validationMessage = 'El monto no puede ser negativo.';
-    else if (creditPaid >= finalTotal) validationMessage = 'El monto a pagar debe ser menor al total. Si paga todo, desmarca el credito.';
+    else if (creditPaid > finalTotal) validationMessage = 'El monto a pagar no puede ser mayor al total.';
   }
   if (!validationMessage && amountToPay > 0 && Math.abs(paymentsDiff) > 1) {
     validationMessage = `La suma de pagos (${formatCurrency(paymentsSum)}) no coincide con el total a cobrar (${formatCurrency(amountToPay)})`;
@@ -442,7 +442,7 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
                 className="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-400" />
               <div className="flex items-center gap-2">
                 <CreditCard className="h-4 w-4 text-orange-600" />
-                <span className="text-sm font-medium text-gray-700">Pago con credito (pago parcial)</span>
+                <span className="text-sm font-medium text-gray-700">Pago con credito</span>
               </div>
             </label>
             {hasCredit && (
@@ -459,7 +459,7 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
                     <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     <input type="number" min="0" step="100" value={creditAmountPaid}
                       onChange={(e) => setCreditAmountPaid(e.target.value)}
-                      placeholder="0"
+                      placeholder="0 = todo a credito"
                       className="input pl-10 w-full" />
                   </div>
                 </div>
@@ -532,12 +532,24 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
           </div>
 
           {/* Metodos de pago */}
-          <PaymentMethodsSection
-            payments={payments}
-            setPayments={setPayments}
-            amountToPay={amountToPay}
-            paymentsDiff={paymentsDiff}
-          />
+          {amountToPay > 0 ? (
+            <PaymentMethodsSection
+              payments={payments}
+              setPayments={setPayments}
+              amountToPay={amountToPay}
+              paymentsDiff={paymentsDiff}
+            />
+          ) : (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-orange-600" />
+                <span className="text-sm font-medium text-orange-800">Sin pago inmediato</span>
+              </div>
+              <p className="mt-2 text-sm text-orange-700">
+                Toda la cuenta quedara registrada a credito.
+              </p>
+            </div>
+          )}
 
           {/* Dividir cuenta */}
           <div className="rounded-lg border border-gray-200 p-4">

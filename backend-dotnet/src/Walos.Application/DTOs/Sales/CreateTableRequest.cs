@@ -23,7 +23,7 @@ public class InvoiceTableRequest
     public int SplitCount { get; set; } = 1;
     public bool OverrideConfirmed { get; set; }
 
-    // Credito (pago parcial)
+    // Credito (parcial o total)
     public bool HasCredit { get; set; } = false;
     public decimal CreditAmountPaid { get; set; } = 0;
     public string? CreditCustomerName { get; set; }

@@ -187,13 +187,24 @@ public class SalesService : ISalesService
             ? Math.Round(request.CreditAmountPaid, 2)
             : finalTotalPaid;
 
-        if (request.Payments == null || request.Payments.Count == 0)
-            throw new ValidationException("Debe especificar al menos un metodo de pago");
-
-        var paymentsSum = request.Payments.Sum(p => p.Amount);
         var expectedPayment = actualPaid + (request.TipIncluded ? request.TipAmount : 0);
-        if (Math.Abs(paymentsSum - expectedPayment) > 1)
-            throw new ValidationException($"La suma de los pagos ({paymentsSum:N2}) no coincide con el total a cobrar ({expectedPayment:N2})");
+        var paymentLines = request.Payments?
+            .Where(p => p.Amount > 0)
+            .ToList() ?? new List<PaymentLineDto>();
+
+        if (expectedPayment > 0)
+        {
+            if (paymentLines.Count == 0)
+                throw new ValidationException("Debe especificar al menos un metodo de pago");
+
+            var paymentsSum = paymentLines.Sum(p => p.Amount);
+            if (Math.Abs(paymentsSum - expectedPayment) > 1)
+                throw new ValidationException($"La suma de los pagos ({paymentsSum:N2}) no coincide con el total a cobrar ({expectedPayment:N2})");
+        }
+        else if (paymentLines.Count > 0)
+        {
+            throw new ValidationException("No debe registrar pagos cuando toda la cuenta queda a credito");
+        }
 
         // Calcular descuentos de insumos para productos preparados (recetas)
         var soldTuples = items.Select(i => (i.ProductId, i.Quantity));
@@ -267,7 +278,7 @@ public class SalesService : ISalesService
         if (activeRegister != null)
         {
             // Registrar cada pago individual
-            foreach (var payment in request.Payments)
+            foreach (var payment in paymentLines)
             {
                 await _orderPaymentRepo.CreateAsync(new OrderPayment
                 {
@@ -281,19 +292,19 @@ public class SalesService : ISalesService
             }
 
             // Calcular totales por método de pago para actualizar caja
-            var totalCashSales = request.Payments
+            var totalCashSales = paymentLines
                 .Where(p => p.Method.Equals("cash", StringComparison.OrdinalIgnoreCase))
                 .Sum(p => p.Amount);
-            var totalCardSales = request.Payments
+            var totalCardSales = paymentLines
                 .Where(p => p.Method.Equals("card", StringComparison.OrdinalIgnoreCase))
                 .Sum(p => p.Amount);
-            var totalTransferSales = request.Payments
+            var totalTransferSales = paymentLines
                 .Where(p => p.Method.Equals("transfer", StringComparison.OrdinalIgnoreCase))
                 .Sum(p => p.Amount);
-            var totalNequiSales = request.Payments
+            var totalNequiSales = paymentLines
                 .Where(p => p.Method.Equals("nequi", StringComparison.OrdinalIgnoreCase))
                 .Sum(p => p.Amount);
-            var totalOtherSales = request.Payments
+            var totalOtherSales = paymentLines
                 .Where(p => !new[] { "cash", "card", "transfer", "nequi" }.Contains(p.Method.ToLowerInvariant()))
                 .Sum(p => p.Amount);
 
@@ -359,7 +370,7 @@ public class SalesService : ISalesService
             TipAmount = request.TipAmount,
             SplitCount = Math.Max(1, request.SplitCount),
             Items = items,
-            Payments = request.Payments ?? new List<PaymentLineDto>(),
+            Payments = paymentLines,
             InvoicedAt = DateTime.UtcNow,
             CreditId = creditId,
             CreditAmount = creditAmount

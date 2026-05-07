@@ -256,6 +256,52 @@ public class SalesServiceTests
         _salesRepoMock.Verify(r => r.UpdateTableStatusAsync(1, CompanyId, "invoiced"), Times.Once);
     }
 
+    [Fact]
+    public async Task InvoiceTable_Allows_Full_Credit_Without_Payment_Methods()
+    {
+        _salesRepoMock.Setup(r => r.GetTableByIdAsync(1, CompanyId))
+            .ReturnsAsync(new SalesTable { Id = 1, Status = "open", TableNumber = 5, Name = "Mesa fiada" });
+        _salesRepoMock.Setup(r => r.GetOrderByTableIdAsync(1, CompanyId))
+            .ReturnsAsync(new Order { Id = 10, Subtotal = 200, OrderNumber = "ORD-10" });
+        _salesRepoMock.Setup(r => r.GetOrderItemsAsync(10, CompanyId))
+            .ReturnsAsync(new List<OrderItem>
+            {
+                new() { ProductId = 1, Quantity = 2, UnitPrice = 100 }
+            });
+        _companyRepoMock.Setup(r => r.GetCompanyOperationsSettingsAsync(CompanyId))
+            .ReturnsAsync(new CompanyOperationsSettings { RequireCashRegister = false });
+        _recipeRepoMock.Setup(r => r.GetAllIngredientsForSaleAsync(It.IsAny<IEnumerable<(long, decimal)>>(), CompanyId))
+            .ReturnsAsync(new List<Recipe>());
+        _creditRepoMock.Setup(r => r.CreateCreditAsync(It.IsAny<Credit>()))
+            .ReturnsAsync((Credit c) =>
+            {
+                c.Id = 99;
+                return c;
+            });
+
+        var result = await _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 1,
+            new InvoiceTableRequest
+            {
+                HasCredit = true,
+                CreditAmountPaid = 0,
+                CreditCustomerName = "Cliente fiado",
+                Payments = new List<PaymentLineDto>()
+            });
+
+        Assert.Equal(0, result.FinalTotalPaid);
+        Assert.Equal(99, result.CreditId);
+        Assert.Equal(200, result.CreditAmount);
+        Assert.Empty(result.Payments);
+        _orderPaymentRepoMock.Verify(r => r.CreateAsync(It.IsAny<OrderPayment>()), Times.Never);
+        _creditRepoMock.Verify(r => r.CreateCreditAsync(It.Is<Credit>(c =>
+            c.CompanyId == CompanyId &&
+            c.BranchId == BranchId &&
+            c.OrderId == 10 &&
+            c.AmountPaid == 0 &&
+            c.CreditAmount == 200 &&
+            c.CustomerName == "Cliente fiado")), Times.Once);
+    }
+
     // ── CancelTableAsync ──
 
     [Fact]
