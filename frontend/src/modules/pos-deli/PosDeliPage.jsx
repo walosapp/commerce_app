@@ -29,8 +29,7 @@ const PosDeliPage = () => {
     isStable,
     isConnected,
     error,
-    connect,
-    disconnect,
+    config,
   } = useScale();
 
   const {
@@ -80,12 +79,12 @@ const PosDeliPage = () => {
     }
 
     if (effectiveWeight <= 0) {
-      toast.error('Colocá el producto en la báscula antes de agregar');
+      toast.error('Coloca el producto en la bascula antes de agregar');
       return;
     }
 
     if (!manualWeight && !isStable) {
-      toast.error('Esperá a que el peso esté estable');
+      toast.error('Espera a que el peso este estable');
       return;
     }
 
@@ -202,7 +201,7 @@ const PosDeliPage = () => {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-gray-900">POS-Deli</h1>
-          <p className="text-sm text-gray-500">Venta rápida para mostrador, barcode y productos por peso</p>
+          <p className="text-sm text-gray-500">Venta rapida para mostrador, barcode y productos por peso</p>
         </div>
       </div>
 
@@ -214,8 +213,9 @@ const PosDeliPage = () => {
             isStable={isStable}
             isConnected={isConnected}
             error={error}
-            onConnect={connect}
-            onDisconnect={disconnect}
+            unit={config?.weightUnit || 'kg'}
+            showActions={false}
+            helperText="La conexion de la bascula ahora se administra en Configuracion > Dispositivos."
           />
 
           <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">

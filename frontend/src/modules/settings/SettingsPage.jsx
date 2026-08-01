@@ -1,7 +1,7 @@
-﻿/**
+/**
  * Pagina de Configuracion
- * �Qu� es? Vista principal del modulo de configuracion
- * �Para qu�? Personalizar branding, tema y reglas operativas de la aplicacion
+ * Que es? Vista principal del modulo de configuracion
+ * Para que? Personalizar branding, tema y reglas operativas de la aplicacion
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -19,6 +19,7 @@ import CatalogSettings from './components/CatalogSettings';
 import PlanSettings from './components/PlanSettings';
 import AiSettings from './components/AiSettings';
 import PaymentSettings from './components/PaymentSettings';
+import DevicesSettings from './components/DevicesSettings';
 import SettingsSectionNav from './components/SettingsSectionNav';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -27,6 +28,7 @@ const getSectionFromPath = (pathname) => {
   if (pathname.includes('/settings/themes')) return 'themes';
   if (pathname.includes('/settings/discounts')) return 'discounts';
   if (pathname.includes('/settings/catalog')) return 'catalog';
+  if (pathname.includes('/settings/devices')) return 'devices';
   if (pathname.includes('/settings/plan')) return 'plan';
   if (pathname.includes('/settings/ai')) return 'ai';
   if (pathname.includes('/settings/payments')) return 'payments';
@@ -195,8 +197,8 @@ const SettingsPage = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (['catalog', 'plan', 'ai', 'payments'].includes(activeSection)) {
-        toast.success('Los cambios se guardan automáticamente');
+      if (['catalog', 'devices', 'plan', 'ai', 'payments'].includes(activeSection)) {
+        toast.success('Los cambios se guardan automaticamente');
         return;
       } else if (activeSection === 'discounts') {
         await handleSaveOperations();
@@ -213,8 +215,6 @@ const SettingsPage = () => {
 
   return (
     <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden">
-
-      {/* Top bar */}
       <div className="px-4 md:px-6 py-4 border-b bg-white flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
@@ -236,10 +236,8 @@ const SettingsPage = () => {
         </button>
       </div>
 
-      {/* Tabs */}
       <SettingsSectionNav activeSection={activeSection} />
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {(settingsLoading || operationsLoading) ? (
           <div className="flex h-full items-center justify-center">
@@ -267,6 +265,9 @@ const SettingsPage = () => {
             {activeSection === 'catalog' && (
               <CatalogSettings />
             )}
+            {activeSection === 'devices' && (
+              <DevicesSettings />
+            )}
             {activeSection === 'discounts' && (
               <DiscountSettings values={operationsForm} onChange={handleOperationsChange} />
             )}
@@ -276,10 +277,8 @@ const SettingsPage = () => {
           </>
         )}
       </div>
-
     </div>
   );
 };
 
 export default SettingsPage;
-
