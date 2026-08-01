@@ -211,11 +211,11 @@ public class SalesRepository : ISalesRepository
             using var connection = await _connectionFactory.CreateConnectionAsync();
 
             const string sql = @"
-                SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId,
-                       table_id AS TableId, order_number AS OrderNumber, status AS Status,
-                       subtotal AS Subtotal, tax AS Tax, total AS Total, notes AS Notes,
-                       created_by AS CreatedBy, created_at AS CreatedAt
-                FROM sales.orders
+                 SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId,
+                        table_id AS TableId, cash_register_id AS CashRegisterId, order_number AS OrderNumber, status AS Status,
+                        subtotal AS Subtotal, tax AS Tax, total AS Total, notes AS Notes,
+                        created_by AS CreatedBy, created_at AS CreatedAt
+                 FROM sales.orders
                 WHERE table_id = @TableId AND company_id = @CompanyId AND status = 'pending'
                 ORDER BY created_at DESC";
 
@@ -235,15 +235,16 @@ public class SalesRepository : ISalesRepository
             using var connection = await _connectionFactory.CreateConnectionAsync();
 
             const string sql = @"
-                SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId,
-                       table_id AS TableId, order_number AS OrderNumber, status AS Status,
-                       subtotal AS Subtotal, tax AS Tax, total AS Total, notes AS Notes,
-                       discount_type AS DiscountType, discount_value AS DiscountValue,
-                       discount_amount AS DiscountAmount, final_total_paid AS FinalTotalPaid,
-                       split_reference_count AS SplitReferenceCount,
-                       tip_amount AS TipAmount, tip_included AS TipIncluded,
-                       refund_status AS RefundStatus,
-                       created_by AS CreatedBy, created_at AS CreatedAt
+                 SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId,
+                        table_id AS TableId, cash_register_id AS CashRegisterId, order_number AS OrderNumber, status AS Status,
+                        subtotal AS Subtotal, tax AS Tax, total AS Total, notes AS Notes,
+                        discount_type AS DiscountType, discount_value AS DiscountValue,
+                        discount_amount AS DiscountAmount, final_total_paid AS FinalTotalPaid,
+                        split_reference_count AS SplitReferenceCount,
+                        payment_method AS PaymentMethod,
+                        tip_amount AS TipAmount, tip_included AS TipIncluded,
+                        refund_status AS RefundStatus,
+                        created_by AS CreatedBy, created_at AS CreatedAt
                 FROM sales.orders
                 WHERE id = @OrderId AND company_id = @CompanyId";
 
@@ -459,7 +460,7 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task UpdateOrderInvoiceSummaryAsync(long orderId, long companyId, string? discountType, decimal discountValue, decimal discountAmount, decimal finalTotalPaid, int splitReferenceCount)
+    public async Task UpdateOrderInvoiceSummaryAsync(long orderId, long companyId, string? discountType, decimal discountValue, decimal discountAmount, decimal finalTotalPaid, int splitReferenceCount, long? cashRegisterId, string? paymentMethod, decimal tipAmount, bool tipIncluded)
     {
         try
         {
@@ -471,6 +472,10 @@ public class SalesRepository : ISalesRepository
                     discount_amount = @DiscountAmount,
                     final_total_paid = @FinalTotalPaid,
                     split_reference_count = @SplitReferenceCount,
+                    cash_register_id = @CashRegisterId,
+                    payment_method = @PaymentMethod,
+                    tip_amount = @TipAmount,
+                    tip_included = @TipIncluded,
                     total = @FinalTotalPaid,
                     updated_at = NOW()
                 WHERE id = @OrderId AND company_id = @CompanyId";
@@ -483,7 +488,11 @@ public class SalesRepository : ISalesRepository
                 DiscountValue = discountValue,
                 DiscountAmount = discountAmount,
                 FinalTotalPaid = finalTotalPaid,
-                SplitReferenceCount = splitReferenceCount
+                SplitReferenceCount = splitReferenceCount,
+                CashRegisterId = cashRegisterId,
+                PaymentMethod = paymentMethod,
+                TipAmount = tipAmount,
+                TipIncluded = tipIncluded
             });
         }
         catch (Exception ex)
@@ -512,6 +521,7 @@ public class SalesRepository : ISalesRepository
                 WHERE o.company_id = @CompanyId
                   AND o.branch_id  = @BranchId
                   AND o.status     = 'completed'
+                  AND COALESCE(o.refund_status, '') <> 'full_refund'
                   AND o.created_at >= @DateFrom
                   AND o.created_at <  @DateTo
                   AND o.deleted_at IS NULL";
@@ -528,6 +538,7 @@ public class SalesRepository : ISalesRepository
                 WHERE oi.company_id = @CompanyId
                   AND o.branch_id   = @BranchId
                   AND o.status      = 'completed'
+                  AND COALESCE(o.refund_status, '') <> 'full_refund'
                   AND o.created_at >= @DateFrom
                   AND o.created_at <  @DateTo
                   AND o.deleted_at IS NULL
@@ -546,6 +557,7 @@ public class SalesRepository : ISalesRepository
                 WHERE o.company_id = @CompanyId
                   AND o.branch_id  = @BranchId
                   AND o.status     = 'completed'
+                  AND COALESCE(o.refund_status, '') <> 'full_refund'
                   AND o.created_at >= @DateFrom
                   AND o.created_at <  @DateTo
                   AND o.deleted_at IS NULL
@@ -584,6 +596,7 @@ public class SalesRepository : ISalesRepository
                 WHERE o.company_id = @CompanyId
                   AND o.branch_id  = @BranchId
                   AND o.status     = 'completed'
+                  AND COALESCE(o.refund_status, '') <> 'full_refund'
                   AND o.created_at >= @DateFrom
                   AND o.created_at <  @DateTo
                   AND o.deleted_at IS NULL
@@ -620,18 +633,28 @@ public class SalesRepository : ISalesRepository
                        o.discount_amount AS DiscountAmount, o.final_total_paid AS FinalTotalPaid,
                        o.split_reference_count AS SplitReferenceCount,
                        o.tip_amount AS TipAmount, o.tip_included AS TipIncluded,
-                       o.refund_status AS RefundStatus, o.payment_method AS PaymentMethod,
+                       o.refund_status AS RefundStatus,
+                       COALESCE(pay.payment_method_summary, o.payment_method) AS PaymentMethod,
                        o.created_by AS CreatedBy, o.created_at AS CreatedAt,
                        t.name AS TableName, t.table_number AS TableNumber
                 FROM sales.orders o
                 LEFT JOIN sales.tables t ON t.id = o.table_id
+                LEFT JOIN LATERAL (
+                    SELECT CASE
+                        WHEN COUNT(DISTINCT op.method) = 0 THEN NULL
+                        WHEN COUNT(DISTINCT op.method) = 1 THEN MIN(op.method)
+                        ELSE 'mixed'
+                    END AS payment_method_summary
+                    FROM sales.order_payments op
+                    WHERE op.order_id = o.id AND op.company_id = o.company_id
+                ) pay ON TRUE
                 WHERE o.company_id = @CompanyId AND o.branch_id = @BranchId
                   AND o.status IN ('completed','cancelled')
                   {(dateFrom.HasValue ? "AND o.created_at >= @DateFrom" : "")}
                   {(dateTo.HasValue ? "AND o.created_at <= @DateTo" : "")}
                   {(!string.IsNullOrEmpty(status) ? "AND o.status = @Status" : "")}
                   {(!string.IsNullOrEmpty(refundStatus) ? "AND o.refund_status = @RefundStatus" : "")}
-                  {(!string.IsNullOrEmpty(paymentMethod) ? "AND o.payment_method = @PaymentMethod" : "")}
+                  {(!string.IsNullOrEmpty(paymentMethod) ? "AND EXISTS (SELECT 1 FROM sales.order_payments opf WHERE opf.order_id = o.id AND opf.company_id = o.company_id AND opf.method = @PaymentMethod)" : "")}
                   {(!string.IsNullOrEmpty(search) ? "AND (o.order_number ILIKE @Search OR t.name ILIKE @Search)" : "")}
                   {(minTotal.HasValue ? "AND o.final_total_paid >= @MinTotal" : "")}
                   {(maxTotal.HasValue ? "AND o.final_total_paid <= @MaxTotal" : "")}
@@ -680,7 +703,7 @@ public class SalesRepository : ISalesRepository
                   {(dateTo.HasValue ? "AND o.created_at <= @DateTo" : "")}
                   {(!string.IsNullOrEmpty(status) ? "AND o.status = @Status" : "")}
                   {(!string.IsNullOrEmpty(refundStatus) ? "AND o.refund_status = @RefundStatus" : "")}
-                  {(!string.IsNullOrEmpty(paymentMethod) ? "AND o.payment_method = @PaymentMethod" : "")}
+                  {(!string.IsNullOrEmpty(paymentMethod) ? "AND EXISTS (SELECT 1 FROM sales.order_payments opf WHERE opf.order_id = o.id AND opf.company_id = o.company_id AND opf.method = @PaymentMethod)" : "")}
                   {(!string.IsNullOrEmpty(search) ? "AND (o.order_number ILIKE @Search OR t.name ILIKE @Search)" : "")}
                   {(minTotal.HasValue ? "AND o.final_total_paid >= @MinTotal" : "")}
                   {(maxTotal.HasValue ? "AND o.final_total_paid <= @MaxTotal" : "")}";

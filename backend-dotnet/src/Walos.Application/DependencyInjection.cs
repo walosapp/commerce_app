@@ -15,8 +15,15 @@ public static class DependencyInjection
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<ISalesService, SalesService>();
         services.AddScoped<ICreditService, CreditService>();
+        services.AddScoped<ICashRegisterService, CashRegisterService>();
+        services.AddScoped<IRefundService, RefundService>();
         services.AddScoped<IFinanceService, FinanceService>();
         services.AddScoped<ICompanyService, CompanyService>();
+        services.AddScoped<IRecipeService, RecipeService>();
+        services.AddScoped<IUsersService, UsersService>();
+        services.AddScoped<ISuppliersService, SuppliersService>();
+        services.AddScoped<ICatalogService, CatalogService>();
+        services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
         services.AddValidatorsFromAssemblyContaining<CreateProductValidator>();
 
         return services;

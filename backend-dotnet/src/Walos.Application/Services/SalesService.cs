@@ -3,6 +3,7 @@ using Walos.Application.DTOs.Sales;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
+using Walos.Application.Services;
 
 namespace Walos.Application.Services;
 
@@ -270,7 +271,11 @@ public class SalesService : ISalesService
             discountType == "none" ? 0 : discountValue,
             discountAmount,
             actualPaid,
-            Math.Max(1, request.SplitCount));
+            Math.Max(1, request.SplitCount),
+            activeRegister?.Id,
+            ResolvePaymentMethod(paymentLines),
+            request.TipAmount,
+            request.TipIncluded);
         await _salesRepo.UpdateOrderStatusAsync(order.Id, companyId, "completed");
         await _salesRepo.UpdateTableStatusAsync(tableId, companyId, "invoiced");
 
@@ -699,4 +704,21 @@ public class SalesService : ISalesService
                 throw new ValidationException($"Stock insuficiente para {stock.ProductName ?? product.Name}. Disponible: {stock.AvailableQuantity:N2}. Comprometido: {stock.ReservedQuantity:N2}.");
         }
     }
+
+    private static string? ResolvePaymentMethod(List<PaymentLineDto> paymentLines)
+    {
+        var methods = paymentLines
+            .Where(p => p.Amount > 0 && !string.IsNullOrWhiteSpace(p.Method))
+            .Select(p => p.Method.Trim().ToLowerInvariant())
+            .Distinct()
+            .ToList();
+
+        return methods.Count switch
+        {
+            0 => null,
+            1 => methods[0],
+            _ => "mixed"
+        };
+    }
 }
+

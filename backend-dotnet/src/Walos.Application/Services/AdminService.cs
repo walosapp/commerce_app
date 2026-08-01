@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Walos.Application.DTOs.Admin;
 using Walos.Domain.Exceptions;
+using Walos.Domain.Interfaces;
+using Walos.Application.Services;
 
 namespace Walos.Application.Services;
 
@@ -77,3 +79,4 @@ public class AdminService : IAdminService
             throw new BusinessException("No se encontró un administrador activo para este comercio");
     }
 }
+

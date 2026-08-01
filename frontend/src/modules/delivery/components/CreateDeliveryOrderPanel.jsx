@@ -45,7 +45,11 @@ const CreateDeliveryOrderPanel = ({ isOpen, onClose, onCreated }) => {
     enabled: isOpen && !!branchId,
   });
 
-  const allSellable = (stockData?.data ?? []).filter(p => p.productType !== 'supply');
+  const allSellable = (stockData?.data ?? []).filter(p =>
+    p.isForSale &&
+    Number(p.costPrice ?? 0) > 0 &&
+    Number(p.salePrice ?? 0) > 0
+  );
 
   const products = allSellable
     .filter(p => {

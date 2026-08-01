@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { X, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../../../config/api';
+import inventoryService from '../../../services/inventoryService';
 
 const ImportProductsModal = ({ isOpen, onClose, onImported }) => {
   const [file, setFile] = useState(null);
@@ -15,8 +15,8 @@ const ImportProductsModal = ({ isOpen, onClose, onImported }) => {
   const handleDownloadTemplate = async () => {
     setDownloading(true);
     try {
-      const res = await api.get('/inventory/products/template', { responseType: 'blob' });
-      const url = URL.createObjectURL(new Blob([res.data]));
+      const blob = await inventoryService.downloadTemplate();
+      const url = URL.createObjectURL(new Blob([blob]));
       const a = document.createElement('a');
       a.href = url;
       a.download = 'plantilla_productos.xlsx';
@@ -45,14 +45,10 @@ const ImportProductsModal = ({ isOpen, onClose, onImported }) => {
     setLoading(true);
     setResult(null);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await api.post('/inventory/products/import', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setResult(res.data);
-      if (res.data.data?.created > 0) {
-        toast.success(res.data.message);
+      const response = await inventoryService.importProducts(file);
+      setResult(response);
+      if (response.data?.created > 0) {
+        toast.success(response.message);
         onImported?.();
       }
     } catch (err) {

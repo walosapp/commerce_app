@@ -97,6 +97,20 @@ export const inventoryService = {
     });
     return response.data;
   },
+
+  downloadTemplate: async () => {
+    const response = await api.get('/inventory/products/template', { responseType: 'blob' });
+    return response.data;
+  },
+
+  importProducts: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/inventory/products/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
 };
 
 export default inventoryService;

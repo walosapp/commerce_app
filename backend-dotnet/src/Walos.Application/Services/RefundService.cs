@@ -3,6 +3,7 @@ using Walos.Application.DTOs.Sales;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
+using Walos.Application.Services;
 
 namespace Walos.Application.Services;
 
@@ -21,6 +22,8 @@ public class RefundService : IRefundService
     private readonly IInventoryRepository _inventoryRepo;
     private readonly IRecipeRepository _recipeRepo;
     private readonly ICreditRepository _creditRepo;
+    private readonly IOrderPaymentRepository _orderPaymentRepo;
+    private readonly ICashRegisterRepository _cashRegisterRepo;
     private readonly ILogger<RefundService> _logger;
 
     public RefundService(
@@ -29,6 +32,8 @@ public class RefundService : IRefundService
         IInventoryRepository inventoryRepo,
         IRecipeRepository recipeRepo,
         ICreditRepository creditRepo,
+        IOrderPaymentRepository orderPaymentRepo,
+        ICashRegisterRepository cashRegisterRepo,
         ILogger<RefundService> logger)
     {
         _refundRepo = refundRepo;
@@ -36,6 +41,8 @@ public class RefundService : IRefundService
         _inventoryRepo = inventoryRepo;
         _recipeRepo = recipeRepo;
         _creditRepo = creditRepo;
+        _orderPaymentRepo = orderPaymentRepo;
+        _cashRegisterRepo = cashRegisterRepo;
         _logger = logger;
     }
 
@@ -128,6 +135,9 @@ public class RefundService : IRefundService
         var refundStatus = request.RefundType == "full" ? "full_refund" : "partial_refund";
         await _refundRepo.UpdateOrderRefundStatusAsync(order.Id, companyId, refundStatus);
 
+        // Revertir totales de caja si la orden quedó vinculada a una caja
+        await ReverseCashRegisterTotalsAsync(companyId, order, refundAmount, request.RefundType);
+
         _logger.LogInformation("Devolucion {RefundType} creada para orden {OrderId}. Monto: {Amount}", request.RefundType, order.Id, refundAmount);
 
         return MapToResponse(refund, refundItems);
@@ -211,6 +221,62 @@ public class RefundService : IRefundService
         return (items.Select(r => MapToResponse(r, r.Items ?? new())), count);
     }
 
+    private async Task ReverseCashRegisterTotalsAsync(long companyId, Order order, decimal refundAmount, string refundType)
+    {
+        if (!order.CashRegisterId.HasValue || refundAmount <= 0 || order.FinalTotalPaid <= 0)
+            return;
+
+        var payments = (await _orderPaymentRepo.GetByOrderAsync(order.Id, companyId)).ToList();
+        if (payments.Count == 0)
+            return;
+
+        var ratio = Math.Min(1m, Math.Round(refundAmount / order.FinalTotalPaid, 8));
+
+        decimal totalCash = 0;
+        decimal totalCard = 0;
+        decimal totalTransfer = 0;
+        decimal totalOther = 0;
+
+        foreach (var payment in payments)
+        {
+            var refundedPortion = Math.Round(payment.Amount * ratio, 2);
+            switch ((payment.Method ?? string.Empty).Trim().ToLowerInvariant())
+            {
+                case "cash":
+                    totalCash += refundedPortion;
+                    break;
+                case "card":
+                    totalCard += refundedPortion;
+                    break;
+                case "transfer":
+                case "nequi":
+                    totalTransfer += refundedPortion;
+                    break;
+                default:
+                    totalOther += refundedPortion;
+                    break;
+            }
+        }
+
+        var totalRefundedByMethod = totalCash + totalCard + totalTransfer + totalOther;
+        var roundingGap = Math.Round(refundAmount - totalRefundedByMethod, 2);
+        if (roundingGap != 0)
+            totalOther += roundingGap;
+
+        await _cashRegisterRepo.UpdateTotalsAsync(
+            order.CashRegisterId.Value,
+            companyId,
+            -Math.Round(refundAmount, 2),
+            -totalCash,
+            -totalCard,
+            -totalTransfer,
+            -totalOther,
+            0,
+            0,
+            0,
+            refundType == "full" ? -1 : 0);
+    }
+
     private static RefundResponse MapToResponse(Refund r, List<RefundItem> items)
     {
         return new RefundResponse(
@@ -224,3 +290,4 @@ public class RefundService : IRefundService
         );
     }
 }
+

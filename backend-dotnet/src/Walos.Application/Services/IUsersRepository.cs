@@ -1,3 +1,4 @@
+using Walos.Application.Services;
 using Walos.Application.DTOs.Users;
 using Walos.Domain.Entities;
 
@@ -16,3 +17,5 @@ public interface IUsersRepository
     Task<IEnumerable<RoleOption>> GetRolesAsync(long companyId, bool excludeDev = true);
     Task<bool> ResetPasswordAsync(long userId, long companyId, string newPasswordHash);
 }
+
+

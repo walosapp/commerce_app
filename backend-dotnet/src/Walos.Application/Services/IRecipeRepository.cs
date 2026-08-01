@@ -1,3 +1,4 @@
+using Walos.Application.Services;
 using Walos.Domain.Entities;
 
 namespace Walos.Application.Services;
@@ -10,3 +11,5 @@ public interface IRecipeRepository
     Task<bool> ClearRecipeAsync(long productId, long companyId);
     Task<IEnumerable<Recipe>> GetAllIngredientsForSaleAsync(IEnumerable<(long ProductId, decimal Qty)> soldItems, long companyId);
 }
+
+

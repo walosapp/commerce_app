@@ -4,13 +4,7 @@ import { CreditCard, X, ChevronDown, ChevronUp, DollarSign } from 'lucide-react'
 import OrderItemsList from './OrderItemsList';
 import toast from 'react-hot-toast';
 import { formatCurrency } from '../../../utils/formatCurrency';
-import api from '../../../config/api';
-
-const creditService = {
-  getCredits: (params) => api.get('/sales/credits', { params }).then(r => r.data),
-  addPayment:  (id, body) => api.post(`/sales/credits/${id}/pay`, body).then(r => r.data),
-  cancel:      (id)       => api.delete(`/sales/credits/${id}`).then(r => r.data),
-};
+import creditService from '../../../services/creditService';
 
 const STATUS_LABEL = { pending: 'Pendiente', partial: 'Parcial', paid: 'Pagado', cancelled: 'Cancelado' };
 const STATUS_CLS   = {

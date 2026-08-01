@@ -1,3 +1,4 @@
+using Walos.Application.Services;
 using Walos.Application.DTOs.Suppliers;
 using Walos.Domain.Entities;
 
@@ -16,3 +17,5 @@ public interface ISuppliersRepository
     Task<IEnumerable<Supplier>> GetSuppliersForProductAsync(long productId, long companyId);
     Task<IEnumerable<SuggestedOrderItem>> GetLowStockItemsForSupplierAsync(long supplierId, long companyId, long branchId);
 }
+
+

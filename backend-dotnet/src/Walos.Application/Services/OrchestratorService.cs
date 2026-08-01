@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Walos.Application.DTOs.Ai;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
+using Walos.Application.Services;
 
 namespace Walos.Application.Services;
 
@@ -614,3 +615,4 @@ Historial reciente:
         catch { return new(); }
     }
 }
+

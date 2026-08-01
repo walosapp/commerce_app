@@ -6,6 +6,7 @@ using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Users;
 using Walos.Application.Services;
 using Walos.Domain.Entities;
+using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
 

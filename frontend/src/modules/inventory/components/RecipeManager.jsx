@@ -6,7 +6,7 @@ import recipeService from '../../../services/recipeService';
 import { inventoryService } from '../../../services/inventoryService';
 import useAuthStore from '../../../stores/authStore';
 
-const RecipeManager = ({ productId, productName }) => {
+const RecipeManager = ({ productId, productName, onCostSync }) => {
   const { branchId, tenantId } = useAuthStore();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -38,7 +38,14 @@ const RecipeManager = ({ productId, productName }) => {
     return isSupply && notAlreadyAdded && notSelf && matchesSearch;
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['recipe', productId] });
+  const invalidate = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['recipe', productId] });
+    await queryClient.invalidateQueries({ queryKey: ['stock'] });
+    if (onCostSync) {
+      const latest = await inventoryService.getProductById(productId);
+      onCostSync(latest?.data);
+    }
+  };
 
   const selectIngredient = (p) => {
     setForm(f => ({ ...f, ingredientId: p.productId }));
@@ -61,7 +68,7 @@ const RecipeManager = ({ productId, productName }) => {
       setForm({ ingredientId: '', quantity: '', unitId: '' });
       setSearch('');
       setSelectedName('');
-      invalidate();
+      await invalidate();
     } catch {
       toast.error('Error al agregar ingrediente');
     } finally {
@@ -73,7 +80,7 @@ const RecipeManager = ({ productId, productName }) => {
     try {
       await recipeService.removeIngredient(productId, ingredientId);
       toast.success(`${name} eliminado de la receta`);
-      invalidate();
+      await invalidate();
     } catch {
       toast.error('Error al eliminar ingrediente');
     }
@@ -107,6 +114,7 @@ const RecipeManager = ({ productId, productName }) => {
                 </span>
               </div>
               <button
+                type="button"
                 onClick={() => handleRemove(r.ingredientId, r.ingredientName)}
                 className="text-red-400 hover:text-red-600 transition-colors shrink-0 ml-2"
               >
@@ -134,6 +142,7 @@ const RecipeManager = ({ productId, productName }) => {
               {supplies.slice(0, 20).map(p => (
                 <button
                   key={p.productId}
+                  type="button"
                   onMouseDown={() => selectIngredient(p)}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 border-b border-gray-100 last:border-b-0"
                 >
@@ -155,6 +164,7 @@ const RecipeManager = ({ productId, productName }) => {
             className="w-28 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
           />
           <button
+            type="button"
             onClick={handleAdd}
             disabled={saving || !form.ingredientId || !form.quantity}
             className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"

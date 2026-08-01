@@ -79,53 +79,9 @@ public class InventoryController : ControllerBase
     [HttpPost("products")]
     public async Task<IActionResult> CreateProduct([FromBody] CreateProductRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
-            return BadRequest(ApiResponse.Fail("El nombre del producto es requerido"));
-        if (request.CategoryId <= 0)
-            return BadRequest(ApiResponse.Fail("Selecciona una categoria valida. Puedes crear categorias en Configuracion > Catalogo"));
-        if (request.UnitId <= 0)
-            return BadRequest(ApiResponse.Fail("Selecciona una unidad de medida valida. Puedes crearlas en Configuracion > Catalogo"));
-
-        // Auto-generate SKU if not provided
-        var sku = string.IsNullOrWhiteSpace(request.Sku)
-            ? $"SKU-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}"
-            : request.Sku.Trim();
-        var companyId = _tenant.CompanyId;
-        var userId = _tenant.UserId;
-
-        var product = new Product
-        {
-            CompanyId = companyId,
-            Name = request.Name,
-            Sku = sku,
-            Barcode = request.Barcode,
-            Description = request.Description,
-            CategoryId = request.CategoryId,
-            UnitId = request.UnitId,
-            CostPrice = request.CostPrice,
-            SalePrice = request.SalePrice,
-            MinStock = request.MinStock,
-            MaxStock = request.MaxStock,
-            ReorderPoint = request.ReorderPoint,
-            IsPerishable = request.IsPerishable,
-            ShelfLifeDays = request.ShelfLifeDays,
-            ProductType = request.ProductType,
-            TrackStock = request.TrackStock,
-            IsForSale = request.IsForSale,
-            CreatedBy = userId
-        };
-
         try
         {
-            var created = await _repository.CreateProductAsync(product);
-
-            var branchId = _tenant.BranchId;
-            if (branchId.HasValue)
-                await _repository.CreateStockEntryAsync(branchId.Value, created.Id, 0, companyId);
-
-            _logger.LogInformation("Producto creado: {Name}, ProductId: {Id}, UserId: {UserId}",
-                created.Name, created.Id, userId);
-
+            var created = await _service.CreateProductAsync(_tenant.CompanyId, _tenant.UserId, _tenant.BranchId, request);
             return StatusCode(StatusCodes.Status201Created,
                 ApiResponse<Product>.Ok(created, "Producto creado exitosamente"));
         }
@@ -142,35 +98,9 @@ public class InventoryController : ControllerBase
     [HttpPut("products/{id:long}")]
     public async Task<IActionResult> UpdateProduct(long id, [FromBody] UpdateProductRequest request)
     {
-        var companyId = _tenant.CompanyId;
-        var userId = _tenant.UserId;
-
-        var existing = await _repository.GetProductByIdAsync(id, companyId);
-        if (existing is null)
+        var updated = await _service.UpdateProductAsync(id, _tenant.CompanyId, _tenant.UserId, request);
+        if (updated is null)
             return NotFound(ApiResponse.Fail("Producto no encontrado"));
-
-        existing.Name = request.Name;
-        existing.Sku = request.Sku;
-        existing.Barcode = request.Barcode;
-        existing.Description = request.Description;
-        existing.CategoryId = request.CategoryId;
-        existing.UnitId = request.UnitId;
-        existing.CostPrice = request.CostPrice;
-        existing.SalePrice = request.SalePrice;
-        existing.MarginPercentage = request.MarginPercentage;
-        existing.MinStock = request.MinStock;
-        existing.MaxStock = request.MaxStock;
-        existing.ReorderPoint = request.ReorderPoint;
-        existing.IsPerishable = request.IsPerishable;
-        existing.ShelfLifeDays = request.ShelfLifeDays;
-        existing.ProductType = request.ProductType;
-        existing.TrackStock = request.TrackStock;
-        existing.IsForSale = request.IsForSale;
-
-        var updated = await _repository.UpdateProductAsync(existing);
-
-        _logger.LogInformation("Producto actualizado: {Name}, ProductId: {Id}, UserId: {UserId}",
-            updated.Name, updated.Id, userId);
 
         return Ok(ApiResponse<Product>.Ok(updated, "Producto actualizado exitosamente"));
     }
@@ -411,63 +341,7 @@ public class InventoryController : ControllerBase
     [HttpPost("stock/add")]
     public async Task<IActionResult> AddStock([FromBody] AddStockRequest request)
     {
-        var companyId = _tenant.CompanyId;
-        var userId = _tenant.UserId;
-        var branchId = request.BranchId ?? _tenant.BranchId;
-
-        if (branchId is null)
-            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
-
-        if (request.ProductId <= 0)
-            return BadRequest(ApiResponse.Fail("Producto requerido"));
-
-        if (request.Quantity <= 0)
-            return BadRequest(ApiResponse.Fail("La cantidad debe ser mayor a cero"));
-
-        var product = await _repository.GetProductByIdAsync(request.ProductId, companyId);
-        if (product is null)
-            return NotFound(ApiResponse.Fail("Producto no encontrado"));
-
-        if (request.UnitCost.HasValue)
-        {
-            var currentStock = await _repository.GetStockByProductAsync(branchId.Value, request.ProductId, companyId);
-            var currentQuantity = currentStock?.Quantity ?? 0;
-            var currentCost = product.CostPrice;
-
-            var weightedCost = currentQuantity + request.Quantity > 0
-                ? ((currentQuantity * currentCost) + (request.Quantity * request.UnitCost.Value)) / (currentQuantity + request.Quantity)
-                : request.UnitCost.Value;
-
-            await _repository.UpdateProductCostAndPriceAsync(
-                request.ProductId,
-                companyId,
-                Math.Round(weightedCost, 2));
-        }
-
-        var stock = await _repository.UpdateStockAsync(branchId.Value, request.ProductId, request.Quantity, companyId);
-
-        await _repository.CreateMovementAsync(new Movement
-        {
-            CompanyId = companyId,
-            BranchId = branchId.Value,
-            ProductId = request.ProductId,
-            MovementType = "entry",
-            Quantity = request.Quantity,
-            UnitCost = request.UnitCost,
-            Notes = string.IsNullOrWhiteSpace(request.Notes)
-                ? "Ingreso manual de stock"
-                : request.Notes,
-            CreatedByAi = false,
-            CreatedBy = userId
-        });
-
-        _logger.LogInformation(
-            "Stock agregado manualmente. ProductId: {ProductId}, BranchId: {BranchId}, Quantity: {Quantity}, UserId: {UserId}",
-            request.ProductId,
-            branchId.Value,
-            request.Quantity,
-            userId);
-
+        var stock = await _service.AddStockAsync(_tenant.CompanyId, _tenant.UserId, _tenant.BranchId, request);
         return Ok(ApiResponse<Stock>.Ok(stock, "Stock agregado exitosamente"));
     }
 

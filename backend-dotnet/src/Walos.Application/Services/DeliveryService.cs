@@ -2,6 +2,8 @@ using Microsoft.Extensions.Logging;
 using Walos.Application.DTOs.Delivery;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
+using Walos.Domain.Interfaces;
+using Walos.Application.Services;
 
 namespace Walos.Application.Services;
 
@@ -123,3 +125,4 @@ public class DeliveryService : IDeliveryService
         _logger.LogInformation("Pedido {OrderId} → {Status} por user {UserId}", orderId, newStatus, userId);
     }
 }
+

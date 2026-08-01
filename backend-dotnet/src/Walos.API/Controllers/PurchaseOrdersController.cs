@@ -12,26 +12,26 @@ namespace Walos.API.Controllers;
 [Authorize]
 public class PurchaseOrdersController : ControllerBase
 {
-    private readonly IPurchaseOrderRepository _repo;
+    private readonly IPurchaseOrderService _service;
     private readonly ITenantContext _tenant;
 
-    public PurchaseOrdersController(IPurchaseOrderRepository repo, ITenantContext tenant)
+    public PurchaseOrdersController(IPurchaseOrderService service, ITenantContext tenant)
     {
-        _repo = repo;
+        _service = service;
         _tenant = tenant;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] long? supplierId = null)
     {
-        var items = (await _repo.GetAllAsync(_tenant.CompanyId, supplierId)).ToList();
+        var items = (await _service.GetAllAsync(_tenant.CompanyId, supplierId)).ToList();
         return Ok(ApiResponse<IEnumerable<PurchaseOrderResponse>>.Ok(items, count: items.Count));
     }
 
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetById(long id)
     {
-        var order = await _repo.GetByIdAsync(id, _tenant.CompanyId);
+        var order = await _service.GetByIdAsync(id, _tenant.CompanyId);
         if (order is null) return NotFound(ApiResponse.Fail("Pedido no encontrado"));
         return Ok(ApiResponse<PurchaseOrderResponse>.Ok(order));
     }
@@ -40,11 +40,7 @@ public class PurchaseOrdersController : ControllerBase
     [Authorize(Roles = "dev,admin,manager")]
     public async Task<IActionResult> Create([FromBody] CreatePurchaseOrderRequest request)
     {
-        if (request.Items.Count == 0)
-            return BadRequest(ApiResponse.Fail("El pedido debe tener al menos un producto"));
-
-        var userId = _tenant.UserId;
-        var order = await _repo.CreateAsync(_tenant.CompanyId, userId, request);
+        var order = await _service.CreateAsync(_tenant.CompanyId, _tenant.UserId, request);
         return Ok(ApiResponse<PurchaseOrderResponse>.Ok(order, "Pedido creado exitosamente"));
     }
 
@@ -56,7 +52,7 @@ public class PurchaseOrdersController : ControllerBase
         {
             var userId = _tenant.UserId;
             var branchId = _tenant.BranchId ?? throw new InvalidOperationException("No hay sucursal en contexto");
-            var order = await _repo.ReceiveAsync(id, _tenant.CompanyId, branchId, userId, request);
+            var order = await _service.ReceiveAsync(id, _tenant.CompanyId, branchId, userId, request);
             return Ok(ApiResponse<PurchaseOrderResponse>.Ok(order, "Pedido recibido. Stock e inventario actualizados."));
         }
         catch (InvalidOperationException ex)
@@ -69,7 +65,7 @@ public class PurchaseOrdersController : ControllerBase
     [Authorize(Roles = "dev,admin,manager")]
     public async Task<IActionResult> Cancel(long id)
     {
-        var ok = await _repo.CancelAsync(id, _tenant.CompanyId);
+        var ok = await _service.CancelAsync(id, _tenant.CompanyId);
         if (!ok) return BadRequest(ApiResponse.Fail("No se puede cancelar. El pedido ya fue recibido o no existe."));
         return Ok(ApiResponse.Ok("Pedido cancelado"));
     }

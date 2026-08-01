@@ -241,6 +241,7 @@ public class InventoryRepository : IInventoryRepository
                     p.image_url AS ImageUrl,
                     p.product_type AS ProductType,
                     p.track_stock AS TrackStock,
+                    p.is_for_sale AS IsForSale,
                     p.is_perishable AS IsPerishable,
                     CASE 
                         WHEN p.track_stock = FALSE THEN 'ok'

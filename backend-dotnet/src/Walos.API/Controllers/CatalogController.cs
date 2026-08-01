@@ -12,21 +12,19 @@ namespace Walos.API.Controllers;
 [Authorize]
 public class CatalogController : ControllerBase
 {
-    private readonly ICatalogRepository _repo;
+    private readonly ICatalogService _service;
     private readonly ITenantContext _tenant;
 
-    public CatalogController(ICatalogRepository repo, ITenantContext tenant)
+    public CatalogController(ICatalogService service, ITenantContext tenant)
     {
-        _repo = repo;
+        _service = service;
         _tenant = tenant;
     }
-
-    // ─── CATEGORIES ────────────────────────────────────────────────────────────
 
     [HttpGet("categories")]
     public async Task<IActionResult> GetCategories()
     {
-        var items = (await _repo.GetCategoriesAsync(_tenant.CompanyId)).ToList();
+        var items = (await _service.GetCategoriesAsync(_tenant.CompanyId)).ToList();
         return Ok(ApiResponse<IEnumerable<CategoryResponse>>.Ok(items, count: items.Count));
     }
 
@@ -34,10 +32,7 @@ public class CatalogController : ControllerBase
     [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> CreateCategory([FromBody] SaveCategoryRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
-            return BadRequest(ApiResponse.Fail("El nombre es requerido"));
-
-        var result = await _repo.CreateCategoryAsync(_tenant.CompanyId, request);
+        var result = await _service.CreateCategoryAsync(_tenant.CompanyId, request);
         return Ok(ApiResponse<CategoryResponse>.Ok(result, "Categoria creada"));
     }
 
@@ -45,10 +40,7 @@ public class CatalogController : ControllerBase
     [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> UpdateCategory(long id, [FromBody] SaveCategoryRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
-            return BadRequest(ApiResponse.Fail("El nombre es requerido"));
-
-        var result = await _repo.UpdateCategoryAsync(id, _tenant.CompanyId, request);
+        var result = await _service.UpdateCategoryAsync(id, _tenant.CompanyId, request);
         if (result is null) return NotFound(ApiResponse.Fail("Categoria no encontrada"));
         return Ok(ApiResponse<CategoryResponse>.Ok(result, "Categoria actualizada"));
     }
@@ -57,7 +49,7 @@ public class CatalogController : ControllerBase
     [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> SetCategoryStatus(long id, [FromBody] SetStatusRequest request)
     {
-        var ok = await _repo.SetCategoryActiveAsync(id, _tenant.CompanyId, request.IsActive);
+        var ok = await _service.SetCategoryStatusAsync(id, _tenant.CompanyId, request.IsActive);
         if (!ok) return NotFound(ApiResponse.Fail("Categoria no encontrada"));
         return Ok(ApiResponse.Ok(request.IsActive ? "Categoria activada" : "Categoria desactivada"));
     }
@@ -68,7 +60,7 @@ public class CatalogController : ControllerBase
     {
         try
         {
-            var ok = await _repo.DeleteCategoryAsync(id, _tenant.CompanyId);
+            var ok = await _service.DeleteCategoryAsync(id, _tenant.CompanyId);
             if (!ok) return NotFound(ApiResponse.Fail("Categoria no encontrada"));
             return Ok(ApiResponse.Ok("Categoria eliminada"));
         }
@@ -78,12 +70,10 @@ public class CatalogController : ControllerBase
         }
     }
 
-    // ─── UNITS ─────────────────────────────────────────────────────────────────
-
     [HttpGet("units")]
     public async Task<IActionResult> GetUnits()
     {
-        var items = (await _repo.GetUnitsAsync(_tenant.CompanyId)).ToList();
+        var items = (await _service.GetUnitsAsync(_tenant.CompanyId)).ToList();
         return Ok(ApiResponse<IEnumerable<UnitResponse>>.Ok(items, count: items.Count));
     }
 
@@ -91,11 +81,9 @@ public class CatalogController : ControllerBase
     [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> CreateUnit([FromBody] SaveUnitRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Abbreviation))
-            return BadRequest(ApiResponse.Fail("Nombre y abreviatura son requeridos"));
         try
         {
-            var result = await _repo.CreateUnitAsync(_tenant.CompanyId, request);
+            var result = await _service.CreateUnitAsync(_tenant.CompanyId, request);
             return Ok(ApiResponse<UnitResponse>.Ok(result, "Unidad creada"));
         }
         catch (InvalidOperationException ex)
@@ -108,10 +96,7 @@ public class CatalogController : ControllerBase
     [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> UpdateUnit(long id, [FromBody] SaveUnitRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
-            return BadRequest(ApiResponse.Fail("El nombre es requerido"));
-
-        var result = await _repo.UpdateUnitAsync(id, _tenant.CompanyId, request);
+        var result = await _service.UpdateUnitAsync(id, _tenant.CompanyId, request);
         if (result is null) return NotFound(ApiResponse.Fail("Unidad no encontrada"));
         return Ok(ApiResponse<UnitResponse>.Ok(result, "Unidad actualizada"));
     }
@@ -120,7 +105,7 @@ public class CatalogController : ControllerBase
     [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> SetUnitStatus(long id, [FromBody] SetStatusRequest request)
     {
-        var ok = await _repo.SetUnitActiveAsync(id, _tenant.CompanyId, request.IsActive);
+        var ok = await _service.SetUnitStatusAsync(id, _tenant.CompanyId, request.IsActive);
         if (!ok) return NotFound(ApiResponse.Fail("Unidad no encontrada"));
         return Ok(ApiResponse.Ok(request.IsActive ? "Unidad activada" : "Unidad desactivada"));
     }
@@ -131,7 +116,7 @@ public class CatalogController : ControllerBase
     {
         try
         {
-            var ok = await _repo.DeleteUnitAsync(id, _tenant.CompanyId);
+            var ok = await _service.DeleteUnitAsync(id, _tenant.CompanyId);
             if (!ok) return NotFound(ApiResponse.Fail("Unidad no encontrada"));
             return Ok(ApiResponse.Ok("Unidad eliminada"));
         }

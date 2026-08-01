@@ -5,17 +5,10 @@ import toast from 'react-hot-toast';
 import RefundModal from './RefundModal';
 import ReceiptPreview from './ReceiptPreview';
 import refundService from '../../../services/refundService';
+import salesService from '../../../services/salesService';
 import OrderItemsList from './OrderItemsList';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import useAuthStore from '../../../stores/authStore';
-import api from '../../../config/api';
-
-const salesSummaryService = {
-  getSummary: (branchId, date) =>
-    api.get('/sales/summary', { params: { branchId, date } }).then(r => r.data),
-  getCompleted: (branchId, date) =>
-    api.get('/sales/orders/completed', { params: { branchId, date } }).then(r => r.data),
-};
 
 const StatCard = ({ icon: Icon, label, value, sub, color = 'primary' }) => {
   const colors = {
@@ -123,13 +116,13 @@ const SalesSummaryTab = () => {
 
   const { data: summaryData, isLoading: loadingSummary } = useQuery({
     queryKey: ['sales-summary', branchId, date],
-    queryFn: () => salesSummaryService.getSummary(branchId, date),
+    queryFn: () => salesService.getSummary(branchId, date),
     enabled: !!branchId,
   });
 
   const { data: ordersData, isLoading: loadingOrders } = useQuery({
     queryKey: ['sales-completed', branchId, date],
-    queryFn: () => salesSummaryService.getCompleted(branchId, date),
+    queryFn: () => salesService.getCompleted(branchId, date),
     enabled: !!branchId,
   });
 

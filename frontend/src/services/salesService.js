@@ -52,6 +52,21 @@ export const salesService = {
     return response.data;
   },
 
+  getOrderItems: async (orderId) => {
+    const response = await api.get(`/sales/orders/${orderId}/items`);
+    return response.data;
+  },
+
+  getSummary: async (branchId, date) => {
+    const response = await api.get('/sales/summary', { params: { branchId, date } });
+    return response.data;
+  },
+
+  getCompleted: async (branchId, date) => {
+    const response = await api.get('/sales/orders/completed', { params: { branchId, date } });
+    return response.data;
+  },
+
   exportOrders: async (params) => {
     const response = await api.get('/sales/orders/export', { params, responseType: 'blob' });
     return response.data;

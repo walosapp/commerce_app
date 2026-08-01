@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Walos.Application.DTOs.Inventory;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
@@ -20,6 +21,142 @@ public class InventoryService : IInventoryService
         _repository = repository;
         _aiService = aiService;
         _logger = logger;
+    }
+
+    public async Task<Product> CreateProductAsync(long companyId, long userId, long? branchId, CreateProductRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+            throw new ValidationException("El nombre del producto es requerido");
+        if (request.CategoryId <= 0)
+            throw new ValidationException("Selecciona una categoria valida. Puedes crear categorias en Configuracion > Catalogo");
+        if (request.UnitId <= 0)
+            throw new ValidationException("Selecciona una unidad de medida valida. Puedes crearlas en Configuracion > Catalogo");
+
+        var sku = string.IsNullOrWhiteSpace(request.Sku)
+            ? $"SKU-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}"
+            : request.Sku.Trim();
+
+        var product = new Product
+        {
+            CompanyId = companyId,
+            Name = request.Name,
+            Sku = sku,
+            Barcode = request.Barcode,
+            Description = request.Description,
+            CategoryId = request.CategoryId,
+            UnitId = request.UnitId,
+            CostPrice = request.CostPrice,
+            SalePrice = request.SalePrice,
+            MinStock = request.MinStock,
+            MaxStock = request.MaxStock,
+            ReorderPoint = request.ReorderPoint,
+            IsPerishable = request.IsPerishable,
+            ShelfLifeDays = request.ShelfLifeDays,
+            ProductType = request.ProductType,
+            TrackStock = request.TrackStock,
+            IsForSale = request.IsForSale,
+            CreatedBy = userId
+        };
+
+        var created = await _repository.CreateProductAsync(product);
+
+        if (branchId.HasValue)
+            await _repository.CreateStockEntryAsync(branchId.Value, created.Id, 0, companyId);
+
+        _logger.LogInformation("Producto creado: {Name}, ProductId: {Id}, UserId: {UserId}",
+            created.Name, created.Id, userId);
+
+        return created;
+    }
+
+    public async Task<Product?> UpdateProductAsync(long id, long companyId, long userId, UpdateProductRequest request)
+    {
+        var existing = await _repository.GetProductByIdAsync(id, companyId);
+        if (existing is null)
+            return null;
+
+        existing.Name = request.Name;
+        existing.Sku = request.Sku;
+        existing.Barcode = request.Barcode;
+        existing.Description = request.Description;
+        existing.CategoryId = request.CategoryId;
+        existing.UnitId = request.UnitId;
+        existing.CostPrice = request.CostPrice;
+        existing.SalePrice = request.SalePrice;
+        existing.MarginPercentage = request.MarginPercentage;
+        existing.MinStock = request.MinStock;
+        existing.MaxStock = request.MaxStock;
+        existing.ReorderPoint = request.ReorderPoint;
+        existing.IsPerishable = request.IsPerishable;
+        existing.ShelfLifeDays = request.ShelfLifeDays;
+        existing.ProductType = request.ProductType;
+        existing.TrackStock = request.TrackStock;
+        existing.IsForSale = request.IsForSale;
+
+        var updated = await _repository.UpdateProductAsync(existing);
+
+        _logger.LogInformation("Producto actualizado: {Name}, ProductId: {Id}, UserId: {UserId}",
+            updated.Name, updated.Id, userId);
+
+        return updated;
+    }
+
+    public async Task<Stock> AddStockAsync(long companyId, long userId, long? tenantBranchId, AddStockRequest request)
+    {
+        var branchId = request.BranchId ?? tenantBranchId;
+
+        if (branchId is null)
+            throw new ValidationException("ID de sucursal requerido");
+        if (request.ProductId <= 0)
+            throw new ValidationException("Producto requerido");
+        if (request.Quantity <= 0)
+            throw new ValidationException("La cantidad debe ser mayor a cero");
+
+        var product = await _repository.GetProductByIdAsync(request.ProductId, companyId);
+        if (product is null)
+            throw new NotFoundException("Producto");
+
+        if (request.UnitCost.HasValue)
+        {
+            var currentStock = await _repository.GetStockByProductAsync(branchId.Value, request.ProductId, companyId);
+            var currentQuantity = currentStock?.Quantity ?? 0;
+            var currentCost = product.CostPrice;
+
+            var weightedCost = currentQuantity + request.Quantity > 0
+                ? ((currentQuantity * currentCost) + (request.Quantity * request.UnitCost.Value)) / (currentQuantity + request.Quantity)
+                : request.UnitCost.Value;
+
+            await _repository.UpdateProductCostAndPriceAsync(
+                request.ProductId,
+                companyId,
+                Math.Round(weightedCost, 2));
+        }
+
+        var stock = await _repository.UpdateStockAsync(branchId.Value, request.ProductId, request.Quantity, companyId);
+
+        await _repository.CreateMovementAsync(new Movement
+        {
+            CompanyId = companyId,
+            BranchId = branchId.Value,
+            ProductId = request.ProductId,
+            MovementType = "entry",
+            Quantity = request.Quantity,
+            UnitCost = request.UnitCost,
+            Notes = string.IsNullOrWhiteSpace(request.Notes)
+                ? "Ingreso manual de stock"
+                : request.Notes,
+            CreatedByAi = false,
+            CreatedBy = userId
+        });
+
+        _logger.LogInformation(
+            "Stock agregado manualmente. ProductId: {ProductId}, BranchId: {BranchId}, Quantity: {Quantity}, UserId: {UserId}",
+            request.ProductId,
+            branchId.Value,
+            request.Quantity,
+            userId);
+
+        return stock;
     }
 
     public async Task<AiProcessResult> ProcessAiInventoryInputAsync(string userInput, AiInputContext context)

@@ -10,13 +10,20 @@ import { formatCurrency } from '../../../utils/formatCurrency';
 
 const AddStockModal = ({ isOpen, onClose, onConfirm, product }) => {
   const [quantity, setQuantity] = useState('');
-  const [unitCost, setUnitCost] = useState('');
+  const [totalCost, setTotalCost] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const quantityNumber = Number(quantity || 0);
+  const totalCostNumber = Number(totalCost || 0);
+  const calculatedUnitCost =
+    quantityNumber > 0 && totalCostNumber > 0
+      ? totalCostNumber / quantityNumber
+      : null;
 
   useEffect(() => {
     if (!isOpen) {
       setQuantity('');
-      setUnitCost('');
+      setTotalCost('');
     }
   }, [isOpen, product?.productId]);
 
@@ -25,8 +32,8 @@ const AddStockModal = ({ isOpen, onClose, onConfirm, product }) => {
     setSaving(true);
     try {
       await onConfirm({
-        quantity: Number(quantity),
-        unitCost: unitCost ? Number(unitCost) : null,
+        quantity: quantityNumber,
+        unitCost: calculatedUnitCost,
       });
       onClose();
     } catch (err) {
@@ -76,24 +83,41 @@ const AddStockModal = ({ isOpen, onClose, onConfirm, product }) => {
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               className="input"
-              placeholder="Ej: 10"
+              placeholder="Ej: 500"
               autoFocus
             />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Costo unitario (opcional)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Costo total pagado (opcional)</label>
             <input
               type="number"
               min="0"
               step="0.01"
-              value={unitCost}
-              onChange={(e) => setUnitCost(e.target.value)}
+              value={totalCost}
+              onChange={(e) => setTotalCost(e.target.value)}
               className="input"
-              placeholder="Si cambia, recalcula promedio"
+              placeholder="Ej: 13500"
             />
             <p className="text-xs text-gray-400 mt-1">
-              Si se ingresa, se recalculará el costo promedio ponderado.
+              Si lo ingresás, calculamos el costo por {product.unit || 'unidad'} y actualizamos el promedio ponderado.
             </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Costo unitario calculado</label>
+            <input
+              type="text"
+              readOnly
+              value={calculatedUnitCost != null ? formatCurrency(calculatedUnitCost) : ''}
+              className="input bg-gray-50 text-gray-600"
+              placeholder="Se calcula automáticamente"
+            />
+            {calculatedUnitCost != null && (
+              <p className="text-xs text-blue-600 mt-1">
+                {formatCurrency(totalCostNumber)} / {quantityNumber} {product.unit || 'und'} = {formatCurrency(calculatedUnitCost)} por {product.unit || 'und'}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">

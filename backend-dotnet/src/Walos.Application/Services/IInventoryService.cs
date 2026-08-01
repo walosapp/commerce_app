@@ -1,3 +1,4 @@
+using Walos.Application.DTOs.Inventory;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
 
@@ -5,6 +6,9 @@ namespace Walos.Application.Services;
 
 public interface IInventoryService
 {
+    Task<Product> CreateProductAsync(long companyId, long userId, long? branchId, CreateProductRequest request);
+    Task<Product?> UpdateProductAsync(long id, long companyId, long userId, UpdateProductRequest request);
+    Task<Stock> AddStockAsync(long companyId, long userId, long? tenantBranchId, AddStockRequest request);
     Task<AiProcessResult> ProcessAiInventoryInputAsync(string userInput, AiInputContext context);
     Task<AiConfirmResult> ConfirmAiActionAsync(long interactionId, long userId, long companyId);
     Task<IEnumerable<Stock>> GetLowStockProductsAsync(long companyId, long branchId);

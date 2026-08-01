@@ -13,8 +13,8 @@ public class CreateProductValidator : AbstractValidator<CreateProductRequest>
             .MaximumLength(200).WithMessage("El nombre no puede exceder 200 caracteres");
 
         RuleFor(x => x.Sku)
-            .MaximumLength(50).WithMessage("El SKU no puede exceder 50 caracteres")
-            .When(x => !string.IsNullOrWhiteSpace(x.Sku));
+            .NotEmpty().WithMessage("El SKU es requerido")
+            .MaximumLength(50).WithMessage("El SKU no puede exceder 50 caracteres");
 
         RuleFor(x => x.Barcode)
             .MaximumLength(100).WithMessage("El código de barras no puede exceder 100 caracteres")
@@ -57,4 +57,3 @@ public class CreateProductValidator : AbstractValidator<CreateProductRequest>
             .When(x => x.IsPerishable && x.ShelfLifeDays.HasValue);
     }
 }
-

@@ -1,3 +1,4 @@
+using Walos.Application.Services;
 using Walos.Application.DTOs.Admin;
 
 namespace Walos.Application.Services;
@@ -13,3 +14,5 @@ public interface IAdminRepository
     Task<TenantResponse?> UpdateTenantAsync(long companyId, UpdateTenantRequest request);
     Task<bool> ResetTenantAdminPasswordAsync(long companyId, string passwordHash);
 }
+
+

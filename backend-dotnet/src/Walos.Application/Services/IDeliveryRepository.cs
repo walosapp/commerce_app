@@ -1,3 +1,4 @@
+using Walos.Application.Services;
 using Walos.Application.DTOs.Delivery;
 using Walos.Domain.Entities;
 
@@ -12,3 +13,5 @@ public interface IDeliveryRepository
     Task<IEnumerable<DeliveryStatusHistory>> GetStatusHistoryAsync(long orderId);
     Task<string> GetNextOrderNumberAsync(long companyId, long branchId);
 }
+
+

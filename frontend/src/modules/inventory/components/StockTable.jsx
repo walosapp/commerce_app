@@ -63,9 +63,15 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
     }
   };
 
+  const isCommerciallyReady = (item) => {
+    if (!item?.isForSale) return true;
+    return Number(item.costPrice ?? 0) > 0 && Number(item.salePrice ?? 0) > 0;
+  };
+
   const getTypeBadge = (type) => {
     const map = {
       simple: { label: 'Simple', cls: 'bg-gray-100 text-gray-600' },
+      supply: { label: 'Insumo', cls: 'bg-blue-100 text-blue-700' },
       prepared: { label: 'Preparación', cls: 'bg-blue-100 text-blue-700' },
       combo: { label: 'Combo', cls: 'bg-purple-100 text-purple-700' },
       service: { label: 'Servicio', cls: 'bg-teal-100 text-teal-700' },
@@ -211,7 +217,9 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
                     {formatCurrency(item.salePrice)}
                   </td>
                   <td className="px-4 py-3">
-                    {getStatusBadge(item.stockStatus)}
+                    {isCommerciallyReady(item)
+                      ? getStatusBadge(item.stockStatus)
+                      : <span className="badge badge-warning">Incompleto</span>}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">

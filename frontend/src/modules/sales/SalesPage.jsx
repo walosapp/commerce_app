@@ -124,7 +124,9 @@ const SalesPage = () => {
   const stockItems = stockData?.data || [];
   const products = stockItems.filter(
     (p) =>
-      p.productType !== 'supply' &&
+      p.isForSale &&
+      Number(p.costPrice ?? 0) > 0 &&
+      Number(p.salePrice ?? 0) > 0 &&
       (!p.trackStock || Number(p.availableQuantity ?? p.quantity ?? 0) > 0)
   );
   const stockByProduct = useMemo(
@@ -531,5 +533,3 @@ const SalesPage = () => {
 };
 
 export default SalesPage;
-
-

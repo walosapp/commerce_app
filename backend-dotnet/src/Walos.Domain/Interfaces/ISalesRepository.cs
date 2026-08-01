@@ -19,7 +19,7 @@ public interface ISalesRepository
     Task DeleteOrderItemAsync(long orderItemId, long companyId);
     Task AddOrderItemAsync(OrderItem item);
     Task RecalculateOrderTotalAsync(long orderId, long companyId);
-    Task UpdateOrderInvoiceSummaryAsync(long orderId, long companyId, string? discountType, decimal discountValue, decimal discountAmount, decimal finalTotalPaid, int splitReferenceCount);
+    Task UpdateOrderInvoiceSummaryAsync(long orderId, long companyId, string? discountType, decimal discountValue, decimal discountAmount, decimal finalTotalPaid, int splitReferenceCount, long? cashRegisterId, string? paymentMethod, decimal tipAmount, bool tipIncluded);
     Task RenameTableAsync(long tableId, long companyId, string name);
     Task<SalesSummary> GetSalesSummaryAsync(long companyId, long branchId, DateTime dateFrom, DateTime dateTo);
     Task<IEnumerable<CompletedOrder>> GetCompletedOrdersAsync(long companyId, long branchId, DateTime dateFrom, DateTime dateTo);

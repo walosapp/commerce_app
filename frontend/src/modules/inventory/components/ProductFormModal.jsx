@@ -12,8 +12,15 @@ import catalogService from '../../../services/catalogService';
 import useAuthStore from '../../../stores/authStore';
 import RecipeManager from './RecipeManager';
 import toast from 'react-hot-toast';
+import { formatCurrency } from '../../../utils/formatCurrency';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+const generateSuggestedSku = () => {
+  const timestamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 12);
+  const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `SKU-${timestamp}-${suffix}`;
+};
 
 const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
   const isEdit = !!product;
@@ -49,8 +56,17 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
   const [saving, setSaving] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [referenceQuantity, setReferenceQuantity] = useState('');
+  const [referenceTotalCost, setReferenceTotalCost] = useState('');
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
+
+  const referenceQuantityNumber = Number(referenceQuantity || 0);
+  const referenceTotalCostNumber = Number(referenceTotalCost || 0);
+  const calculatedReferenceUnitCost =
+    referenceQuantityNumber > 0 && referenceTotalCostNumber > 0
+      ? referenceTotalCostNumber / referenceQuantityNumber
+      : null;
 
   const { data: categoriesData } = useQuery({
     queryKey: ['catalog-categories', tenantId],
@@ -66,6 +82,7 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
 
   const categories = (categoriesData?.data || []).filter(c => c.isActive);
   const units = (unitsData?.data || []).filter(u => u.isActive);
+  const selectedUnit = units.find((u) => String(u.id) === String(form.unitId));
 
   useEffect(() => {
     if (product) {
@@ -89,10 +106,12 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
         isForSale: product.isForSale ?? true,
       });
       setImagePreview(product.imageUrl ? `${API_BASE}${product.imageUrl}` : null);
+      setReferenceQuantity('');
+      setReferenceTotalCost('');
     } else {
       setForm({
         name: '',
-        sku: '',
+        sku: generateSuggestedSku(),
         barcode: '',
         description: '',
         categoryId: '',
@@ -110,6 +129,8 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
         isForSale: true,
       });
       setImagePreview(null);
+      setReferenceQuantity('');
+      setReferenceTotalCost('');
     }
     setImageFile(null);
   }, [product, isOpen]);
@@ -159,15 +180,27 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
     setForm(updated);
   };
 
+  const handleRecipeCostSync = (latestProduct) => {
+    if (!latestProduct) return;
+    setForm((prev) => ({
+      ...prev,
+      costPrice: latestProduct.costPrice ?? prev.costPrice,
+      salePrice: latestProduct.salePrice ?? prev.salePrice,
+      marginPercentage: latestProduct.marginPercentage ?? prev.marginPercentage,
+    }));
+  };
+
+  useEffect(() => {
+    if (calculatedReferenceUnitCost == null) return;
+    handleChange('costPrice', calculatedReferenceUnitCost.toFixed(2));
+  }, [calculatedReferenceUnitCost]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!form.name?.trim()) { toast.error('El nombre es requerido'); return; }
     if (!form.categoryId) { toast.error('Selecciona una categoria. Si no hay opciones, crealas en Configuracion → Catalogo'); return; }
     if (!form.unitId) { toast.error('Selecciona una unidad de medida. Si no hay opciones, crealas en Configuracion → Catalogo'); return; }
-    if (!form.costPrice || Number(form.costPrice) <= 0) { toast.error('El costo debe ser mayor a 0'); return; }
-    const needsSalePrice = form.productType !== 'supply' && form.productType !== 'service';
-    if (needsSalePrice && (!form.salePrice || Number(form.salePrice) <= 0)) { toast.error('El precio de venta es requerido para este tipo de producto'); return; }
 
     setSaving(true);
     try {
@@ -178,8 +211,8 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
         description: form.description || null,
         categoryId: Number(form.categoryId),
         unitId: Number(form.unitId),
-        costPrice: Number(form.costPrice),
-        salePrice: Number(form.salePrice),
+        costPrice: form.costPrice ? Number(form.costPrice) : 0,
+        salePrice: form.salePrice ? Number(form.salePrice) : 0,
         marginPercentage: form.marginPercentage ? Number(form.marginPercentage) : null,
         minStock: Number(form.minStock),
         maxStock: Number(form.maxStock),
@@ -344,14 +377,13 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">SKU *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">SKU</label>
               <input
                 type="text"
-                required
                 value={form.sku}
                 onChange={(e) => handleChange('sku', e.target.value)}
                 className="input"
-                placeholder="Ej: COC-350"
+                placeholder="Se sugiere automáticamente, pero podés editarlo"
               />
             </div>
           </div>
@@ -404,19 +436,46 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
               Precios{form.productType !== 'supply' && form.productType !== 'service' ? ' y Margen' : ''}
             </div>
 
-            {/* Costo — siempre visible */}
+            {/* Costo — guiado por presentación de compra */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Costo *</label>
+                <label className="block text-sm text-gray-600 mb-1">Cantidad de referencia</label>
                 <input
                   type="number"
-                  required
                   min="0"
                   step="0.01"
-                  value={form.costPrice}
-                  onChange={(e) => handleChange('costPrice', e.target.value)}
+                  value={referenceQuantity}
+                  onChange={(e) => setReferenceQuantity(e.target.value)}
                   className="input"
-                  placeholder="0.00"
+                  placeholder={selectedUnit ? `Ej: 500 ${selectedUnit.abbreviation}` : 'Ej: 500'}
+                  disabled={form.productType === 'prepared'}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Costo total de referencia</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={referenceTotalCost}
+                  onChange={(e) => setReferenceTotalCost(e.target.value)}
+                  className="input"
+                  placeholder="Ej: 13500"
+                  disabled={form.productType === 'prepared'}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Costo unitario calculado
+                </label>
+                <input
+                  type="number"
+                  readOnly
+                  value={form.costPrice}
+                  className="input bg-gray-50 text-gray-600"
+                  placeholder={form.productType === 'prepared' ? 'Se calcula por receta' : 'Se calcula automáticamente'}
                 />
               </div>
 
@@ -441,7 +500,7 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">
                     Precio Venta
-                    {form.productType !== 'supply' ? ' *' : ' (opcional)'}
+                    {' (opcional)'}
                   </label>
                   <input
                     type="number"
@@ -456,11 +515,24 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
               ) : null}
             </div>
 
+            {calculatedReferenceUnitCost != null && form.productType !== 'prepared' && (
+              <p className="text-xs text-blue-600 bg-blue-50 rounded-md px-3 py-2">
+                {formatCurrency(referenceTotalCostNumber)} / {referenceQuantityNumber} {selectedUnit?.abbreviation || 'und'} = {formatCurrency(calculatedReferenceUnitCost)} por {selectedUnit?.abbreviation || 'und'}
+              </p>
+            )}
             {form.productType === 'supply' && (
               <p className="text-xs text-blue-600 bg-blue-50 rounded-md px-3 py-2">
                 Para insumos el margen no aplica. El precio de venta es opcional (solo si también se vende al cliente).
               </p>
             )}
+            {form.productType === 'prepared' && (
+              <p className="text-xs text-blue-600 bg-blue-50 rounded-md px-3 py-2">
+                Para preparados, el costo unitario se actualiza automáticamente según la receta.
+              </p>
+            )}
+            <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2">
+              Si dejás costo o precio en 0, el producto se guarda pero queda incompleto y no aparecerá en ventas.
+            </p>
             {form.productType !== 'supply' && form.productType !== 'service' && (
               <p className="text-xs text-gray-500">Al cambiar el margen se recalcula el precio de venta y viceversa.</p>
             )}
@@ -559,6 +631,7 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
             <RecipeManager
               productId={product.productId}
               productName={product.name}
+              onCostSync={handleRecipeCostSync}
             />
           )}
           {form.productType === 'prepared' && !product?.productId && (

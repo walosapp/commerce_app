@@ -4,6 +4,7 @@ public class Order : BaseEntity
 {
     public long BranchId { get; set; }
     public long TableId { get; set; }
+    public long? CashRegisterId { get; set; }
     public string OrderNumber { get; set; } = string.Empty;
     public string Status { get; set; } = "pending"; // pending, completed, cancelled
     public decimal Subtotal { get; set; }

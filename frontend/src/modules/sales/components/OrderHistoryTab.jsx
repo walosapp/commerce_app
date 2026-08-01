@@ -6,7 +6,7 @@ import { formatCurrency } from '../../../utils/formatCurrency';
 import useAuthStore from '../../../stores/authStore';
 import ReceiptPreview from './ReceiptPreview';
 
-const PAYMENT_LABELS = { cash: 'Efectivo', card: 'Tarjeta', transfer: 'Transferencia', nequi: 'Nequi' };
+const PAYMENT_LABELS = { cash: 'Efectivo', card: 'Tarjeta', transfer: 'Transferencia', nequi: 'Nequi', mixed: 'Mixto' };
 const STATUS_LABELS = { completed: 'Facturada', cancelled: 'Cancelada' };
 const REFUND_LABELS = { partial_refund: 'Parcial', full_refund: 'Anulada' };
 

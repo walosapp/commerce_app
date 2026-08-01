@@ -1,15 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { ShoppingBag, Loader2 } from 'lucide-react';
+import salesService from '../../../services/salesService';
 import { formatCurrency } from '../../../utils/formatCurrency';
-import api from '../../../config/api';
-
-const getOrderItems = (orderId) =>
-  api.get(`/sales/orders/${orderId}/items`).then(r => r.data);
 
 const OrderItemsList = ({ orderId }) => {
   const { data, isLoading } = useQuery({
     queryKey: ['order-items', orderId],
-    queryFn:  () => getOrderItems(orderId),
+    queryFn:  () => salesService.getOrderItems(orderId),
     enabled:  !!orderId,
     staleTime: 60_000,
   });
