@@ -24,6 +24,7 @@ import CompaniesPage from './modules/admin/CompaniesPage';
 import DeliveryOrdersPage from './modules/delivery/DeliveryOrdersPage';
 import SuppliersPage from './modules/suppliers/SuppliersPage';
 import UsersPage from './modules/users/UsersPage';
+import PosDeliPage from './modules/pos-deli/PosDeliPage';
 
 setAuthStateGetter(() => useAuthStore.getState());
 
@@ -76,6 +77,7 @@ function App() {
           <Route path="/inventory" element={<ProtectedRoute><InventoryPage /></ProtectedRoute>} />
           <Route path="/ai-assistant" element={<ProtectedRoute><AiAssistantPage /></ProtectedRoute>} />
           <Route path="/sales" element={<ProtectedRoute><SalesPage /></ProtectedRoute>} />
+          <Route path="/pos-deli" element={<ProtectedRoute allowedRoles={['dev','super_admin','admin','manager','cashier']}><PosDeliPage /></ProtectedRoute>} />
           <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
           <Route path="/suppliers" element={<ProtectedRoute><SuppliersPage /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute allowedRoles={['dev','super_admin','admin','manager']}><UsersPage /></ProtectedRoute>} />
