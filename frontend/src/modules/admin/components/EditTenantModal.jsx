@@ -26,29 +26,30 @@ const Select = ({ label, name, value, onChange, options }) => (
       onChange={onChange}
       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
     >
-      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   </div>
 );
 
 const EditTenantModal = ({ tenant, onClose, onSaved }) => {
   const [form, setForm] = useState({});
-  const [saving, setSaving]         = useState(false);
-  const [error, setError]           = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   const [newPassword, setNewPassword] = useState('');
-  const [showPwd, setShowPwd]       = useState(false);
-  const [savingPwd, setSavingPwd]   = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const [savingPwd, setSavingPwd] = useState(false);
 
   useEffect(() => {
     if (tenant) {
       setForm({
-        name:     tenant.name     ?? '',
+        name: tenant.name ?? '',
         legalName: tenant.legalName ?? '',
-        taxId:    tenant.taxId    ?? '',
-        email:    tenant.email    ?? '',
-        phone:    tenant.phone    ?? '',
-        city:     tenant.city     ?? '',
-        country:  tenant.country  ?? 'CO',
+        taxId: tenant.taxId ?? '',
+        email: tenant.email ?? '',
+        adminEmail: tenant.adminEmail ?? '',
+        phone: tenant.phone ?? '',
+        city: tenant.city ?? '',
+        country: tenant.country ?? 'CO',
         currency: tenant.currency ?? 'COP',
         language: tenant.language ?? 'es',
       });
@@ -59,20 +60,24 @@ const EditTenantModal = ({ tenant, onClose, onSaved }) => {
 
   if (!tenant) return null;
 
-  const handleChange = e => {
+  const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
+    setForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleResetPassword = async () => {
-    if (newPassword.length < 6) { toast.error('Mínimo 6 caracteres'); return; }
+    if (newPassword.length < 6) {
+      toast.error('Minimo 6 caracteres');
+      return;
+    }
+
     setSavingPwd(true);
     try {
       await adminService.resetTenantPassword(tenant.id, newPassword);
-      toast.success('Contraseña del administrador actualizada');
+      toast.success('Contrasena del administrador actualizada');
       setNewPassword('');
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Error cambiando contraseña');
+      toast.error(err?.response?.data?.message || 'Error cambiando contrasena');
     } finally {
       setSavingPwd(false);
     }
@@ -92,40 +97,50 @@ const EditTenantModal = ({ tenant, onClose, onSaved }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b px-6 py-4">
           <div className="flex items-center gap-2">
             <Building2 size={20} className="text-indigo-600" />
             <h2 className="text-lg font-semibold text-gray-900">Editar comercio</h2>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+          <button onClick={onClose} className="text-gray-400 transition-colors hover:text-gray-600">
             <X size={20} />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 grid grid-cols-1 gap-4">
-          <Field label="Nombre del comercio *" name="name"      value={form.name}      onChange={handleChange} placeholder="Mi Bar SAS" />
-          <Field label="Razón social"           name="legalName" value={form.legalName} onChange={handleChange} placeholder="Mi Bar S.A.S." />
-          <Field label="NIT / RUT"              name="taxId"     value={form.taxId}     onChange={handleChange} placeholder="900123456-1" />
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Email"    name="email" type="email" value={form.email} onChange={handleChange} placeholder="contacto@mibar.com" />
-            <Field label="Teléfono" name="phone"              value={form.phone} onChange={handleChange} placeholder="+57 300 000 0000" />
+        <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto px-6 py-5">
+          <Field label="Nombre del comercio *" name="name" value={form.name} onChange={handleChange} placeholder="Mi Bar SAS" />
+          <Field label="Razon social" name="legalName" value={form.legalName} onChange={handleChange} placeholder="Mi Bar S.A.S." />
+          <Field label="NIT / RUT" name="taxId" value={form.taxId} onChange={handleChange} placeholder="900123456-1" />
+
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
+            <p className="font-semibold">Credenciales separadas</p>
+            <p className="mt-1">El correo del comercio es de contacto. El inicio de sesion usa el correo del administrador principal.</p>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Ciudad" name="city" value={form.city} onChange={handleChange} placeholder="Bogotá" />
-            <Select label="País" name="country" value={form.country} onChange={handleChange} options={[
+            <Field label="Email del comercio" name="email" type="email" value={form.email} onChange={handleChange} placeholder="contacto@mibar.com" />
+            <Field label="Email admin principal" name="adminEmail" type="email" value={form.adminEmail} onChange={handleChange} placeholder="admin@mibar.com" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Telefono" name="phone" value={form.phone} onChange={handleChange} placeholder="+57 300 000 0000" />
+            <div />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Ciudad" name="city" value={form.city} onChange={handleChange} placeholder="Bogota" />
+            <Select label="Pais" name="country" value={form.country} onChange={handleChange} options={[
               { value: 'CO', label: 'Colombia' },
-              { value: 'MX', label: 'México' },
+              { value: 'MX', label: 'Mexico' },
               { value: 'AR', label: 'Argentina' },
               { value: 'CL', label: 'Chile' },
-              { value: 'PE', label: 'Perú' },
+              { value: 'PE', label: 'Peru' },
               { value: 'EC', label: 'Ecuador' },
             ]} />
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <Select label="Moneda" name="currency" value={form.currency} onChange={handleChange} options={[
               { value: 'COP', label: 'COP' },
@@ -135,66 +150,68 @@ const EditTenantModal = ({ tenant, onClose, onSaved }) => {
               { value: 'CLP', label: 'CLP' },
             ]} />
             <Select label="Idioma" name="language" value={form.language} onChange={handleChange} options={[
-              { value: 'es', label: 'Español' },
+              { value: 'es', label: 'Espanol' },
               { value: 'en', label: 'English' },
-              { value: 'pt', label: 'Português' },
+              { value: 'pt', label: 'Portugues' },
             ]} />
           </div>
 
-          {/* Cambio de contraseña del admin */}
-          <div className="border border-dashed border-gray-300 rounded-xl p-4 space-y-2">
+          <div className="space-y-2 rounded-xl border border-dashed border-gray-300 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
               <KeyRound size={15} className="text-indigo-500" />
-              Contraseña del administrador
+              Contrasena del administrador
             </div>
-            <p className="text-xs text-gray-400">Cambia la contraseña del usuario super_admin de este comercio</p>
+            <p className="text-xs text-gray-400">
+              Cambia la contrasena del usuario super_admin de este comercio.
+              {form.adminEmail ? ` Login actual: ${form.adminEmail}` : ''}
+            </p>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <input
                   type={showPwd ? 'text' : 'password'}
                   value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  placeholder="Nueva contraseña (mín. 6 caracteres)"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm pr-9 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Nueva contrasena (min. 6 caracteres)"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
-                <button type="button" onClick={() => setShowPwd(v => !v)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <button
+                  type="button"
+                  onClick={() => setShowPwd((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
                   {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
               <button
                 onClick={handleResetPassword}
                 disabled={savingPwd || newPassword.length < 6}
-                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+                className="whitespace-nowrap rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-40"
               >
-                {savingPwd ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
-                {savingPwd ? '...' : 'Cambiar'}
+                {savingPwd ? <Loader2 size={14} className="animate-spin" /> : 'Cambiar'}
               </button>
             </div>
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600">
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
               {error}
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t flex items-center justify-end gap-3">
-          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors">
+        <div className="flex items-center justify-end gap-3 border-t px-6 py-4">
+          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700">
             Cancelar
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !form.name?.trim()}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors"
+            disabled={saving || !form.name?.trim() || !form.adminEmail?.trim()}
+            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             {saving ? 'Guardando...' : 'Guardar cambios'}
           </button>
         </div>
-
       </div>
     </div>
   );

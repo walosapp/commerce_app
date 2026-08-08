@@ -12,6 +12,7 @@ public class TenantResponse
     public string? Country { get; set; }
     public string Currency { get; set; } = "COP";
     public string Language { get; set; } = "es";
+    public string? AdminEmail { get; set; }
     public bool IsActive { get; set; }
     public int BranchCount { get; set; }
     public int UserCount { get; set; }
@@ -29,6 +30,7 @@ public class UpdateTenantRequest
     public string? Country { get; set; }
     public string? Currency { get; set; }
     public string? Language { get; set; }
+    public string? AdminEmail { get; set; }
 }
 
 public class CreateTenantResult

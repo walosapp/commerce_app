@@ -61,6 +61,19 @@ public class AdminService : IAdminService
         if (exists is null)
             throw new BusinessException("Comercio no encontrado");
 
+        var normalizedAdminEmail = string.IsNullOrWhiteSpace(request.AdminEmail)
+            ? null
+            : request.AdminEmail.Trim();
+
+        if (!string.IsNullOrWhiteSpace(normalizedAdminEmail)
+            && !string.Equals(normalizedAdminEmail, exists.AdminEmail, StringComparison.OrdinalIgnoreCase)
+            && await _adminRepo.AdminEmailExistsAsync(normalizedAdminEmail, companyId))
+        {
+            throw new BusinessException("Ya existe otro administrador con ese email");
+        }
+
+        request.AdminEmail = normalizedAdminEmail;
+
         return await _adminRepo.UpdateTenantAsync(companyId, request);
     }
 

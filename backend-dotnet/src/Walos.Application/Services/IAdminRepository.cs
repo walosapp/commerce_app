@@ -7,6 +7,7 @@ public interface IAdminRepository
 {
     Task<bool> TaxIdExistsAsync(string taxId);
     Task<bool> EmailExistsAsync(string email);
+    Task<bool> AdminEmailExistsAsync(string email, long? excludeCompanyId = null);
     Task<CreateTenantResult> CreateTenantAsync(CreateTenantRequest request);
     Task<IEnumerable<TenantResponse>> GetTenantsAsync();
     Task<TenantResponse?> GetTenantByIdAsync(long companyId);

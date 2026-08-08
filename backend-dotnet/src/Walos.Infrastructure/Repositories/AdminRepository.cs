@@ -33,6 +33,25 @@ public class AdminRepository : IAdminRepository
         return await conn.ExecuteScalarAsync<int>(sql, new { Email = email }) > 0;
     }
 
+    public async Task<bool> AdminEmailExistsAsync(string email, long? excludeCompanyId = null)
+    {
+        using var conn = await _db.CreateConnectionAsync();
+        const string sql = @"
+            SELECT COUNT(1)
+            FROM core.users u
+            INNER JOIN core.roles r ON r.id = u.role_id AND r.company_id = u.company_id
+            WHERE u.email = @Email
+              AND r.code = 'super_admin'
+              AND u.deleted_at IS NULL
+              AND (@ExcludeCompanyId IS NULL OR u.company_id <> @ExcludeCompanyId)";
+
+        return await conn.ExecuteScalarAsync<int>(sql, new
+        {
+            Email = email.Trim(),
+            ExcludeCompanyId = excludeCompanyId
+        }) > 0;
+    }
+
     public async Task<CreateTenantResult> CreateTenantAsync(CreateTenantRequest request)
     {
         using var conn = await _db.CreateConnectionAsync();
@@ -223,6 +242,7 @@ public class AdminRepository : IAdminRepository
                 c.country AS Country,
                 c.currency AS Currency,
                 c.language AS Language,
+                admin_user.email AS AdminEmail,
                 c.is_active AS IsActive,
                 c.created_at AS CreatedAt,
                 COUNT(DISTINCT b.id) AS BranchCount,
@@ -230,9 +250,19 @@ public class AdminRepository : IAdminRepository
             FROM core.companies c
             LEFT JOIN core.branches b ON b.company_id = c.id AND b.deleted_at IS NULL
             LEFT JOIN core.users u ON u.company_id = c.id AND u.deleted_at IS NULL
+            LEFT JOIN LATERAL (
+                SELECT u2.email
+                FROM core.users u2
+                INNER JOIN core.roles r2 ON r2.id = u2.role_id AND r2.company_id = u2.company_id
+                WHERE u2.company_id = c.id
+                  AND r2.code = 'super_admin'
+                  AND u2.deleted_at IS NULL
+                ORDER BY u2.id
+                LIMIT 1
+            ) admin_user ON TRUE
             WHERE c.deleted_at IS NULL
             GROUP BY c.id, c.name, c.legal_name, c.tax_id, c.email, c.phone,
-                     c.city, c.country, c.currency, c.language, c.is_active, c.created_at
+                     c.city, c.country, c.currency, c.language, admin_user.email, c.is_active, c.created_at
             ORDER BY c.created_at DESC";
 
         return await conn.QueryAsync<TenantResponse>(sql);
@@ -245,16 +275,26 @@ public class AdminRepository : IAdminRepository
             SELECT
                 c.id AS Id, c.name AS Name, c.legal_name AS LegalName, c.tax_id AS TaxId,
                 c.email AS Email, c.phone AS Phone, c.city AS City, c.country AS Country,
-                c.currency AS Currency, c.language AS Language, c.is_active AS IsActive,
+                c.currency AS Currency, c.language AS Language, admin_user.email AS AdminEmail, c.is_active AS IsActive,
                 c.created_at AS CreatedAt,
                 COUNT(DISTINCT b.id) AS BranchCount,
                 COUNT(DISTINCT u.id) AS UserCount
             FROM core.companies c
             LEFT JOIN core.branches b ON b.company_id = c.id AND b.deleted_at IS NULL
             LEFT JOIN core.users u ON u.company_id = c.id AND u.deleted_at IS NULL
+            LEFT JOIN LATERAL (
+                SELECT u2.email
+                FROM core.users u2
+                INNER JOIN core.roles r2 ON r2.id = u2.role_id AND r2.company_id = u2.company_id
+                WHERE u2.company_id = c.id
+                  AND r2.code = 'super_admin'
+                  AND u2.deleted_at IS NULL
+                ORDER BY u2.id
+                LIMIT 1
+            ) admin_user ON TRUE
             WHERE c.id = @CompanyId AND c.deleted_at IS NULL
             GROUP BY c.id, c.name, c.legal_name, c.tax_id, c.email, c.phone,
-                     c.city, c.country, c.currency, c.language, c.is_active, c.created_at";
+                     c.city, c.country, c.currency, c.language, admin_user.email, c.is_active, c.created_at";
 
         return await conn.QueryFirstOrDefaultAsync<TenantResponse>(sql, new { CompanyId = companyId });
     }
@@ -273,6 +313,7 @@ public class AdminRepository : IAdminRepository
     public async Task<TenantResponse?> UpdateTenantAsync(long companyId, UpdateTenantRequest request)
     {
         using var conn = await _db.CreateConnectionAsync();
+        using var tx = conn.BeginTransaction();
         const string sql = @"
             UPDATE core.companies SET
                 name        = COALESCE(@Name,       name),
@@ -299,7 +340,28 @@ public class AdminRepository : IAdminRepository
             request.Country,
             request.Currency,
             request.Language
-        });
+        }, tx);
+
+        if (!string.IsNullOrWhiteSpace(request.AdminEmail))
+        {
+            const string adminSql = @"
+                UPDATE core.users u
+                SET email = @AdminEmail,
+                    updated_at = NOW()
+                FROM core.roles r
+                WHERE u.role_id = r.id
+                  AND r.code = 'super_admin'
+                  AND u.company_id = @CompanyId
+                  AND u.deleted_at IS NULL";
+
+            await conn.ExecuteAsync(adminSql, new
+            {
+                CompanyId = companyId,
+                AdminEmail = request.AdminEmail.Trim()
+            }, tx);
+        }
+
+        tx.Commit();
 
         return await GetTenantByIdAsync(companyId);
     }
