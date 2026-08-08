@@ -31,6 +31,7 @@ import companyService from '../../services/companyService';
 import inventoryService from '../../services/inventoryService';
 import useAuthStore from '../../stores/authStore';
 import useUiStore from '../../stores/uiStore';
+import { resetTenantPwaBranding, syncTenantPwaBranding } from '../../utils/pwaBranding';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -75,6 +76,24 @@ const Layout = ({ children }) => {
       setTheme(settings.themePreference);
     }
   }, [setBranding, setTheme, settingsData]);
+
+  useEffect(() => {
+    const settings = settingsData?.data;
+
+    if (!tenantId || !settings?.logoUrl) {
+      resetTenantPwaBranding();
+      return;
+    }
+
+    syncTenantPwaBranding({
+      tenantId,
+      logoUrl: settings.logoUrl,
+    });
+
+    return () => {
+      resetTenantPwaBranding();
+    };
+  }, [tenantId, settingsData]);
 
   const handleLogout = () => {
     logout();

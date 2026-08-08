@@ -14,6 +14,10 @@ const BrandingForm = ({
   onRemoveLogo,
   fileInputRef,
   cameraInputRef,
+  showInstallAction,
+  canInstall,
+  isInstalled,
+  onInstallApp,
 }) => {
   const handleFileChange = (event) => {
     const file = event.target.files?.[0];
@@ -75,7 +79,23 @@ const BrandingForm = ({
                     <Trash2 className="h-4 w-4" />
                     Quitar
                   </button>
+                  {showInstallAction && (
+                    <button
+                      type="button"
+                      onClick={onInstallApp}
+                      disabled={isInstalled}
+                      className="flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-emerald-600"
+                    >
+                      <Upload className="h-4 w-4" />
+                      {isInstalled ? 'App instalada' : 'Instalar app'}
+                    </button>
+                  )}
                 </div>
+                {showInstallAction && !canInstall && !isInstalled && (
+                  <p className="mt-3 text-xs text-gray-500">
+                    Si el navegador todavía no permite la instalación PWA, al tocar el botón Walos te avisará para que abras la app desde un navegador compatible.
+                  </p>
+                )}
               </div>
             </div>
           ) : (

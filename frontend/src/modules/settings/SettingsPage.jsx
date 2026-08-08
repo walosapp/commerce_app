@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import companyService from '../../services/companyService';
 import useAuthStore from '../../stores/authStore';
 import useUiStore from '../../stores/uiStore';
+import { usePwaInstall } from '../../hooks/usePwaInstall';
 import BrandingForm from './components/BrandingForm';
 import ThemeSelector from './components/ThemeSelector';
 import DiscountSettings from './components/DiscountSettings';
@@ -65,6 +66,7 @@ const SettingsPage = () => {
   const [logoPreview, setLogoPreview] = useState(null);
   const [logoRemoved, setLogoRemoved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { canInstall, isInstalled, promptInstall } = usePwaInstall();
 
   const { data: settingsData, isLoading: settingsLoading } = useQuery({
     queryKey: ['company-settings', tenantId],
@@ -77,6 +79,7 @@ const SettingsPage = () => {
     queryFn: () => companyService.getOperationsSettings(),
     enabled: !!tenantId,
   });
+  const hasPersistedLogo = !!settingsData?.data?.logoUrl && !logoFile && !logoRemoved;
 
   useEffect(() => {
     if (location.pathname === '/settings') {
@@ -213,6 +216,22 @@ const SettingsPage = () => {
     }
   };
 
+  const handleInstallApp = async () => {
+    const result = await promptInstall();
+
+    if (result.outcome === 'accepted') {
+      toast.success('La app se instaló en este dispositivo');
+      return;
+    }
+
+    if (result.outcome === 'dismissed') {
+      toast('Instalación cancelada');
+      return;
+    }
+
+    toast.error('La instalación no está disponible en este navegador o dispositivo');
+  };
+
   return (
     <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden">
       <div className="px-4 md:px-6 py-4 border-b bg-white flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
@@ -257,6 +276,10 @@ const SettingsPage = () => {
                 onRemoveLogo={handleRemoveLogo}
                 fileInputRef={fileInputRef}
                 cameraInputRef={cameraInputRef}
+                showInstallAction={hasPersistedLogo}
+                canInstall={canInstall}
+                isInstalled={hasPersistedLogo && isInstalled}
+                onInstallApp={handleInstallApp}
               />
             )}
             {activeSection === 'themes' && (
