@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Ai;
 using Walos.Application.DTOs.Common;
+using Walos.Application.Security;
 using Walos.Application.Services;
 using Walos.Domain.Interfaces;
 
@@ -9,7 +10,7 @@ namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/ai")]
-[Authorize]
+[Authorize(Policy = WalosPolicies.InventoryWrite)]
 public class AiController : ControllerBase
 {
     private readonly OrchestratorService _orchestrator;

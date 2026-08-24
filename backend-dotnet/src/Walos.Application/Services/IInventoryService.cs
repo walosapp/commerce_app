@@ -6,6 +6,7 @@ namespace Walos.Application.Services;
 
 public interface IInventoryService
 {
+    Task<long?> ResolveBranchAsync(long companyId, long? tenantBranchId, long? requestedBranchId, bool required = false);
     Task<Product> CreateProductAsync(long companyId, long userId, long? branchId, CreateProductRequest request);
     Task<Product?> UpdateProductAsync(long id, long companyId, long userId, UpdateProductRequest request);
     Task<Stock> AddStockAsync(long companyId, long userId, long? tenantBranchId, AddStockRequest request);

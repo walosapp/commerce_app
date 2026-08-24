@@ -114,7 +114,40 @@ public class CashRegisterRepository : ICashRegisterRepository
         return await connection.QueryFirstOrDefaultAsync<CashRegister>(sql, new { Id = id, CompanyId = companyId });
     }
 
-    public async Task<CashRegister> CloseAsync(long id, long companyId, long closedBy, decimal closingAmount, string? notes)
+    public async Task<CashRegister?> GetByIdAsync(long id, long companyId, long branchId)
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            SELECT
+                cr.id AS Id, cr.company_id AS CompanyId, cr.branch_id AS BranchId,
+                cr.opened_by AS OpenedBy, cr.closed_by AS ClosedBy,
+                cr.status AS Status, cr.opening_amount AS OpeningAmount,
+                cr.closing_amount AS ClosingAmount, cr.expected_cash AS ExpectedCash,
+                cr.difference AS Difference, cr.total_sales AS TotalSales,
+                cr.total_cash_sales AS TotalCashSales, cr.total_card_sales AS TotalCardSales,
+                cr.total_transfer_sales AS TotalTransferSales, cr.total_other_sales AS TotalOtherSales,
+                cr.total_discounts AS TotalDiscounts, cr.total_credits AS TotalCredits,
+                cr.total_tips AS TotalTips, cr.cash_in AS CashIn, cr.cash_out AS CashOut,
+                cr.order_count AS OrderCount, cr.notes AS Notes,
+                cr.opened_at AS OpenedAt, cr.closed_at AS ClosedAt,
+                uo.first_name || ' ' || uo.last_name AS OpenedByName,
+                uc.first_name || ' ' || uc.last_name AS ClosedByName
+            FROM sales.cash_registers cr
+            LEFT JOIN core.users uo
+              ON cr.opened_by = uo.id AND uo.company_id = cr.company_id
+            LEFT JOIN core.users uc
+              ON cr.closed_by = uc.id AND uc.company_id = cr.company_id
+            WHERE cr.id = @Id
+              AND cr.company_id = @CompanyId
+              AND cr.branch_id = @BranchId
+              AND cr.deleted_at IS NULL";
+
+        return await connection.QueryFirstOrDefaultAsync<CashRegister>(sql,
+            new { Id = id, CompanyId = companyId, BranchId = branchId });
+    }
+
+    public async Task<CashRegister?> CloseAsync(long id, long companyId, long branchId, long closedBy, decimal closingAmount, string? notes)
     {
         using var connection = await _connectionFactory.CreateConnectionAsync();
 
@@ -123,12 +156,15 @@ public class CashRegisterRepository : ICashRegisterRepository
                 status = 'closed',
                 closed_by = @ClosedBy,
                 closing_amount = @ClosingAmount,
-                expected_cash = (opening_amount + total_cash_sales + cash_in - cash_out - total_credits),
-                difference = @ClosingAmount - (opening_amount + total_cash_sales + cash_in - cash_out - total_credits),
+                expected_cash = (opening_amount + total_cash_sales + cash_in - cash_out),
+                difference = @ClosingAmount - (opening_amount + total_cash_sales + cash_in - cash_out),
                 notes = COALESCE(notes, '') || ' | ' || @Notes,
                 closed_at = NOW(),
                 updated_at = NOW()
-            WHERE id = @Id AND company_id = @CompanyId AND status = 'open'
+            WHERE id = @Id
+              AND company_id = @CompanyId
+              AND branch_id = @BranchId
+              AND status = 'open'
             RETURNING id AS Id, company_id AS CompanyId, branch_id AS BranchId,
                       opened_by AS OpenedBy, closed_by AS ClosedBy,
                       status AS Status, opening_amount AS OpeningAmount,
@@ -141,39 +177,57 @@ public class CashRegisterRepository : ICashRegisterRepository
                       order_count AS OrderCount, notes AS Notes,
                       opened_at AS OpenedAt, closed_at AS ClosedAt";
 
-        var result = await connection.QuerySingleAsync<CashRegister>(sql, new
+        var result = await connection.QuerySingleOrDefaultAsync<CashRegister>(sql, new
         {
             Id = id,
             CompanyId = companyId,
+            BranchId = branchId,
             ClosedBy = closedBy,
             ClosingAmount = closingAmount,
             Notes = notes ?? "Cierre de caja"
         });
 
-        _logger.LogInformation("Caja cerrada: Id={Id}, Company={CompanyId}, ClosedBy={ClosedBy}, ClosingAmount={ClosingAmount}, Difference={Difference}",
-            result.Id, result.CompanyId, result.ClosedBy, result.ClosingAmount, result.Difference);
+        if (result is not null)
+        {
+            _logger.LogInformation("Caja cerrada: Id={Id}, Company={CompanyId}, ClosedBy={ClosedBy}, ClosingAmount={ClosingAmount}, Difference={Difference}",
+                result.Id, result.CompanyId, result.ClosedBy, result.ClosingAmount, result.Difference);
+        }
 
         return result;
     }
 
-    public async Task<CashMovement> AddMovementAsync(CashMovement movement)
+    public async Task<CashMovement?> AddMovementAsync(CashMovement movement, long branchId)
     {
         using var connection = await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
+            WITH updated_register AS (
+                UPDATE sales.cash_registers
+                SET cash_in = cash_in + CASE WHEN @Type = 'in' THEN @Amount ELSE 0 END,
+                    cash_out = cash_out + CASE WHEN @Type = 'out' THEN @Amount ELSE 0 END,
+                    updated_at = NOW()
+                WHERE id = @CashRegisterId
+                  AND company_id = @CompanyId
+                  AND branch_id = @BranchId
+                  AND status = 'open'
+                  AND @Amount > 0
+                  AND @Type IN ('in', 'out')
+                RETURNING id
+            )
             INSERT INTO sales.cash_movements (
                 company_id, cash_register_id, type, amount, reason, notes, created_by, created_at
-            ) VALUES (
-                @CompanyId, @CashRegisterId, @Type, @Amount, @Reason, @Notes, @CreatedBy, NOW()
             )
+            SELECT @CompanyId, @CashRegisterId, @Type, @Amount, @Reason, @Notes, @CreatedBy, NOW()
+            FROM updated_register
             RETURNING id AS Id, company_id AS CompanyId, cash_register_id AS CashRegisterId,
                       type AS Type, amount AS Amount, reason AS Reason, notes AS Notes,
                       created_by AS CreatedBy, created_at AS CreatedAt";
 
-        var result = await connection.QuerySingleAsync<CashMovement>(sql, new
+        var result = await connection.QuerySingleOrDefaultAsync<CashMovement>(sql, new
         {
             movement.CompanyId,
             movement.CashRegisterId,
+            BranchId = branchId,
             movement.Type,
             movement.Amount,
             movement.Reason,
@@ -181,13 +235,16 @@ public class CashRegisterRepository : ICashRegisterRepository
             movement.CreatedBy
         });
 
-        _logger.LogInformation("Movimiento de caja: Type={Type}, Amount={Amount}, Register={CashRegisterId}, User={CreatedBy}",
-            result.Type, result.Amount, result.CashRegisterId, result.CreatedBy);
+        if (result is not null)
+        {
+            _logger.LogInformation("Movimiento de caja: Type={Type}, Amount={Amount}, Register={CashRegisterId}, User={CreatedBy}",
+                result.Type, result.Amount, result.CashRegisterId, result.CreatedBy);
+        }
 
         return result;
     }
 
-    public async Task<IEnumerable<CashMovement>> GetMovementsAsync(long cashRegisterId, long companyId)
+    public async Task<IEnumerable<CashMovement>> GetMovementsAsync(long cashRegisterId, long companyId, long branchId)
     {
         using var connection = await _connectionFactory.CreateConnectionAsync();
 
@@ -198,11 +255,22 @@ public class CashRegisterRepository : ICashRegisterRepository
                 cm.created_by AS CreatedBy, cm.created_at AS CreatedAt,
                 u.first_name || ' ' || u.last_name AS CreatedByName
             FROM sales.cash_movements cm
-            LEFT JOIN core.users u ON cm.created_by = u.id
+            JOIN sales.cash_registers cr
+              ON cr.id = cm.cash_register_id
+             AND cr.company_id = cm.company_id
+             AND cr.branch_id = @BranchId
+             AND cr.deleted_at IS NULL
+            LEFT JOIN core.users u
+              ON cm.created_by = u.id AND u.company_id = cm.company_id
             WHERE cm.cash_register_id = @CashRegisterId AND cm.company_id = @CompanyId
             ORDER BY cm.created_at DESC";
 
-        return await connection.QueryAsync<CashMovement>(sql, new { CashRegisterId = cashRegisterId, CompanyId = companyId });
+        return await connection.QueryAsync<CashMovement>(sql, new
+        {
+            CashRegisterId = cashRegisterId,
+            CompanyId = companyId,
+            BranchId = branchId
+        });
     }
 
     public async Task UpdateTotalsAsync(long id, long companyId, decimal totalSales, decimal totalCashSales, decimal totalCardSales, decimal totalTransferSales, decimal totalOtherSales, decimal totalDiscounts, decimal totalCredits, decimal totalTips, int orderCount)
@@ -221,7 +289,7 @@ public class CashRegisterRepository : ICashRegisterRepository
                 total_tips = total_tips + @TotalTips,
                 order_count = order_count + @OrderCount,
                 updated_at = NOW()
-            WHERE id = @Id AND company_id = @CompanyId";
+            WHERE id = @Id AND company_id = @CompanyId AND status = 'open'";
 
         await connection.ExecuteAsync(sql, new
         {

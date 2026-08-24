@@ -1,4 +1,6 @@
 using Npgsql;
+using Walos.Domain.Entities;
+using Walos.Domain.Exceptions;
 
 namespace Walos.Tests.Integration;
 
@@ -63,6 +65,8 @@ public class InventoryRepositoryIntegrationTests : IntegrationTestBase
         var okProduct = await SeedProductAsync(companyId, categoryId, unitId, "Ok Product", "SKU-O", 2, 4);
 
         await SeedStockAsync(companyId, branch1, lowProduct, 3);
+        await SeedStockAsync(companyId, branch1, okProduct, 20);
+        await SeedStockAsync(companyId, branch2, lowProduct, 20);
         await SeedStockAsync(companyId, branch2, okProduct, 20);
 
         var branch1Alerts = (await InventoryRepository.GetActiveAlertsAsync(companyId, branch1)).ToList();
@@ -73,15 +77,66 @@ public class InventoryRepositoryIntegrationTests : IntegrationTestBase
         Assert.Empty(branch2Alerts);
     }
 
+    [SkippableFact]
+    public async Task CreateProductAsync_Should_Reject_Category_From_Another_Company()
+    {
+        var companyA = await SeedCompanyAsync("Product Scope A");
+        var companyB = await SeedCompanyAsync("Product Scope B");
+        var categoryB = await SeedInventoryCategoryAsync(companyB, "Foreign Cat");
+        var unitA = await SeedInventoryUnitAsync(companyA, "Local Unit", "lu");
+
+        await Assert.ThrowsAsync<NotFoundException>(() => InventoryRepository.CreateProductAsync(new Product
+        {
+            CompanyId = companyA,
+            Name = "Invalid product",
+            Sku = $"INV-{Guid.NewGuid():N}"[..30],
+            CategoryId = categoryB,
+            UnitId = unitA,
+            ProductType = "simple",
+            IsForSale = true,
+            TrackStock = true,
+        }));
+
+        using var conn = await ConnectionFactory.CreateConnectionAsync();
+        using var cmd = new NpgsqlCommand(
+            "SELECT COUNT(*) FROM inventory.products WHERE company_id = @companyId AND name = 'Invalid product'",
+            (NpgsqlConnection)conn);
+        cmd.Parameters.AddWithValue("@companyId", companyA);
+        Assert.Equal(0L, (long)(await cmd.ExecuteScalarAsync() ?? -1L));
+    }
+
+    [SkippableFact]
+    public async Task UpdateProductAsync_Should_Reject_Foreign_Unit_Without_Changing_Product()
+    {
+        var companyA = await SeedCompanyAsync("Product Update A");
+        var companyB = await SeedCompanyAsync("Product Update B");
+        var categoryA = await SeedInventoryCategoryAsync(companyA, "Local Cat");
+        var unitA = await SeedInventoryUnitAsync(companyA, "Local Unit", "ua2");
+        var unitB = await SeedInventoryUnitAsync(companyB, "Foreign Unit", "ub2");
+        var productId = await SeedProductAsync(companyA, categoryA, unitA, "Original", "ORIGINAL", 1, 2);
+        var product = await InventoryRepository.GetProductByIdAsync(productId, companyA);
+        Assert.NotNull(product);
+        product!.Name = "Attempted update";
+        product.UnitId = unitB;
+
+        await Assert.ThrowsAsync<NotFoundException>(() => InventoryRepository.UpdateProductAsync(product));
+
+        var persisted = await InventoryRepository.GetProductByIdAsync(productId, companyA);
+        Assert.NotNull(persisted);
+        Assert.Equal("Original", persisted!.Name);
+        Assert.Equal(unitA, persisted.UnitId);
+    }
+
     private async Task<long> SeedInventoryCategoryAsync(long companyId, string name)
     {
         using var conn = await ConnectionFactory.CreateConnectionAsync();
         using var cmd = new NpgsqlCommand(@"
-            INSERT INTO inventory.categories (company_id, name, is_active, created_by)
-            VALUES (@companyId, @name, true, 1)
+            INSERT INTO inventory.categories (company_id, name, code, is_active, created_by)
+            VALUES (@companyId, @name, @code, true, 1)
             RETURNING id", (NpgsqlConnection)conn);
         cmd.Parameters.AddWithValue("@companyId", companyId);
         cmd.Parameters.AddWithValue("@name", name);
+        cmd.Parameters.AddWithValue("@code", $"TEST-{Guid.NewGuid():N}");
         var result = await cmd.ExecuteScalarAsync();
         return (long)(result ?? throw new InvalidOperationException("Failed to seed inventory category"));
     }
@@ -90,8 +145,8 @@ public class InventoryRepositoryIntegrationTests : IntegrationTestBase
     {
         using var conn = await ConnectionFactory.CreateConnectionAsync();
         using var cmd = new NpgsqlCommand(@"
-            INSERT INTO inventory.units (company_id, name, abbreviation, is_active, created_by)
-            VALUES (@companyId, @name, @abbreviation, true, 1)
+            INSERT INTO inventory.units (company_id, name, abbreviation, unit_type, is_active, created_by)
+            VALUES (@companyId, @name, @abbreviation, 'quantity', true, 1)
             RETURNING id", (NpgsqlConnection)conn);
         cmd.Parameters.AddWithValue("@companyId", companyId);
         cmd.Parameters.AddWithValue("@name", name);

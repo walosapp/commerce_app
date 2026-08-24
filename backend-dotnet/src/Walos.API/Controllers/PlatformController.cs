@@ -5,12 +5,13 @@ using Walos.Application.DTOs.Platform;
 using Walos.Domain.Entities.Platform;
 using Walos.Domain.Interfaces;
 using Walos.Infrastructure.Services;
+using Walos.Application.Security;
 
 namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/platform")]
-[Authorize]
+[Authorize(Policy = WalosPolicies.TenantManager)]
 public class PlatformController : ControllerBase
 {
     private readonly IPlatformRepository _platformRepo;
@@ -58,6 +59,7 @@ public class PlatformController : ControllerBase
     }
 
     [HttpPut("ai-key")]
+    [Authorize(Policy = WalosPolicies.Settings)]
     public async Task<IActionResult> UpdateAiKey([FromBody] UpdateAiKeyRequest req)
     {
         string? encryptedKey = null;
@@ -81,6 +83,7 @@ public class PlatformController : ControllerBase
     }
 
     [HttpPost("payment-methods")]
+    [Authorize(Policy = WalosPolicies.Settings)]
     public async Task<IActionResult> AddPaymentMethod([FromBody] RegisterPaymentMethodRequest req)
     {
         var method = new PaymentMethod
@@ -103,6 +106,7 @@ public class PlatformController : ControllerBase
     }
 
     [HttpPatch("payment-methods/{id:long}/default")]
+    [Authorize(Policy = WalosPolicies.Settings)]
     public async Task<IActionResult> SetDefault(long id)
     {
         await _platformRepo.SetDefaultPaymentMethodAsync(id, _tenant.CompanyId);
@@ -110,6 +114,7 @@ public class PlatformController : ControllerBase
     }
 
     [HttpDelete("payment-methods/{id:long}")]
+    [Authorize(Policy = WalosPolicies.Settings)]
     public async Task<IActionResult> DeletePaymentMethod(long id)
     {
         await _platformRepo.DeletePaymentMethodAsync(id, _tenant.CompanyId);

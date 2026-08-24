@@ -5,6 +5,7 @@ using Walos.Application.DTOs.Admin;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Users;
 using Walos.Application.Services;
+using Walos.Application.Security;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
 
@@ -12,7 +13,7 @@ namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/admin")]
-[Authorize(Roles = "dev")]
+[Authorize(Policy = WalosPolicies.PlatformAdmin)]
 public class AdminController : ControllerBase
 {
     private readonly IAdminService _adminService;
@@ -102,6 +103,14 @@ public class AdminController : ControllerBase
             return BadRequest(ApiResponse.Fail("La contraseña debe tener al menos 6 caracteres"));
         if (await _usersRepo.EmailExistsAsync(request.Email))
             return Conflict(ApiResponse.Fail("Ya existe un usuario con ese email"));
+
+        var role = await _usersRepo.GetRoleForAssignmentAsync(request.RoleId, request.CompanyId);
+        if (role is null || string.Equals(role.Code, WalosRoles.Dev, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(ApiResponse.Fail("El rol no pertenece al comercio, esta inactivo o no puede asignarse"));
+
+        if (request.BranchId.HasValue
+            && !await _usersRepo.IsActiveBranchInCompanyAsync(request.BranchId.Value, request.CompanyId))
+            return BadRequest(ApiResponse.Fail("La sucursal no pertenece al comercio o esta inactiva"));
 
         var hash = BCrypt.Net.BCrypt.HashPassword(request.Password);
         var user = new User

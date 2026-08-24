@@ -17,9 +17,23 @@ public class FinanceService : IFinanceService
         _logger = logger;
     }
 
-    public async Task<IEnumerable<FinancialCategory>> GetCategoriesAsync(long companyId, string? type = null)
+    public async Task<long?> ResolveBranchAsync(long companyId, long? tenantBranchId, long? requestedBranchId)
     {
-        return await _repository.GetCategoriesAsync(companyId, type);
+        if (tenantBranchId.HasValue &&
+            requestedBranchId.HasValue &&
+            tenantBranchId.Value != requestedBranchId.Value)
+            throw new ValidationException("La sucursal solicitada no coincide con la sucursal autenticada");
+
+        var branchId = tenantBranchId ?? requestedBranchId;
+        if (branchId.HasValue && !await _repository.IsActiveBranchInCompanyAsync(branchId.Value, companyId))
+            throw new NotFoundException("Sucursal");
+
+        return branchId;
+    }
+
+    public async Task<IEnumerable<FinancialCategory>> GetCategoriesAsync(long companyId, string? type = null, long? branchId = null)
+    {
+        return await _repository.GetCategoriesAsync(companyId, type, branchId);
     }
 
     public async Task<FinancialCategory> CreateCategoryAsync(long companyId, long userId, long? branchId, CreateFinancialCategoryRequest request)
@@ -50,7 +64,7 @@ public class FinanceService : IFinanceService
 
     public async Task<FinancialCategory> UpdateCategoryAsync(long companyId, long? branchId, long categoryId, UpdateFinancialCategoryRequest request)
     {
-        var category = await _repository.GetCategoryByIdAsync(categoryId, companyId)
+        var category = await _repository.GetCategoryByIdAsync(categoryId, companyId, branchId, includeGlobal: false)
             ?? throw new NotFoundException("Item financiero no encontrado");
 
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -75,12 +89,14 @@ public class FinanceService : IFinanceService
         category.AutoIncludeInMonth = request.AutoIncludeInMonth;
         category.IsActive = request.IsActive;
 
-        return await _repository.UpdateCategoryAsync(category);
+        return await _repository.UpdateCategoryAsync(category, branchId);
     }
 
-    public async Task DeleteCategoryAsync(long companyId, long categoryId)
+    public async Task DeleteCategoryAsync(long companyId, long categoryId, long? branchId = null)
     {
-        await _repository.SoftDeleteCategoryAsync(categoryId, companyId);
+        var category = await _repository.GetCategoryByIdAsync(categoryId, companyId, branchId, includeGlobal: false)
+            ?? throw new NotFoundException("Item financiero no encontrado");
+        await _repository.SoftDeleteCategoryAsync(category.Id, companyId, branchId);
     }
 
     public async Task<int> InitMonthAsync(long companyId, long userId, long? branchId, InitFinanceMonthRequest request)
@@ -103,8 +119,11 @@ public class FinanceService : IFinanceService
     {
         ValidateEntryRequest(request);
 
-        var category = await _repository.GetCategoryByIdAsync(request.CategoryId, companyId)
+        var category = await _repository.GetCategoryByIdAsync(request.CategoryId, companyId, branchId, includeGlobal: true)
             ?? throw new NotFoundException("Categoria no encontrada");
+
+        if (!category.IsActive)
+            throw new NotFoundException("Categoria no encontrada");
 
         if (!string.Equals(category.Type, request.Type, StringComparison.OrdinalIgnoreCase))
             throw new ValidationException("La categoria no coincide con el tipo seleccionado");
@@ -133,13 +152,16 @@ public class FinanceService : IFinanceService
 
     public async Task<FinancialEntry> UpdateEntryAsync(long companyId, long? branchId, long entryId, UpdateFinancialEntryRequest request)
     {
-        var existing = await _repository.GetEntryByIdAsync(entryId, companyId)
+        var existing = await _repository.GetEntryByIdAsync(entryId, companyId, branchId)
             ?? throw new NotFoundException("Movimiento no encontrado");
 
         ValidateEntryRequest(request);
 
-        var category = await _repository.GetCategoryByIdAsync(request.CategoryId, companyId)
+        var category = await _repository.GetCategoryByIdAsync(request.CategoryId, companyId, branchId, includeGlobal: true)
             ?? throw new NotFoundException("Categoria no encontrada");
+
+        if (!category.IsActive)
+            throw new NotFoundException("Categoria no encontrada");
 
         if (!string.Equals(category.Type, request.Type, StringComparison.OrdinalIgnoreCase))
             throw new ValidationException("La categoria no coincide con el tipo seleccionado");
@@ -160,22 +182,22 @@ public class FinanceService : IFinanceService
         if (request.IsManual.HasValue)
             existing.IsManual = request.IsManual.Value;
 
-        return await _repository.UpdateEntryAsync(existing);
+        return await _repository.UpdateEntryAsync(existing, branchId);
     }
 
-    public async Task DeleteEntryAsync(long companyId, long entryId)
+    public async Task DeleteEntryAsync(long companyId, long entryId, long? branchId = null)
     {
-        var existing = await _repository.GetEntryByIdAsync(entryId, companyId)
+        var existing = await _repository.GetEntryByIdAsync(entryId, companyId, branchId)
             ?? throw new NotFoundException("Movimiento no encontrado");
 
         if (!existing.IsManual)
         {
             existing.Status = "skipped";
-            await _repository.UpdateEntryAsync(existing);
+            await _repository.UpdateEntryAsync(existing, branchId);
             return;
         }
 
-        await _repository.SoftDeleteEntryAsync(entryId, companyId);
+        await _repository.SoftDeleteEntryAsync(entryId, companyId, branchId);
     }
 
     public async Task<FinancialSummary> GetSummaryAsync(long companyId, long? branchId, DateTime? startDate, DateTime? endDate)

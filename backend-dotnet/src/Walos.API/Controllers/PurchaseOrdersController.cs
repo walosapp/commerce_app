@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Suppliers;
 using Walos.Application.Services;
+using Walos.Application.Security;
+using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
@@ -24,28 +26,34 @@ public class PurchaseOrdersController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] long? supplierId = null)
     {
-        var items = (await _service.GetAllAsync(_tenant.CompanyId, supplierId)).ToList();
+        var items = (await _service.GetAllAsync(_tenant.CompanyId, _tenant.BranchId, supplierId)).ToList();
         return Ok(ApiResponse<IEnumerable<PurchaseOrderResponse>>.Ok(items, count: items.Count));
     }
 
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetById(long id)
     {
-        var order = await _service.GetByIdAsync(id, _tenant.CompanyId);
+        var order = await _service.GetByIdAsync(id, _tenant.CompanyId, _tenant.BranchId);
         if (order is null) return NotFound(ApiResponse.Fail("Pedido no encontrado"));
         return Ok(ApiResponse<PurchaseOrderResponse>.Ok(order));
     }
 
     [HttpPost]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> Create([FromBody] CreatePurchaseOrderRequest request)
     {
-        var order = await _service.CreateAsync(_tenant.CompanyId, _tenant.UserId, request);
+        if (_tenant.BranchId.HasValue && request.BranchId != _tenant.BranchId.Value)
+            throw new ValidationException("La sucursal del pedido no coincide con la sucursal autenticada");
+
+        // Company-wide users may select a branch; the repository validates it inside
+        // the same transaction as the inserts.
+        var branchId = _tenant.BranchId ?? request.BranchId;
+        var order = await _service.CreateAsync(_tenant.CompanyId, branchId, _tenant.UserId, request);
         return Ok(ApiResponse<PurchaseOrderResponse>.Ok(order, "Pedido creado exitosamente"));
     }
 
     [HttpPost("{id:long}/receive")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> Receive(long id, [FromBody] ReceivePurchaseOrderRequest request)
     {
         try
@@ -62,10 +70,10 @@ public class PurchaseOrdersController : ControllerBase
     }
 
     [HttpPost("{id:long}/cancel")]
-    [Authorize(Roles = "dev,admin,manager")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> Cancel(long id)
     {
-        var ok = await _service.CancelAsync(id, _tenant.CompanyId);
+        var ok = await _service.CancelAsync(id, _tenant.CompanyId, _tenant.BranchId);
         if (!ok) return BadRequest(ApiResponse.Fail("No se puede cancelar. El pedido ya fue recibido o no existe."));
         return Ok(ApiResponse.Ok("Pedido cancelado"));
     }

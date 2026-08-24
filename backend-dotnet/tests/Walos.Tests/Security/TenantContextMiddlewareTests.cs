@@ -52,4 +52,41 @@ public class TenantContextMiddlewareTests
         Assert.Equal(string.Empty, tenant.Role);
         Assert.Equal(string.Empty, tenant.Email);
     }
+
+    [Theory]
+    [InlineData(null, "20", "admin", "30")]
+    [InlineData("0", "20", "admin", "30")]
+    [InlineData("10", "bad", "admin", "30")]
+    [InlineData("10", "20", "", "30")]
+    [InlineData("10", "20", "admin", "bad")]
+    public async Task InvokeAsync_Should_Reject_Authenticated_Principal_With_Malformed_Tenant_Claims(
+        string? companyId,
+        string userId,
+        string role,
+        string branchId)
+    {
+        var claims = new List<Claim>
+        {
+            new("userId", userId),
+            new("branchId", branchId),
+            new(ClaimTypes.Role, role),
+        };
+        if (companyId is not null) claims.Add(new Claim("companyId", companyId));
+
+        var nextCalled = false;
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Bearer")),
+        };
+        var middleware = new TenantContextMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(context, new TenantContext());
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
+        Assert.False(nextCalled);
+    }
 }

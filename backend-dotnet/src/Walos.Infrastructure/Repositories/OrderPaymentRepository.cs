@@ -62,7 +62,7 @@ public class OrderPaymentRepository : IOrderPaymentRepository
         return await connection.QueryAsync<OrderPayment>(sql, new { OrderId = orderId, CompanyId = companyId });
     }
 
-    public async Task<IEnumerable<PaymentMethodSummary>> GetSummaryByCashRegisterAsync(long cashRegisterId, long companyId)
+    public async Task<IEnumerable<PaymentMethodSummary>> GetSummaryByCashRegisterAsync(long cashRegisterId, long companyId, long branchId)
     {
         using var connection = await _connectionFactory.CreateConnectionAsync();
 
@@ -75,10 +75,16 @@ public class OrderPaymentRepository : IOrderPaymentRepository
             INNER JOIN sales.orders o ON op.order_id = o.id AND o.company_id = op.company_id
             WHERE o.cash_register_id = @CashRegisterId 
               AND op.company_id = @CompanyId
+              AND o.branch_id = @BranchId
             GROUP BY op.method
             ORDER BY TotalAmount DESC";
 
-        return await connection.QueryAsync<PaymentMethodSummary>(sql, new { CashRegisterId = cashRegisterId, CompanyId = companyId });
+        return await connection.QueryAsync<PaymentMethodSummary>(sql, new
+        {
+            CashRegisterId = cashRegisterId,
+            CompanyId = companyId,
+            BranchId = branchId
+        });
     }
 
     public async Task<IEnumerable<PaymentMethodSummary>> GetSummaryByDateRangeAsync(long companyId, long branchId, DateTime dateFrom, DateTime dateTo)

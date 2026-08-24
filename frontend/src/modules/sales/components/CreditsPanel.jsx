@@ -18,6 +18,7 @@ const CreditRow = ({ credit, onPayment, onCancel }) => {
   const [expanded, setExpanded] = useState(false);
   const [amount, setAmount]     = useState('');
   const [notes, setNotes]       = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paying, setPaying]     = useState(false);
 
   const handlePay = async () => {
@@ -25,7 +26,7 @@ const CreditRow = ({ credit, onPayment, onCancel }) => {
     if (!val || val <= 0) { toast.error('Ingresa un monto válido'); return; }
     setPaying(true);
     try {
-      await onPayment(credit.id, { amount: val, notes });
+      await onPayment(credit.id, { amount: val, paymentMethod, notes });
       setAmount(''); setNotes('');
     } finally { setPaying(false); }
   };
@@ -92,6 +93,14 @@ const CreditRow = ({ credit, onPayment, onCancel }) => {
             <div className="space-y-2">
               <p className="text-xs font-semibold text-gray-600 uppercase">Registrar abono</p>
               <div className="flex gap-2">
+                <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
+                  className="input text-sm">
+                  <option value="cash">Efectivo</option>
+                  <option value="card">Tarjeta</option>
+                  <option value="transfer">Transferencia</option>
+                  <option value="nequi">Nequi</option>
+                  <option value="other">Otro</option>
+                </select>
                 <div className="relative flex-1">
                   <DollarSign size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input type="number" min="0" step="100" value={amount}

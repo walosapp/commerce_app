@@ -1,6 +1,7 @@
 using Dapper;
 using Walos.Application.Services;
 using Walos.Domain.Entities;
+using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
 
 namespace Walos.Infrastructure.Repositories;
@@ -23,8 +24,16 @@ public class RecipeRepository : IRecipeRepository
                 p.name AS IngredientName,
                 u.abbreviation AS UnitAbbreviation, u.name AS UnitName
             FROM inventory.recipes r
-            JOIN inventory.products p ON p.id = r.ingredient_id
-            LEFT JOIN inventory.units u ON u.id = r.unit_id
+            JOIN inventory.products p
+              ON p.id = r.ingredient_id
+             AND p.company_id = r.company_id
+             AND p.is_active = TRUE
+             AND p.deleted_at IS NULL
+            LEFT JOIN inventory.units u
+              ON u.id = r.unit_id
+             AND u.company_id = r.company_id
+             AND u.is_active = TRUE
+             AND u.deleted_at IS NULL
             WHERE r.product_id = @ProductId AND r.company_id = @CompanyId
             ORDER BY p.name";
         return await conn.QueryAsync<Recipe>(sql, new { ProductId = productId, CompanyId = companyId });
@@ -35,17 +44,36 @@ public class RecipeRepository : IRecipeRepository
         using var conn = await _db.CreateConnectionAsync();
         const string sql = @"
             INSERT INTO inventory.recipes (company_id, product_id, ingredient_id, quantity, unit_id, notes)
-            VALUES (@CompanyId, @ProductId, @IngredientId, @Quantity, @UnitId, @Notes)
+            SELECT @CompanyId, @ProductId, @IngredientId, @Quantity, @UnitId, @Notes
+            WHERE EXISTS (
+                SELECT 1 FROM inventory.products p
+                WHERE p.id = @ProductId AND p.company_id = @CompanyId
+                  AND p.is_active = TRUE AND p.deleted_at IS NULL
+            )
+              AND EXISTS (
+                SELECT 1 FROM inventory.products i
+                WHERE i.id = @IngredientId AND i.company_id = @CompanyId
+                  AND i.is_active = TRUE AND i.deleted_at IS NULL
+            )
+              AND (
+                @UnitId IS NULL OR EXISTS (
+                    SELECT 1 FROM inventory.units u
+                    WHERE u.id = @UnitId AND u.company_id = @CompanyId
+                      AND u.is_active = TRUE AND u.deleted_at IS NULL
+                )
+              )
             ON CONFLICT (product_id, ingredient_id) DO UPDATE
                 SET quantity = EXCLUDED.quantity,
                     unit_id  = EXCLUDED.unit_id,
                     notes    = EXCLUDED.notes,
                     updated_at = NOW()
+                WHERE inventory.recipes.company_id = EXCLUDED.company_id
             RETURNING id AS Id, company_id AS CompanyId, product_id AS ProductId,
                       ingredient_id AS IngredientId, quantity AS Quantity,
                       unit_id AS UnitId, notes AS Notes,
                       created_at AS CreatedAt, updated_at AS UpdatedAt";
-        return await conn.QuerySingleAsync<Recipe>(sql, recipe);
+        return await conn.QueryFirstOrDefaultAsync<Recipe>(sql, recipe)
+            ?? throw new NotFoundException("Producto, ingrediente o unidad");
     }
 
     public async Task<bool> RemoveIngredientAsync(long productId, long ingredientId, long companyId)
@@ -82,7 +110,11 @@ public class RecipeRepository : IRecipeRepository
                 r.quantity AS Quantity,
                 r.unit_id AS UnitId
             FROM inventory.recipes r
-            JOIN inventory.products p ON p.id = r.product_id
+            JOIN inventory.products p
+              ON p.id = r.product_id
+             AND p.company_id = r.company_id
+             AND p.is_active = TRUE
+             AND p.deleted_at IS NULL
             WHERE r.company_id = @CompanyId
               AND r.product_id = ANY(@ProductIds)
               AND p.product_type = 'prepared'";

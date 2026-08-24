@@ -18,6 +18,7 @@ public class SalesService : ISalesService
     private readonly IOrderPaymentRepository _orderPaymentRepo;
     private readonly IUsersRepository _usersRepo;
     private readonly IRefundRepository _refundRepo;
+    private readonly ICheckoutRepository _checkoutRepo;
     private readonly ILogger<SalesService> _logger;
 
     public SalesService(
@@ -30,6 +31,7 @@ public class SalesService : ISalesService
         IOrderPaymentRepository orderPaymentRepo,
         IUsersRepository usersRepo,
         IRefundRepository refundRepo,
+        ICheckoutRepository checkoutRepo,
         ILogger<SalesService> logger)
     {
         _salesRepo = salesRepo;
@@ -41,7 +43,34 @@ public class SalesService : ISalesService
         _orderPaymentRepo = orderPaymentRepo;
         _usersRepo = usersRepo;
         _refundRepo = refundRepo;
+        _checkoutRepo = checkoutRepo;
         _logger = logger;
+    }
+
+    public async Task<long?> ResolveBranchAsync(
+        long companyId,
+        long? tenantBranchId,
+        long? requestedBranchId,
+        bool required = false)
+    {
+        if (tenantBranchId.HasValue)
+        {
+            if (requestedBranchId.HasValue && requestedBranchId.Value != tenantBranchId.Value)
+                throw new ValidationException("La sucursal solicitada no corresponde a la sesión autenticada");
+
+            return tenantBranchId.Value;
+        }
+
+        if (requestedBranchId.HasValue
+            && !await _inventoryRepo.IsActiveBranchInCompanyAsync(requestedBranchId.Value, companyId))
+        {
+            throw new NotFoundException("Sucursal no encontrada");
+        }
+
+        if (required && !requestedBranchId.HasValue)
+            throw new ValidationException("ID de sucursal requerido");
+
+        return requestedBranchId;
     }
 
     public async Task<IEnumerable<SalesTable>> GetActiveTablesAsync(long companyId, long branchId)
@@ -51,15 +80,7 @@ public class SalesService : ISalesService
 
     public async Task<CreateTableResult> CreateTableAsync(long companyId, long branchId, long userId, CreateTableRequest request)
     {
-        if (request.Items.Count == 0)
-            throw new ValidationException("Debe agregar al menos un producto");
-
-        await ValidateItemAvailabilityAsync(
-            companyId,
-            branchId,
-            request.Items
-                .GroupBy(item => item.ProductId)
-                .Select(group => (ProductId: group.Key, Quantity: group.Sum(item => item.Quantity))));
+        var items = await ValidateAndNormalizeSaleItemsAsync(companyId, branchId, request.Items);
 
         var tableNumber = await _salesRepo.GetNextTableNumberAsync(companyId, branchId);
 
@@ -75,7 +96,7 @@ public class SalesService : ISalesService
 
         var createdTable = await _salesRepo.CreateTableAsync(table);
 
-        var subtotal = request.Items.Sum(i => i.Quantity * i.UnitPrice);
+        var subtotal = items.Sum(item => item.Quantity * item.UnitPrice);
         var orderNumber = $"ORD-{createdTable.Id}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
 
         var order = new Order
@@ -91,14 +112,6 @@ public class SalesService : ISalesService
             FinalTotalPaid = subtotal,
             CreatedBy = userId
         };
-
-        var items = request.Items.Select(i => new OrderItem
-        {
-            ProductId = i.ProductId,
-            ProductName = i.ProductName,
-            Quantity = i.Quantity,
-            UnitPrice = i.UnitPrice
-        }).ToList();
 
         await _salesRepo.CreateOrderAsync(order, items);
 
@@ -118,270 +131,49 @@ public class SalesService : ISalesService
 
     public async Task<InvoiceResult> InvoiceTableAsync(long companyId, long branchId, long userId, long tableId, InvoiceTableRequest request)
     {
-        var table = await _salesRepo.GetTableByIdAsync(tableId, companyId)
-            ?? throw new NotFoundException("Mesa no encontrada");
-
-        if (table.Status != "open")
-            throw new BusinessException("La mesa ya fue facturada o cancelada");
-
-        var order = await _salesRepo.GetOrderByTableIdAsync(tableId, companyId)
-            ?? throw new BusinessException("No hay orden asociada a esta mesa");
-
-        var items = (await _salesRepo.GetOrderItemsAsync(order.Id, companyId)).ToList();
-        var operations = await _companyRepo.GetCompanyOperationsSettingsAsync(companyId);
-        var subtotal = order.Subtotal > 0 ? order.Subtotal : items.Sum(i => i.Quantity * i.UnitPrice);
-        var discountType = (request.DiscountType ?? "none").Trim().ToLowerInvariant();
-        var discountValue = Math.Round(request.DiscountValue, 2);
-        var discountAmount = 0m;
-        var discountPercent = 0m;
-
-        if (discountType is not ("none" or "fixed" or "percentage"))
-            throw new ValidationException("Tipo de descuento no permitido");
-
-        if (discountType != "none")
+        var result = await _checkoutRepo.ProcessAsync(new CheckoutCommand
         {
-            if (operations is null)
-                throw new BusinessException("No fue posible cargar reglas operativas");
-
-            if (!operations.ManualDiscountEnabled)
-                throw new BusinessException("El descuento manual esta deshabilitado en configuracion");
-
-            if (discountType == "percentage")
-            {
-                if (discountValue < 0 || discountValue > operations.MaxDiscountPercent)
-                    throw new ValidationException($"El descuento porcentual no puede superar {operations.MaxDiscountPercent:N2}%");
-
-                discountPercent = discountValue;
-                discountAmount = Math.Round(subtotal * (discountPercent / 100m), 2);
-            }
-            else
-            {
-                if (discountValue < 0 || discountValue > operations.MaxDiscountAmount)
-                    throw new ValidationException($"El descuento fijo no puede superar {operations.MaxDiscountAmount:N0}");
-
-                discountAmount = Math.Round(discountValue, 2);
-                discountPercent = subtotal > 0 ? Math.Round((discountAmount / subtotal) * 100m, 2) : 0;
-            }
-
-            if (discountAmount > subtotal)
-                throw new ValidationException("El descuento no puede ser mayor al subtotal");
-
-            if (operations.DiscountRequiresOverride && discountPercent >= operations.DiscountOverrideThresholdPercent && !request.OverrideConfirmed)
-                throw new ValidationException($"Este descuento requiere confirmacion adicional desde {operations.DiscountOverrideThresholdPercent:N2}%");
-        }
-
-        var finalTotalPaid = Math.Round(subtotal - discountAmount, 2);
-        if (request.FinalTotalPaid > 0 && Math.Abs(request.FinalTotalPaid - finalTotalPaid) > 1)
-            throw new ValidationException("El total final no coincide con el descuento aplicado");
-
-        // Validar caja abierta (si la compania lo requiere)
-        CashRegister? activeRegister = null;
-        if (operations?.RequireCashRegister ?? true) // Default: requiere caja
-        {
-            activeRegister = await _cashRegisterRepo.GetActiveByUserAsync(companyId, branchId, userId);
-            if (activeRegister == null)
-                throw new BusinessException("Debes abrir una caja antes de facturar");
-        }
-
-        // Validar pagos: deben sumar al total cobrado (actualPaid)
-        var actualPaid = (request.HasCredit && request.CreditAmountPaid >= 0 && request.CreditAmountPaid < finalTotalPaid)
-            ? Math.Round(request.CreditAmountPaid, 2)
-            : finalTotalPaid;
-
-        var expectedPayment = actualPaid + (request.TipIncluded ? request.TipAmount : 0);
-        var paymentLines = request.Payments?
-            .Where(p => p.Amount > 0)
-            .ToList() ?? new List<PaymentLineDto>();
-
-        if (expectedPayment > 0)
-        {
-            if (paymentLines.Count == 0)
-                throw new ValidationException("Debe especificar al menos un metodo de pago");
-
-            var paymentsSum = paymentLines.Sum(p => p.Amount);
-            if (Math.Abs(paymentsSum - expectedPayment) > 1)
-                throw new ValidationException($"La suma de los pagos ({paymentsSum:N2}) no coincide con el total a cobrar ({expectedPayment:N2})");
-        }
-        else if (paymentLines.Count > 0)
-        {
-            throw new ValidationException("No debe registrar pagos cuando toda la cuenta queda a credito");
-        }
-
-        // Calcular descuentos de insumos para productos preparados (recetas)
-        var soldTuples = items.Select(i => (i.ProductId, i.Quantity));
-        var ingredientDeductions = (await _recipeRepo.GetAllIngredientsForSaleAsync(soldTuples, companyId)).ToList();
-
-        foreach (var item in items)
-        {
-            try
-            {
-                var product = await _inventoryRepo.GetProductByIdAsync(item.ProductId, companyId);
-                var isPrepared = product?.ProductType == "prepared";
-
-                if (!isPrepared)
-                {
-                    // Producto simple o insumo: descuenta stock directo
-                    await _inventoryRepo.UpdateStockAsync(branchId, item.ProductId, -item.Quantity, companyId);
-                    await _inventoryRepo.CreateMovementAsync(new Movement
-                    {
-                        CompanyId = companyId, BranchId = branchId,
-                        ProductId = item.ProductId, MovementType = "sale",
-                        Quantity = item.Quantity, UnitCost = item.UnitPrice,
-                        Notes = $"Venta Mesa {table.TableNumber} - {order.OrderNumber}",
-                        CreatedBy = userId
-                    });
-                }
-                else
-                {
-                    // Producto preparado: no descuenta su propio stock, sino sus insumos
-                    _logger.LogInformation("Producto preparado {Name} vendido x{Qty} — descontando insumos", product!.Name, item.Quantity);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Error descontando stock para producto {ProductId}", item.ProductId);
-            }
-        }
-
-        // Descontar insumos de la receta
-        foreach (var deduction in ingredientDeductions)
-        {
-            try
-            {
-                await _inventoryRepo.UpdateStockAsync(branchId, deduction.IngredientId, -deduction.Quantity, companyId);
-                await _inventoryRepo.CreateMovementAsync(new Movement
-                {
-                    CompanyId = companyId, BranchId = branchId,
-                    ProductId = deduction.IngredientId, MovementType = "recipe_consumption",
-                    Quantity = deduction.Quantity, UnitCost = 0,
-                    Notes = $"Consumo receta - Venta Mesa {table.TableNumber} - {order.OrderNumber}",
-                    CreatedBy = userId
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Error descontando insumo {IngredientId} de receta", deduction.IngredientId);
-            }
-        }
-
-        await _salesRepo.UpdateOrderInvoiceSummaryAsync(
-            order.Id,
-            companyId,
-            discountType == "none" ? null : discountType,
-            discountType == "none" ? 0 : discountValue,
-            discountAmount,
-            actualPaid,
-            Math.Max(1, request.SplitCount),
-            activeRegister?.Id,
-            ResolvePaymentMethod(paymentLines),
-            request.TipAmount,
-            request.TipIncluded);
-        await _salesRepo.UpdateOrderStatusAsync(order.Id, companyId, "completed");
-        await _salesRepo.UpdateTableStatusAsync(tableId, companyId, "invoiced");
-
-        // Registrar pagos y asociar a caja
-        if (activeRegister != null)
-        {
-            // Registrar cada pago individual
-            foreach (var payment in paymentLines)
-            {
-                await _orderPaymentRepo.CreateAsync(new OrderPayment
-                {
-                    CompanyId = companyId,
-                    OrderId = order.Id,
-                    Method = payment.Method.ToLowerInvariant(),
-                    Amount = payment.Amount,
-                    Reference = payment.Reference,
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
-
-            // Calcular totales por método de pago para actualizar caja
-            var totalCashSales = paymentLines
-                .Where(p => p.Method.Equals("cash", StringComparison.OrdinalIgnoreCase))
-                .Sum(p => p.Amount);
-            var totalCardSales = paymentLines
-                .Where(p => p.Method.Equals("card", StringComparison.OrdinalIgnoreCase))
-                .Sum(p => p.Amount);
-            var totalTransferSales = paymentLines
-                .Where(p => p.Method.Equals("transfer", StringComparison.OrdinalIgnoreCase))
-                .Sum(p => p.Amount);
-            var totalNequiSales = paymentLines
-                .Where(p => p.Method.Equals("nequi", StringComparison.OrdinalIgnoreCase))
-                .Sum(p => p.Amount);
-            var totalOtherSales = paymentLines
-                .Where(p => !new[] { "cash", "card", "transfer", "nequi" }.Contains(p.Method.ToLowerInvariant()))
-                .Sum(p => p.Amount);
-
-            // Actualizar totales de la caja (incrementamos en 1 el orderCount)
-            await _cashRegisterRepo.UpdateTotalsAsync(
-                activeRegister.Id,
-                companyId,
-                actualPaid,
-                totalCashSales,
-                totalCardSales,
-                totalTransferSales + totalNequiSales, // Agrupar transferencias digitales
-                totalOtherSales,
-                discountAmount,
-                request.HasCredit ? Math.Round(finalTotalPaid - actualPaid, 2) : 0,
-                request.TipAmount,
-                1); // orderCount increment
-        }
-
-        // Crear registro de credito si aplica
-        long? creditId = null;
-        decimal? creditAmount = null;
-        if (request.HasCredit && actualPaid < finalTotalPaid && actualPaid >= 0)
-        {
-            var remaining = Math.Round(finalTotalPaid - actualPaid, 2);
-            var customerName = !string.IsNullOrWhiteSpace(request.CreditCustomerName)
-                ? request.CreditCustomerName.Trim()
-                : table.Name ?? $"Mesa {table.TableNumber}";
-
-            var credit = await _creditRepo.CreateCreditAsync(new Domain.Entities.Credit
-            {
-                CompanyId = companyId,
-                BranchId = branchId,
-                OrderId = order.Id,
-                CustomerName = customerName,
-                OrderNumber = order.OrderNumber,
-                OriginalTotal = finalTotalPaid,
-                AmountPaid = actualPaid,
-                CreditAmount = remaining,
-                Status = "pending",
-                Notes = request.CreditNotes,
-                CreatedBy = userId
-            });
-
-            creditId = credit.Id;
-            creditAmount = remaining;
-            _logger.LogInformation("Credito {CreditId} creado por {Amount} para '{Customer}'",
-                credit.Id, remaining, customerName);
-        }
-
-        _logger.LogInformation("Mesa {TableNumber} facturada. Order: {OrderNumber}, Total: {Total}",
-            table.TableNumber, order.OrderNumber, actualPaid);
+            CompanyId = companyId,
+            BranchId = branchId,
+            UserId = userId,
+            TableId = tableId,
+            DiscountType = request.DiscountType,
+            DiscountValue = request.DiscountValue,
+            SubmittedFinalTotal = request.FinalTotalPaid,
+            SplitCount = request.SplitCount,
+            OverrideConfirmed = request.OverrideConfirmed,
+            HasCredit = request.HasCredit,
+            CreditAmountPaid = request.CreditAmountPaid,
+            CreditCustomerName = request.CreditCustomerName,
+            CreditNotes = request.CreditNotes,
+            TipAmount = request.TipAmount,
+            TipIncluded = request.TipIncluded,
+            Payments = (request.Payments ?? [])
+                .Select(payment => new CheckoutPayment(payment.Method, payment.Amount, payment.Reference))
+                .ToList()
+        });
 
         return new InvoiceResult
         {
-            TableNumber = table.TableNumber,
-            OrderNumber = order.OrderNumber,
-            Subtotal = subtotal,
-            DiscountType = discountType,
-            DiscountValue = discountType == "none" ? 0 : discountValue,
-            DiscountAmount = discountAmount,
-            Total = actualPaid,
-            FinalTotalPaid = actualPaid,
-            TipAmount = request.TipAmount,
-            SplitCount = Math.Max(1, request.SplitCount),
-            Items = items,
-            Payments = paymentLines,
-            InvoicedAt = DateTime.UtcNow,
-            CreditId = creditId,
-            CreditAmount = creditAmount
+            TableNumber = result.TableNumber,
+            OrderNumber = result.OrderNumber,
+            Subtotal = result.Subtotal,
+            DiscountType = result.DiscountType,
+            DiscountValue = result.DiscountValue,
+            DiscountAmount = result.DiscountAmount,
+            Total = result.AmountPaid,
+            FinalTotalPaid = result.AmountPaid,
+            TipAmount = result.TipAmount,
+            SplitCount = result.SplitCount,
+            Items = result.Items,
+            Payments = result.Payments
+                .Select(payment => new PaymentLineDto(payment.Method, payment.Amount, payment.Reference))
+                .ToList(),
+            InvoicedAt = result.InvoicedAt,
+            CreditId = result.CreditId,
+            CreditAmount = result.CreditAmount
         };
     }
-
     public async Task CancelTableAsync(long companyId, long tableId)
     {
         var table = await _salesRepo.GetTableByIdAsync(tableId, companyId)
@@ -396,15 +188,29 @@ public class SalesService : ISalesService
         _logger.LogInformation("Mesa {TableNumber} cancelada", table.TableNumber);
     }
 
+    public async Task CancelTableAsync(long companyId, long? branchId, long tableId)
+    {
+        var table = await _salesRepo.GetTableByIdAsync(tableId, companyId, branchId)
+            ?? throw new NotFoundException("Mesa no encontrada");
+
+        var order = await _salesRepo.GetOrderByTableIdAsync(tableId, companyId, branchId);
+        if (order != null)
+            await _salesRepo.UpdateOrderStatusAsync(order.Id, companyId, branchId, "cancelled");
+
+        await _salesRepo.UpdateTableStatusAsync(tableId, companyId, branchId, "cancelled");
+
+        _logger.LogInformation("Mesa {TableNumber} cancelada", table.TableNumber);
+    }
+
     public async Task UpdateItemQuantityAsync(long companyId, long branchId, long itemId, UpdateItemQuantityRequest request)
     {
-        if (request.Quantity < 0)
-            throw new ValidationException("La cantidad no puede ser negativa");
+        if (request.Quantity <= 0)
+            throw new ValidationException("La cantidad debe ser mayor que cero");
 
-        var existingItem = await _salesRepo.GetOrderItemByIdAsync(itemId, companyId)
+        var existingItem = await _salesRepo.GetOrderItemByIdAsync(itemId, companyId, branchId)
             ?? throw new NotFoundException("Item no encontrado");
 
-        var order = await _salesRepo.GetOrderByIdAsync(existingItem.OrderId, companyId)
+        var order = await _salesRepo.GetOrderByIdAsync(existingItem.OrderId, companyId, branchId)
             ?? throw new NotFoundException("Orden no encontrada");
 
         var delta = request.Quantity - existingItem.Quantity;
@@ -416,67 +222,32 @@ public class SalesService : ISalesService
                 new[] { (ProductId: existingItem.ProductId, Quantity: delta) });
         }
 
-        if (request.Quantity == 0)
+        await _checkoutRepo.UpdateItemQuantityAsync(new UpdateOrderItemQuantityCommand
         {
-            await _salesRepo.DeleteOrderItemAsync(itemId, companyId);
-        }
-        else
-        {
-            await _salesRepo.UpdateOrderItemQuantityAsync(itemId, companyId, request.Quantity);
-        }
-
-        if (request.OrderId > 0)
-            await _salesRepo.RecalculateOrderTotalAsync(request.OrderId, companyId);
+            CompanyId = companyId,
+            BranchId = branchId,
+            OrderItemId = itemId,
+            Quantity = request.Quantity
+        });
     }
 
-    public async Task AddItemsToTableAsync(long companyId, long tableId, List<CreateTableItemDto> items)
+    public async Task AddItemsToTableAsync(long companyId, long branchId, long tableId, List<CreateTableItemDto> items)
     {
-        var table = await _salesRepo.GetTableByIdAsync(tableId, companyId)
-            ?? throw new NotFoundException("Mesa no encontrada");
-
-        if (table.Status != "open")
-            throw new BusinessException("La mesa no esta abierta");
-
-        var order = await _salesRepo.GetOrderByTableIdAsync(tableId, companyId)
-            ?? throw new BusinessException("No hay orden asociada a esta mesa");
-
-        await ValidateItemAvailabilityAsync(
-            companyId,
-            order.BranchId,
-            items
-                .GroupBy(item => item.ProductId)
-                .Select(group => (ProductId: group.Key, Quantity: group.Sum(item => item.Quantity))));
-
-        var existingItems = (await _salesRepo.GetOrderItemsAsync(order.Id, companyId)).ToList();
-
-        foreach (var item in items)
+        var normalizedItems = await ValidateAndNormalizeSaleItemsAsync(companyId, branchId, items);
+        foreach (var item in normalizedItems)
         {
-            var existingItem = existingItems.FirstOrDefault(existing => existing.ProductId == item.ProductId);
-
-            if (existingItem is not null)
-            {
-                await _salesRepo.UpdateOrderItemQuantityAsync(existingItem.Id, companyId, existingItem.Quantity + item.Quantity);
-                existingItem.Quantity += item.Quantity;
-                continue;
-            }
-
-            var newItem = new OrderItem
-            {
-                CompanyId = companyId,
-                OrderId = order.Id,
-                ProductId = item.ProductId,
-                ProductName = item.ProductName,
-                Quantity = item.Quantity,
-                UnitPrice = item.UnitPrice
-            };
-
-            await _salesRepo.AddOrderItemAsync(newItem);
-            existingItems.Add(newItem);
+            item.CompanyId = companyId;
         }
 
-        await _salesRepo.RecalculateOrderTotalAsync(order.Id, companyId);
+        await _checkoutRepo.AddItemsAsync(new AddOrderItemsCommand
+        {
+            CompanyId = companyId,
+            BranchId = branchId,
+            TableId = tableId,
+            Items = normalizedItems
+        });
 
-        _logger.LogInformation("Agregados {Count} productos a Mesa {TableNumber}", items.Count, table.TableNumber);
+        _logger.LogInformation("Agregados {Count} productos a Mesa {TableId}", normalizedItems.Count, tableId);
     }
 
     public async Task RenameTableAsync(long companyId, long tableId, string name)
@@ -496,15 +267,43 @@ public class SalesService : ISalesService
         _logger.LogInformation("Mesa {TableId} renombrada a '{Name}'", tableId, name.Trim());
     }
 
-    public async Task<ReceiptData> GetReceiptAsync(long companyId, long orderId)
+    public async Task RenameTableAsync(long companyId, long? branchId, long tableId, string name)
     {
-        var order = await _salesRepo.GetOrderByIdAsync(orderId, companyId)
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ValidationException("El nombre no puede estar vacío");
+        if (name.Length > 100)
+            throw new ValidationException("El nombre no puede superar 100 caracteres");
+
+        var table = await _salesRepo.GetTableByIdAsync(tableId, companyId, branchId)
+            ?? throw new NotFoundException("Mesa no encontrada");
+
+        if (table.Status != "open")
+            throw new BusinessException("Solo se puede renombrar una mesa abierta");
+
+        await _salesRepo.RenameTableAsync(tableId, companyId, branchId, name.Trim());
+        _logger.LogInformation("Mesa {TableId} renombrada a '{Name}'", tableId, name.Trim());
+    }
+
+    public async Task<IEnumerable<OrderItem>> GetOrderItemsAsync(long companyId, long? branchId, long orderId)
+    {
+        _ = await _salesRepo.GetOrderByIdAsync(orderId, companyId, branchId)
+            ?? throw new NotFoundException("Orden no encontrada");
+
+        return await _salesRepo.GetOrderItemsAsync(orderId, companyId, branchId);
+    }
+
+    public async Task<ReceiptData> GetReceiptAsync(long companyId, long orderId)
+        => await GetReceiptAsync(companyId, null, orderId);
+
+    public async Task<ReceiptData> GetReceiptAsync(long companyId, long? branchId, long orderId)
+    {
+        var order = await _salesRepo.GetOrderByIdAsync(orderId, companyId, branchId)
             ?? throw new NotFoundException("Orden no encontrada");
 
         var company = await _companyRepo.GetCompanySettingsAsync(companyId);
-        var items = (await _salesRepo.GetOrderItemsAsync(orderId, companyId)).ToList();
+        var items = (await _salesRepo.GetOrderItemsAsync(orderId, companyId, branchId)).ToList();
         var payments = (await _orderPaymentRepo.GetByOrderAsync(orderId, companyId)).ToList();
-        var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId);
+        var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId, branchId);
 
         var cashierName = "Cajero";
         if (order.CreatedBy.HasValue)
@@ -517,7 +316,7 @@ public class SalesService : ISalesService
         bool hasCredit = false;
         decimal? creditAmount = null;
         string? creditCustomerName = null;
-        var credits = await _creditRepo.GetCreditsAsync(companyId, null, order.OrderNumber);
+        var credits = await _creditRepo.GetCreditsAsync(companyId, order.BranchId, null, order.OrderNumber);
         var credit = credits.FirstOrDefault();
         if (credit != null)
         {
@@ -554,12 +353,15 @@ public class SalesService : ISalesService
     }
 
     public async Task<KitchenTicketData> GetKitchenTicketAsync(long companyId, long orderId)
+        => await GetKitchenTicketAsync(companyId, null, orderId);
+
+    public async Task<KitchenTicketData> GetKitchenTicketAsync(long companyId, long? branchId, long orderId)
     {
-        var order = await _salesRepo.GetOrderByIdAsync(orderId, companyId)
+        var order = await _salesRepo.GetOrderByIdAsync(orderId, companyId, branchId)
             ?? throw new NotFoundException("Orden no encontrada");
 
-        var items = (await _salesRepo.GetOrderItemsAsync(orderId, companyId)).ToList();
-        var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId);
+        var items = (await _salesRepo.GetOrderItemsAsync(orderId, companyId, branchId)).ToList();
+        var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId, branchId);
 
         var cashierName = "Cajero";
         if (order.CreatedBy.HasValue)
@@ -593,22 +395,25 @@ public class SalesService : ISalesService
         var results = new List<OrderDetailResponse>();
         foreach (var o in orders)
         {
-            results.Add(await MapToOrderDetail(companyId, o, includeRefunds: false));
+            results.Add(await MapToOrderDetail(companyId, request.BranchId, o, includeRefunds: false));
         }
 
         return (results, count);
     }
 
     public async Task<OrderDetailResponse> GetOrderDetailAsync(long companyId, long orderId)
+        => await GetOrderDetailAsync(companyId, null, orderId);
+
+    public async Task<OrderDetailResponse> GetOrderDetailAsync(long companyId, long? branchId, long orderId)
     {
-        var order = await _salesRepo.GetOrderByIdAsync(orderId, companyId)
+        var order = await _salesRepo.GetOrderByIdAsync(orderId, companyId, branchId)
             ?? throw new NotFoundException("Orden no encontrada");
 
-        var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId);
+        var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId, branchId);
         order.TableName = table?.Name;
         order.TableNumber = table?.TableNumber;
 
-        return await MapToOrderDetail(companyId, order, includeRefunds: true);
+        return await MapToOrderDetail(companyId, branchId, order, includeRefunds: true);
     }
 
     public async Task<byte[]> ExportOrdersCsvAsync(long companyId, OrderSearchRequest request)
@@ -631,9 +436,9 @@ public class SalesService : ISalesService
         return ms.ToArray();
     }
 
-    private async Task<OrderDetailResponse> MapToOrderDetail(long companyId, Order order, bool includeRefunds)
+    private async Task<OrderDetailResponse> MapToOrderDetail(long companyId, long? branchId, Order order, bool includeRefunds)
     {
-        var items = (await _salesRepo.GetOrderItemsAsync(order.Id, companyId)).ToList();
+        var items = (await _salesRepo.GetOrderItemsAsync(order.Id, companyId, branchId)).ToList();
         var payments = (await _orderPaymentRepo.GetByOrderAsync(order.Id, companyId)).ToList();
 
         var cashierName = "Cajero";
@@ -646,13 +451,13 @@ public class SalesService : ISalesService
         List<RefundSummaryDto>? refunds = null;
         if (includeRefunds)
         {
-            var refundList = await _refundRepo.GetByOrderIdAsync(order.Id, companyId);
+            var refundList = await _refundRepo.GetByOrderIdAsync(order.Id, companyId, order.BranchId);
             refunds = refundList.Select(r => new RefundSummaryDto(
                 r.Id, r.RefundType, r.RefundAmount, r.Reason, r.Status, r.CreatedAt
             )).ToList();
         }
 
-        var credits = await _creditRepo.GetCreditsAsync(companyId, null, order.OrderNumber);
+        var credits = await _creditRepo.GetCreditsAsync(companyId, order.BranchId, null, order.OrderNumber);
         var hasCredit = credits.Any();
 
         return new OrderDetailResponse(
@@ -687,38 +492,80 @@ public class SalesService : ISalesService
     {
         foreach (var requestedItem in requestedItems)
         {
-            var product = await _inventoryRepo.GetProductByIdAsync(requestedItem.ProductId, companyId)
-                ?? throw new ValidationException($"El producto {requestedItem.ProductId} no existe.");
+            if (requestedItem.ProductId <= 0 || requestedItem.Quantity <= 0)
+                throw new ValidationException("Todos los items deben tener producto y cantidad validos.");
 
-            if (!product.IsActive)
-                throw new ValidationException($"El producto {product.Name} no esta activo.");
-
-            if (!product.TrackStock)
-                continue;
-
-            var stock = await _inventoryRepo.GetStockByProductAsync(branchId, requestedItem.ProductId, companyId);
-            if (stock is null)
-                throw new ValidationException($"El producto {product.Name} no tiene stock configurado en esta sucursal.");
-
-            if (requestedItem.Quantity > stock.AvailableQuantity)
-                throw new ValidationException($"Stock insuficiente para {stock.ProductName ?? product.Name}. Disponible: {stock.AvailableQuantity:N2}. Comprometido: {stock.ReservedQuantity:N2}.");
+            var product = await GetSaleableProductAsync(requestedItem.ProductId, companyId);
+            await ValidateProductStockAsync(product, companyId, branchId, requestedItem.Quantity);
         }
     }
 
-    private static string? ResolvePaymentMethod(List<PaymentLineDto> paymentLines)
+    private async Task<List<OrderItem>> ValidateAndNormalizeSaleItemsAsync(
+        long companyId,
+        long branchId,
+        IEnumerable<CreateTableItemDto>? requestedItems)
     {
-        var methods = paymentLines
-            .Where(p => p.Amount > 0 && !string.IsNullOrWhiteSpace(p.Method))
-            .Select(p => p.Method.Trim().ToLowerInvariant())
-            .Distinct()
-            .ToList();
+        var requestList = requestedItems?.ToList() ?? [];
+        if (requestList.Count == 0)
+            throw new ValidationException("Debe agregar al menos un producto");
 
-        return methods.Count switch
+        if (requestList.Any(item => item.ProductId <= 0 || item.Quantity <= 0))
+            throw new ValidationException("Todos los items deben tener producto y cantidad validos.");
+
+        var products = new Dictionary<long, Product>();
+        foreach (var group in requestList.GroupBy(item => item.ProductId))
         {
-            0 => null,
-            1 => methods[0],
-            _ => "mixed"
-        };
+            var product = await GetSaleableProductAsync(group.Key, companyId);
+            await ValidateProductStockAsync(product, companyId, branchId, group.Sum(item => item.Quantity));
+            products.Add(product.Id, product);
+        }
+
+        return requestList.Select(item =>
+        {
+            var product = products[item.ProductId];
+            return new OrderItem
+            {
+                ProductId = product.Id,
+                ProductName = product.Name,
+                Quantity = item.Quantity,
+                UnitPrice = Math.Round(product.SalePrice, 2)
+            };
+        }).ToList();
     }
+
+    private async Task<Product> GetSaleableProductAsync(long productId, long companyId)
+    {
+        var product = await _inventoryRepo.GetProductByIdAsync(productId, companyId)
+            ?? throw new ValidationException($"El producto {productId} no existe.");
+
+        if (!product.IsActive)
+            throw new ValidationException($"El producto {product.Name} no esta activo.");
+
+        if (!product.IsForSale)
+            throw new ValidationException($"El producto {product.Name} no esta disponible para venta.");
+
+        if (product.SalePrice < 0)
+            throw new ValidationException($"El producto {product.Name} tiene un precio de venta invalido.");
+
+        return product;
+    }
+
+    private async Task ValidateProductStockAsync(
+        Product product,
+        long companyId,
+        long branchId,
+        decimal quantity)
+    {
+        if (!product.TrackStock)
+            return;
+
+        var stock = await _inventoryRepo.GetStockByProductAsync(branchId, product.Id, companyId);
+        if (stock is null)
+            throw new ValidationException($"El producto {product.Name} no tiene stock configurado en esta sucursal.");
+
+        if (quantity > stock.AvailableQuantity)
+            throw new ValidationException($"Stock insuficiente para {stock.ProductName ?? product.Name}. Disponible: {stock.AvailableQuantity:N2}. Comprometido: {stock.ReservedQuantity:N2}.");
+    }
+
 }
 

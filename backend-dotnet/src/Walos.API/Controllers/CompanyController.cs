@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Company;
 using Walos.Application.Services;
+using Walos.Application.Security;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
 
@@ -30,6 +31,7 @@ public class CompanyController : ControllerBase
     }
 
     [HttpPut("settings")]
+    [Authorize(Policy = WalosPolicies.Settings)]
     public async Task<IActionResult> UpdateSettings([FromBody] UpdateCompanySettingsRequest request)
     {
         var updated = await _companyService.UpdateSettingsAsync(_tenant.CompanyId, _tenant.UserId, request);
@@ -44,6 +46,7 @@ public class CompanyController : ControllerBase
     }
 
     [HttpPut("settings/operations")]
+    [Authorize(Policy = WalosPolicies.Settings)]
     public async Task<IActionResult> UpdateOperationsSettings([FromBody] UpdateCompanyOperationsSettingsRequest request)
     {
         var updated = await _companyService.UpdateOperationsSettingsAsync(_tenant.CompanyId, request);
@@ -51,6 +54,7 @@ public class CompanyController : ControllerBase
     }
 
     [HttpPost("settings/logo")]
+    [Authorize(Policy = WalosPolicies.Settings)]
     [RequestSizeLimit(2 * 1024 * 1024)]
     public async Task<IActionResult> UploadLogo(IFormFile file)
     {
@@ -64,6 +68,7 @@ public class CompanyController : ControllerBase
     }
 
     [HttpDelete("settings/logo")]
+    [Authorize(Policy = WalosPolicies.Settings)]
     public async Task<IActionResult> RemoveLogo()
     {
         await _companyService.RemoveLogoAsync(_tenant.CompanyId, _tenant.UserId);

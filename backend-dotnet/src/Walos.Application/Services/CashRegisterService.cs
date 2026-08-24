@@ -10,10 +10,10 @@ public interface ICashRegisterService
 {
     Task<CashRegisterResponse> OpenAsync(long companyId, long branchId, long userId, OpenCashRegisterRequest request);
     Task<CashRegisterResponse?> GetActiveAsync(long companyId, long branchId, long userId);
-    Task<CashRegisterResponse> CloseAsync(long id, long companyId, long userId, CloseCashRegisterRequest request);
-    Task<CashMovementResponse> AddMovementAsync(long cashRegisterId, long companyId, long userId, CashMovementRequest request);
-    Task<IEnumerable<CashMovementResponse>> GetMovementsAsync(long cashRegisterId, long companyId);
-    Task<CashRegisterSummaryResponse> GetSummaryAsync(long id, long companyId);
+    Task<CashRegisterResponse> CloseAsync(long id, long companyId, long branchId, long userId, CloseCashRegisterRequest request);
+    Task<CashMovementResponse> AddMovementAsync(long cashRegisterId, long companyId, long branchId, long userId, CashMovementRequest request);
+    Task<IEnumerable<CashMovementResponse>> GetMovementsAsync(long cashRegisterId, long companyId, long branchId);
+    Task<CashRegisterSummaryResponse> GetSummaryAsync(long id, long companyId, long branchId);
     Task<(IEnumerable<CashRegisterResponse> Items, int TotalCount)> GetHistoryAsync(long companyId, long branchId, DateTime? dateFrom, DateTime? dateTo, int page, int limit);
     Task UpdateTotalsFromOrderAsync(long cashRegisterId, long companyId, decimal totalSales, decimal totalCashSales, decimal totalCardSales, decimal totalTransferSales, decimal totalOtherSales, decimal totalDiscounts, decimal totalCredits, decimal totalTips);
 }
@@ -65,12 +65,12 @@ public class CashRegisterService : ICashRegisterService
         return register != null ? MapToResponse(register) : null;
     }
 
-    public async Task<CashRegisterResponse> CloseAsync(long id, long companyId, long userId, CloseCashRegisterRequest request)
+    public async Task<CashRegisterResponse> CloseAsync(long id, long companyId, long branchId, long userId, CloseCashRegisterRequest request)
     {
         if (request.ClosingAmount < 0)
             throw new ValidationException("El monto de cierre no puede ser negativo");
 
-        var register = await _cashRegisterRepo.GetByIdAsync(id, companyId)
+        var register = await _cashRegisterRepo.GetByIdAsync(id, companyId, branchId)
             ?? throw new NotFoundException("Caja no encontrada");
 
         if (register.Status != "open")
@@ -79,13 +79,16 @@ public class CashRegisterService : ICashRegisterService
         if (register.OpenedBy != userId)
             throw new BusinessException("Solo el usuario que abrió la caja puede cerrarla");
 
-        var closed = await _cashRegisterRepo.CloseAsync(id, companyId, userId, request.ClosingAmount, request.Notes);
+        var closed = await _cashRegisterRepo.CloseAsync(
+            id, companyId, branchId, userId, request.ClosingAmount, request.Notes)
+            ?? throw new BusinessException("La caja ya fue cerrada o dejo de estar disponible");
         return MapToResponse(closed);
     }
 
-    public async Task<CashMovementResponse> AddMovementAsync(long cashRegisterId, long companyId, long userId, CashMovementRequest request)
+    public async Task<CashMovementResponse> AddMovementAsync(long cashRegisterId, long companyId, long branchId, long userId, CashMovementRequest request)
     {
-        if (request.Type != "in" && request.Type != "out")
+        var movementType = request.Type?.Trim().ToLowerInvariant();
+        if (movementType is not ("in" or "out"))
             throw new ValidationException("El tipo de movimiento debe ser 'in' o 'out'");
 
         if (request.Amount <= 0)
@@ -94,8 +97,11 @@ public class CashRegisterService : ICashRegisterService
         if (string.IsNullOrWhiteSpace(request.Reason))
             throw new ValidationException("El motivo del movimiento es obligatorio");
 
+        if (request.Reason.Trim().Length > 300)
+            throw new ValidationException("El motivo no puede superar 300 caracteres");
+
         // Verificar que la caja esté abierta
-        var register = await _cashRegisterRepo.GetByIdAsync(cashRegisterId, companyId)
+        var register = await _cashRegisterRepo.GetByIdAsync(cashRegisterId, companyId, branchId)
             ?? throw new NotFoundException("Caja no encontrada");
 
         if (register.Status != "open")
@@ -105,30 +111,33 @@ public class CashRegisterService : ICashRegisterService
         {
             CompanyId = companyId,
             CashRegisterId = cashRegisterId,
-            Type = request.Type,
+            Type = movementType,
             Amount = request.Amount,
             Reason = request.Reason.Trim(),
             Notes = request.Notes,
             CreatedBy = userId
         };
 
-        var created = await _cashRegisterRepo.AddMovementAsync(movement);
+        var created = await _cashRegisterRepo.AddMovementAsync(movement, branchId)
+            ?? throw new BusinessException("La caja ya fue cerrada o dejo de estar disponible");
         return MapToMovementResponse(created);
     }
 
-    public async Task<IEnumerable<CashMovementResponse>> GetMovementsAsync(long cashRegisterId, long companyId)
+    public async Task<IEnumerable<CashMovementResponse>> GetMovementsAsync(long cashRegisterId, long companyId, long branchId)
     {
-        var movements = await _cashRegisterRepo.GetMovementsAsync(cashRegisterId, companyId);
+        _ = await _cashRegisterRepo.GetByIdAsync(cashRegisterId, companyId, branchId)
+            ?? throw new NotFoundException("Caja no encontrada");
+        var movements = await _cashRegisterRepo.GetMovementsAsync(cashRegisterId, companyId, branchId);
         return movements.Select(MapToMovementResponse);
     }
 
-    public async Task<CashRegisterSummaryResponse> GetSummaryAsync(long id, long companyId)
+    public async Task<CashRegisterSummaryResponse> GetSummaryAsync(long id, long companyId, long branchId)
     {
-        var register = await _cashRegisterRepo.GetByIdAsync(id, companyId)
+        var register = await _cashRegisterRepo.GetByIdAsync(id, companyId, branchId)
             ?? throw new NotFoundException("Caja no encontrada");
 
-        var movements = await _cashRegisterRepo.GetMovementsAsync(id, companyId);
-        var paymentBreakdown = await _orderPaymentRepo.GetSummaryByCashRegisterAsync(id, companyId);
+        var movements = await _cashRegisterRepo.GetMovementsAsync(id, companyId, branchId);
+        var paymentBreakdown = await _orderPaymentRepo.GetSummaryByCashRegisterAsync(id, companyId, branchId);
 
         return new CashRegisterSummaryResponse(
             Register: MapToResponse(register),

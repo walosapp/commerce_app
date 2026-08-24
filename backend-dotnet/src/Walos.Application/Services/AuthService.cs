@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using Walos.Application.Security;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
@@ -128,12 +129,18 @@ public class AuthService : IAuthService
 
         var claims = new[]
         {
-            new Claim("userId", user.Id.ToString()),
-            new Claim("companyId", user.CompanyId.ToString()),
-            new Claim("branchId", user.BranchId?.ToString() ?? ""),
+            new Claim(WalosClaimTypes.UserId, user.Id.ToString()),
+            new Claim(WalosClaimTypes.CompanyId, user.CompanyId.ToString()),
+            new Claim(WalosClaimTypes.BranchId, user.BranchId?.ToString() ?? ""),
             new Claim(ClaimTypes.Name, $"{user.FirstName} {user.LastName}".Trim()),
             new Claim(ClaimTypes.Email, user.Email),
-            new Claim(ClaimTypes.Role, user.RoleCode ?? "user")
+            new Claim(ClaimTypes.Role, user.RoleCode ?? "user"),
+            new Claim(
+                WalosClaimTypes.PlatformAdmin,
+                (string.Equals(user.RoleCode, WalosRoles.Dev, StringComparison.OrdinalIgnoreCase)
+                 && string.Equals(user.CompanyTaxId, WalosSystemIdentity.CompanyTaxId, StringComparison.Ordinal))
+                    .ToString()
+                    .ToLowerInvariant())
         };
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Inventory;
+using Walos.Application.Security;
 using Walos.Application.Services;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
@@ -30,6 +31,7 @@ public class RecipesController : ControllerBase
     }
 
     [HttpPut("{productId:long}/ingredients")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> UpsertIngredient(long productId, [FromBody] UpsertRecipeIngredientRequest request)
     {
         var result = await _service.UpsertIngredientAsync(productId, _tenant.CompanyId, request);
@@ -37,6 +39,7 @@ public class RecipesController : ControllerBase
     }
 
     [HttpDelete("{productId:long}/ingredients/{ingredientId:long}")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> RemoveIngredient(long productId, long ingredientId)
     {
         var ok = await _service.RemoveIngredientAsync(productId, ingredientId, _tenant.CompanyId);
@@ -45,6 +48,7 @@ public class RecipesController : ControllerBase
     }
 
     [HttpDelete("{productId:long}")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> ClearRecipe(long productId)
     {
         await _service.ClearRecipeAsync(productId, _tenant.CompanyId);

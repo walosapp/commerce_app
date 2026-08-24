@@ -3,13 +3,14 @@ using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Sales;
 using Walos.Application.Services;
+using Walos.Application.Security;
 using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/sales/cash-register")]
-[Authorize]
+[Authorize(Policy = WalosPolicies.CashOperator)]
 public class CashRegisterController : ControllerBase
 {
     private readonly ICashRegisterService _cashRegisterService;
@@ -54,8 +55,11 @@ public class CashRegisterController : ControllerBase
     [HttpPost("{id:long}/close")]
     public async Task<IActionResult> Close(long id, [FromBody] CloseCashRegisterRequest request)
     {
+        if (!_tenant.BranchId.HasValue)
+            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+
         var register = await _cashRegisterService.CloseAsync(
-            id, _tenant.CompanyId, _tenant.UserId, request);
+            id, _tenant.CompanyId, _tenant.BranchId.Value, _tenant.UserId, request);
 
         return Ok(ApiResponse<CashRegisterResponse>.Ok(register, "Caja cerrada exitosamente"));
     }
@@ -63,8 +67,11 @@ public class CashRegisterController : ControllerBase
     [HttpPost("{id:long}/movement")]
     public async Task<IActionResult> AddMovement(long id, [FromBody] CashMovementRequest request)
     {
+        if (!_tenant.BranchId.HasValue)
+            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+
         var movement = await _cashRegisterService.AddMovementAsync(
-            id, _tenant.CompanyId, _tenant.UserId, request);
+            id, _tenant.CompanyId, _tenant.BranchId.Value, _tenant.UserId, request);
 
         return StatusCode(StatusCodes.Status201Created,
             ApiResponse<CashMovementResponse>.Ok(movement, "Movimiento registrado exitosamente"));
@@ -73,14 +80,20 @@ public class CashRegisterController : ControllerBase
     [HttpGet("{id:long}/movements")]
     public async Task<IActionResult> GetMovements(long id)
     {
-        var movements = (await _cashRegisterService.GetMovementsAsync(id, _tenant.CompanyId)).ToList();
+        if (!_tenant.BranchId.HasValue)
+            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+
+        var movements = (await _cashRegisterService.GetMovementsAsync(id, _tenant.CompanyId, _tenant.BranchId.Value)).ToList();
         return Ok(ApiResponse<List<CashMovementResponse>>.Ok(movements, count: movements.Count));
     }
 
     [HttpGet("{id:long}/summary")]
     public async Task<IActionResult> GetSummary(long id)
     {
-        var summary = await _cashRegisterService.GetSummaryAsync(id, _tenant.CompanyId);
+        if (!_tenant.BranchId.HasValue)
+            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+
+        var summary = await _cashRegisterService.GetSummaryAsync(id, _tenant.CompanyId, _tenant.BranchId.Value);
         return Ok(ApiResponse<CashRegisterSummaryResponse>.Ok(summary));
     }
 
@@ -104,7 +117,10 @@ public class CashRegisterController : ControllerBase
     [HttpGet("{id:long}/z-report")]
     public async Task<IActionResult> GetZReport(long id)
     {
-        var summary = await _cashRegisterService.GetSummaryAsync(id, _tenant.CompanyId);
+        if (!_tenant.BranchId.HasValue)
+            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+
+        var summary = await _cashRegisterService.GetSummaryAsync(id, _tenant.CompanyId, _tenant.BranchId.Value);
         var company = await _companyRepo.GetCompanySettingsAsync(_tenant.CompanyId);
 
         var zReport = new ZReportData(

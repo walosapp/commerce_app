@@ -34,6 +34,7 @@ public class OrderPaymentRepositoryIntegrationTests : IntegrationTestBase
         var companyA = await SeedCompanyAsync("Summary Co A");
         var companyB = await SeedCompanyAsync("Summary Co B");
         var branchA = await SeedBranchAsync(companyA, "A");
+        var branchA2 = await SeedBranchAsync(companyA, "A2");
         var branchB = await SeedBranchAsync(companyB, "B");
 
         var orderA = await SeedOrderWithCashRegisterAsync(companyA, branchA, "SUM-A");
@@ -43,12 +44,14 @@ public class OrderPaymentRepositoryIntegrationTests : IntegrationTestBase
         await OrderPaymentRepository.CreateAsync(new OrderPayment { CompanyId = companyA, OrderId = orderA.OrderId, Method = "card", Amount = 8000m, Reference = "A-1" });
         await OrderPaymentRepository.CreateAsync(new OrderPayment { CompanyId = companyB, OrderId = orderB.OrderId, Method = "cash", Amount = 50000m, Reference = null });
 
-        var summaryA = (await OrderPaymentRepository.GetSummaryByCashRegisterAsync(orderA.CashRegisterId, companyA)).ToList();
+        var summaryA = (await OrderPaymentRepository.GetSummaryByCashRegisterAsync(orderA.CashRegisterId, companyA, branchA)).ToList();
+        var wrongBranch = (await OrderPaymentRepository.GetSummaryByCashRegisterAsync(orderA.CashRegisterId, companyA, branchA2)).ToList();
 
         Assert.Equal(2, summaryA.Count);
         Assert.Contains(summaryA, p => p.Method == "cash" && p.TotalAmount == 12000m && p.TransactionCount == 1);
         Assert.Contains(summaryA, p => p.Method == "card" && p.TotalAmount == 8000m && p.TransactionCount == 1);
         Assert.DoesNotContain(summaryA, p => p.TotalAmount == 50000m);
+        Assert.Empty(wrongBranch);
     }
 
     [SkippableFact]

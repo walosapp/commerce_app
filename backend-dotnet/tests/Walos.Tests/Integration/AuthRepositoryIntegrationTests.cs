@@ -1,4 +1,5 @@
 using Walos.Domain.Entities;
+using Npgsql;
 using Xunit;
 
 namespace Walos.Tests.Integration;
@@ -163,5 +164,55 @@ public class AuthRepositoryIntegrationTests : IntegrationTestBase
 
         // Assert
         Assert.Null(user);
+    }
+
+    [SkippableFact]
+    public async Task Login_And_Refresh_Reject_Inactive_Company()
+    {
+        var companyId = await SeedCompanyAsync("Inactive Auth Company");
+        var branchId = await SeedBranchAsync(companyId);
+        var userId = await SeedUserAsync(companyId, branchId, "inactive-company@test.com");
+        const string refreshToken = "inactive-company-refresh";
+        await AuthRepository.SaveRefreshTokenAsync(userId, refreshToken, DateTime.UtcNow.AddDays(1));
+        await ExecuteAsync("UPDATE core.companies SET is_active = FALSE WHERE id = @id", companyId);
+
+        Assert.Null(await AuthRepository.GetUserByEmailAsync("inactive-company@test.com"));
+        Assert.Null(await AuthRepository.GetUserByRefreshTokenAsync(refreshToken));
+    }
+
+    [SkippableFact]
+    public async Task Login_And_Refresh_Reject_Inactive_Role()
+    {
+        var companyId = await SeedCompanyAsync("Inactive Auth Role");
+        var branchId = await SeedBranchAsync(companyId);
+        var userId = await SeedUserAsync(companyId, branchId, "inactive-role@test.com");
+        const string refreshToken = "inactive-role-refresh";
+        await AuthRepository.SaveRefreshTokenAsync(userId, refreshToken, DateTime.UtcNow.AddDays(1));
+        await ExecuteAsync("UPDATE core.roles SET is_active = FALSE WHERE company_id = @id", companyId);
+
+        Assert.Null(await AuthRepository.GetUserByEmailAsync("inactive-role@test.com"));
+        Assert.Null(await AuthRepository.GetUserByRefreshTokenAsync(refreshToken));
+    }
+
+    [SkippableFact]
+    public async Task Login_And_Refresh_Reject_Inactive_Branch()
+    {
+        var companyId = await SeedCompanyAsync("Inactive Auth Branch");
+        var branchId = await SeedBranchAsync(companyId);
+        var userId = await SeedUserAsync(companyId, branchId, "inactive-branch@test.com");
+        const string refreshToken = "inactive-branch-refresh";
+        await AuthRepository.SaveRefreshTokenAsync(userId, refreshToken, DateTime.UtcNow.AddDays(1));
+        await ExecuteAsync("UPDATE core.branches SET is_active = FALSE WHERE id = @id", branchId);
+
+        Assert.Null(await AuthRepository.GetUserByEmailAsync("inactive-branch@test.com"));
+        Assert.Null(await AuthRepository.GetUserByRefreshTokenAsync(refreshToken));
+    }
+
+    private async Task ExecuteAsync(string sql, long id)
+    {
+        using var conn = (NpgsqlConnection)await ConnectionFactory.CreateConnectionAsync();
+        using var command = new NpgsqlCommand(sql, conn);
+        command.Parameters.AddWithValue("id", id);
+        await command.ExecuteNonQueryAsync();
     }
 }

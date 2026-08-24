@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Walos.API.Controllers;
+using Walos.Application.Security;
 
 namespace Walos.Tests.Security;
 
@@ -14,6 +15,6 @@ public class PlatformAdminControllerSecurityTests
             .FirstOrDefault();
 
         Assert.NotNull(authorize);
-        Assert.Equal("dev", authorize!.Roles);
+        Assert.Equal(WalosPolicies.PlatformAdmin, authorize!.Policy);
     }
 }

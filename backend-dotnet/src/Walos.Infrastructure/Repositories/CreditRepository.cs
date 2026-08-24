@@ -1,6 +1,7 @@
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Walos.Domain.Entities;
+using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
 using Walos.Infrastructure.Data;
 
@@ -46,13 +47,13 @@ public class CreditRepository : ICreditRepository
         }
     }
 
-    public async Task<IEnumerable<Credit>> GetCreditsAsync(long companyId, string? status, string? search)
+    public async Task<IEnumerable<Credit>> GetCreditsAsync(long companyId, long branchId, string? status, string? search)
     {
         try
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
 
-            var where = "WHERE c.company_id = @CompanyId";
+            var where = "WHERE c.company_id = @CompanyId AND c.branch_id = @BranchId";
             if (!string.IsNullOrWhiteSpace(status) && status != "all")
                 where += " AND c.status = @Status";
             if (!string.IsNullOrWhiteSpace(search))
@@ -72,6 +73,7 @@ public class CreditRepository : ICreditRepository
             return await connection.QueryAsync<Credit>(sql, new
             {
                 CompanyId = companyId,
+                BranchId = branchId,
                 Status = status,
                 Search = $"%{search?.ToLower()}%"
             });
@@ -83,7 +85,7 @@ public class CreditRepository : ICreditRepository
         }
     }
 
-    public async Task<Credit?> GetCreditByIdAsync(long creditId, long companyId)
+    public async Task<Credit?> GetCreditByIdAsync(long creditId, long companyId, long branchId)
     {
         try
         {
@@ -97,20 +99,37 @@ public class CreditRepository : ICreditRepository
                        status AS Status, notes AS Notes,
                        paid_at AS PaidAt, created_at AS CreatedAt, created_by AS CreatedBy
                 FROM sales.credits
-                WHERE id = @CreditId AND company_id = @CompanyId";
+                WHERE id = @CreditId
+                  AND company_id = @CompanyId
+                  AND branch_id = @BranchId";
 
-            var credit = await connection.QueryFirstOrDefaultAsync<Credit>(creditSql, new { CreditId = creditId, CompanyId = companyId });
+            var credit = await connection.QueryFirstOrDefaultAsync<Credit>(creditSql, new
+            {
+                CreditId = creditId,
+                CompanyId = companyId,
+                BranchId = branchId
+            });
             if (credit == null) return null;
 
             const string paymentsSql = @"
-                SELECT id AS Id, company_id AS CompanyId, credit_id AS CreditId,
-                       amount AS Amount, notes AS Notes,
-                       created_at AS CreatedAt, created_by AS CreatedBy
-                FROM sales.credit_payments
-                WHERE credit_id = @CreditId AND company_id = @CompanyId
-                ORDER BY created_at ASC";
+                SELECT cp.id AS Id, cp.company_id AS CompanyId, cp.credit_id AS CreditId,
+                       cp.amount AS Amount, cp.payment_method AS PaymentMethod,
+                       cp.cash_register_id AS CashRegisterId, cp.notes AS Notes,
+                       cp.created_at AS CreatedAt, cp.created_by AS CreatedBy
+                FROM sales.credit_payments cp
+                JOIN sales.credits c
+                  ON c.id = cp.credit_id
+                 AND c.company_id = cp.company_id
+                 AND c.branch_id = @BranchId
+                WHERE cp.credit_id = @CreditId AND cp.company_id = @CompanyId
+                ORDER BY cp.created_at ASC";
 
-            credit.Payments = (await connection.QueryAsync<CreditPayment>(paymentsSql, new { CreditId = creditId, CompanyId = companyId })).ToList();
+            credit.Payments = (await connection.QueryAsync<CreditPayment>(paymentsSql, new
+            {
+                CreditId = creditId,
+                CompanyId = companyId,
+                BranchId = branchId
+            })).ToList();
             return credit;
         }
         catch (Exception ex)
@@ -142,6 +161,149 @@ public class CreditRepository : ICreditRepository
         }
     }
 
+    public async Task<Credit> ProcessPaymentAsync(CreditPaymentCommand command)
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+
+        try
+        {
+            const string creditSql = @"
+                SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId,
+                       order_id AS OrderId, customer_name AS CustomerName,
+                       order_number AS OrderNumber, original_total AS OriginalTotal,
+                       amount_paid AS AmountPaid, credit_amount AS CreditAmount,
+                       status AS Status, notes AS Notes, paid_at AS PaidAt,
+                       created_at AS CreatedAt, created_by AS CreatedBy
+                FROM sales.credits
+                WHERE id = @CreditId
+                  AND company_id = @CompanyId
+                  AND branch_id = @BranchId
+                FOR UPDATE";
+
+            var credit = await connection.QuerySingleOrDefaultAsync<Credit>(creditSql, command, transaction)
+                ?? throw new NotFoundException("Credito no encontrado");
+
+            if (credit.Status is "paid" or "cancelled")
+                throw new BusinessException("Este credito ya fue saldado o cancelado");
+
+            if (command.Amount <= 0)
+                throw new ValidationException("El monto del abono debe ser mayor a cero");
+
+            if (command.Amount > credit.CreditAmount)
+                throw new ValidationException($"El abono no puede superar el saldo pendiente de {credit.CreditAmount:N2}");
+
+            long? cashRegisterId = null;
+            if (command.PaymentMethod == "cash")
+            {
+                const string registerSql = @"
+                    SELECT id
+                    FROM sales.cash_registers
+                    WHERE company_id = @CompanyId
+                      AND branch_id = @BranchId
+                      AND opened_by = @UserId
+                      AND status = 'open'
+                      AND deleted_at IS NULL
+                    ORDER BY opened_at DESC
+                    LIMIT 1
+                    FOR UPDATE";
+
+                cashRegisterId = await connection.QuerySingleOrDefaultAsync<long?>(registerSql, command, transaction);
+                if (!cashRegisterId.HasValue)
+                    throw new BusinessException("Debes abrir una caja antes de registrar un abono en efectivo");
+            }
+
+            const string paymentSql = @"
+                INSERT INTO sales.credit_payments (
+                    company_id, credit_id, amount, payment_method, cash_register_id,
+                    notes, created_by, created_at
+                ) VALUES (
+                    @CompanyId, @CreditId, @Amount, @PaymentMethod, @CashRegisterId,
+                    @Notes, @UserId, NOW()
+                )";
+
+            await connection.ExecuteAsync(paymentSql, new
+            {
+                command.CompanyId,
+                command.CreditId,
+                command.Amount,
+                command.PaymentMethod,
+                CashRegisterId = cashRegisterId,
+                command.Notes,
+                command.UserId
+            }, transaction);
+
+            var newCreditAmount = Math.Round(credit.CreditAmount - command.Amount, 2);
+            var newStatus = newCreditAmount == 0 ? "paid" : "partial";
+
+            const string updateCreditSql = @"
+                UPDATE sales.credits
+                SET amount_paid = amount_paid + @Amount,
+                    credit_amount = @CreditAmount,
+                    status = @Status,
+                    paid_at = CASE WHEN @Status = 'paid' THEN NOW() ELSE NULL END,
+                    updated_at = NOW()
+                WHERE id = @CreditId
+                  AND company_id = @CompanyId
+                  AND branch_id = @BranchId";
+
+            var updated = await connection.ExecuteAsync(updateCreditSql, new
+            {
+                command.Amount,
+                CreditAmount = newCreditAmount,
+                Status = newStatus,
+                command.CreditId,
+                command.CompanyId,
+                command.BranchId
+            }, transaction);
+
+            if (updated != 1)
+                throw new BusinessException("El credito dejo de estar disponible durante el abono");
+
+            if (cashRegisterId.HasValue)
+            {
+                const string updateCashSql = @"
+                    UPDATE sales.cash_registers
+                    SET cash_in = cash_in + @Amount,
+                        updated_at = NOW()
+                    WHERE id = @CashRegisterId
+                      AND company_id = @CompanyId
+                      AND branch_id = @BranchId
+                      AND status = 'open';
+
+                    INSERT INTO sales.cash_movements (
+                        company_id, cash_register_id, type, amount, reason, notes, created_by, created_at
+                    ) VALUES (
+                        @CompanyId, @CashRegisterId, 'in', @Amount,
+                        'Abono de credito', @MovementNotes, @UserId, NOW()
+                    );";
+
+                await connection.ExecuteAsync(updateCashSql, new
+                {
+                    command.CompanyId,
+                    command.BranchId,
+                    command.UserId,
+                    command.Amount,
+                    CashRegisterId = cashRegisterId.Value,
+                    MovementNotes = $"Credito #{command.CreditId}"
+                }, transaction);
+            }
+
+            credit.AmountPaid += command.Amount;
+            credit.CreditAmount = newCreditAmount;
+            credit.Status = newStatus;
+            credit.PaidAt = newStatus == "paid" ? DateTime.UtcNow : null;
+
+            transaction.Commit();
+            return credit;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
     public async Task UpdateCreditAfterPaymentAsync(long creditId, long companyId, decimal newAmountPaid, decimal newCreditAmount, string newStatus, DateTime? paidAt)
     {
         try
@@ -161,15 +323,23 @@ public class CreditRepository : ICreditRepository
         }
     }
 
-    public async Task CancelCreditAsync(long creditId, long companyId)
+    public async Task<bool> CancelCreditAsync(long creditId, long companyId, long branchId)
     {
         try
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
             const string sql = @"
                 UPDATE sales.credits SET status = 'cancelled', updated_at = NOW()
-                WHERE id = @CreditId AND company_id = @CompanyId";
-            await connection.ExecuteAsync(sql, new { CreditId = creditId, CompanyId = companyId });
+                WHERE id = @CreditId
+                  AND company_id = @CompanyId
+                  AND branch_id = @BranchId
+                  AND status <> 'paid'";
+            return await connection.ExecuteAsync(sql, new
+            {
+                CreditId = creditId,
+                CompanyId = companyId,
+                BranchId = branchId
+            }) == 1;
         }
         catch (Exception ex)
         {

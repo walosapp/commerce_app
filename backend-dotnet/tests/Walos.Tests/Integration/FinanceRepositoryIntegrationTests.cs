@@ -1,5 +1,6 @@
 using Npgsql;
 using Walos.Domain.Entities;
+using Walos.Domain.Exceptions;
 
 namespace Walos.Tests.Integration;
 
@@ -70,6 +71,98 @@ public class FinanceRepositoryIntegrationTests : IntegrationTestBase
         Assert.Equal(1000m, summary1.TotalIncome);
         Assert.Equal(3000m, summary2.TotalIncome);
         Assert.Equal(4000m, summaryAll.TotalIncome);
+    }
+
+    [SkippableFact]
+    public async Task CreateCategoryAsync_Should_Reject_Branch_From_Another_Company_Without_Insert()
+    {
+        var companyA = await SeedCompanyAsync("Finance Guard A");
+        var companyB = await SeedCompanyAsync("Finance Guard B");
+        var branchB = await SeedBranchAsync(companyB, "Foreign Finance Branch");
+
+        await Assert.ThrowsAsync<NotFoundException>(() => FinanceRepository.CreateCategoryAsync(new FinancialCategory
+        {
+            CompanyId = companyA,
+            BranchId = branchB,
+            Name = "Must not persist",
+            Type = "expense",
+            DefaultAmount = 100,
+            DayOfMonth = 1,
+            Nature = "fixed",
+            Frequency = "monthly",
+            IsActive = true,
+        }));
+
+        using var conn = await ConnectionFactory.CreateConnectionAsync();
+        using var cmd = new NpgsqlCommand(
+            "SELECT COUNT(*) FROM finance.categories WHERE company_id = @companyId AND name = 'Must not persist'",
+            (NpgsqlConnection)conn);
+        cmd.Parameters.AddWithValue("@companyId", companyA);
+        Assert.Equal(0L, (long)(await cmd.ExecuteScalarAsync() ?? -1L));
+    }
+
+    [SkippableFact]
+    public async Task Scoped_Delete_Should_Not_Delete_Entry_From_Another_Branch()
+    {
+        var company = await SeedCompanyAsync("Finance Delete Scope");
+        var branch1 = await SeedBranchAsync(company, "Scope 1");
+        var branch2 = await SeedBranchAsync(company, "Scope 2");
+        var category2 = await SeedFinanceCategoryAsync(company, branch2, "Scope Cat 2");
+        var entry2 = await SeedFinanceEntryAsync(company, branch2, category2, "expense", "Protected branch 2", 50);
+
+        Assert.Null(await FinanceRepository.GetEntryByIdAsync(entry2, company, branch1));
+        await FinanceRepository.SoftDeleteEntryAsync(entry2, company, branch1);
+
+        var persisted = await FinanceRepository.GetEntryByIdAsync(entry2, company, branch2);
+        Assert.NotNull(persisted);
+        Assert.Equal(branch2, persisted!.BranchId);
+    }
+
+    [SkippableFact]
+    public async Task CreateEntryAsync_Should_Reject_Category_From_Another_Branch_Without_Insert()
+    {
+        var company = await SeedCompanyAsync("Finance Category Scope");
+        var branch1 = await SeedBranchAsync(company, "Entry 1");
+        var branch2 = await SeedBranchAsync(company, "Entry 2");
+        var category2 = await SeedFinanceCategoryAsync(company, branch2, "Entry Cat 2");
+
+        await Assert.ThrowsAsync<NotFoundException>(() => FinanceRepository.CreateEntryAsync(new FinancialEntry
+        {
+            CompanyId = company,
+            BranchId = branch1,
+            CategoryId = category2,
+            Type = "expense",
+            Description = "Must not persist",
+            Amount = 10,
+            EntryDate = DateTime.UtcNow,
+            Status = "posted",
+            OccurrenceInMonth = 1,
+            IsManual = true,
+        }));
+
+        using var conn = await ConnectionFactory.CreateConnectionAsync();
+        using var cmd = new NpgsqlCommand(
+            "SELECT COUNT(*) FROM finance.entries WHERE company_id = @companyId AND description = 'Must not persist'",
+            (NpgsqlConnection)conn);
+        cmd.Parameters.AddWithValue("@companyId", company);
+        Assert.Equal(0L, (long)(await cmd.ExecuteScalarAsync() ?? -1L));
+    }
+
+    [SkippableFact]
+    public async Task GetCategoriesAsync_Should_Not_Leak_Global_Category_Totals_From_Other_Branches()
+    {
+        var company = await SeedCompanyAsync("Finance Metadata Scope");
+        var branch1 = await SeedBranchAsync(company, "Metadata 1");
+        var branch2 = await SeedBranchAsync(company, "Metadata 2");
+        var globalCategory = await SeedFinanceCategoryAsync(company, null, "Global expense");
+        await SeedFinanceEntryAsync(company, branch1, globalCategory, "expense", "Branch 1 expense", 100);
+        await SeedFinanceEntryAsync(company, branch2, globalCategory, "expense", "Branch 2 expense", 900);
+
+        var categories = (await FinanceRepository.GetCategoriesAsync(company, "expense", branch1)).ToList();
+        var category = Assert.Single(categories, c => c.Id == globalCategory);
+
+        Assert.Equal(1, category.EntryCount);
+        Assert.Equal(100m, category.TotalAmount);
     }
 
     private async Task<long> SeedFinanceCategoryAsync(long companyId, long? branchId, string name, string type = "expense")

@@ -160,11 +160,46 @@ public class PosDeliController : ControllerBase
         if (request.Payments.Count == 0)
             return BadRequest(ApiResponse.Fail("Debe especificar al menos un método de pago"));
 
+        if (request.Payments.Any(p => p.Amount <= 0 || string.IsNullOrWhiteSpace(p.Method)))
+            return BadRequest(ApiResponse.Fail("Todos los pagos deben tener método y monto mayor a cero"));
+
         using var connection = await _connectionFactory.CreateConnectionAsync();
         using var transaction = connection.BeginTransaction();
 
         try
         {
+            const string cashSettingsSql = @"
+                SELECT require_cash_register
+                FROM core.companies
+                WHERE id = @CompanyId AND is_active = TRUE";
+
+            var requireCashRegister = await connection.ExecuteScalarAsync<bool?>(cashSettingsSql, new
+            {
+                CompanyId = _tenantContext.CompanyId
+            }, transaction) ?? throw new ValidationException("Comercio no encontrado o inactivo");
+
+            const string activeRegisterSql = @"
+                SELECT id
+                FROM sales.cash_registers
+                WHERE company_id = @CompanyId
+                  AND branch_id = @BranchId
+                  AND opened_by = @UserId
+                  AND status = 'open'
+                  AND deleted_at IS NULL
+                ORDER BY opened_at DESC
+                LIMIT 1
+                FOR UPDATE";
+
+            var cashRegisterId = await connection.QueryFirstOrDefaultAsync<long?>(activeRegisterSql, new
+            {
+                CompanyId = _tenantContext.CompanyId,
+                BranchId = branchId.Value,
+                UserId = _tenantContext.UserId
+            }, transaction);
+
+            if (requireCashRegister && !cashRegisterId.HasValue)
+                throw new BusinessException("Debes abrir una caja antes de registrar ventas");
+
             var productIds = request.Items.Select(i => i.ProductId).Distinct().ToArray();
             const string productSql = @"
                 SELECT
@@ -242,12 +277,12 @@ public class PosDeliController : ControllerBase
                     company_id, branch_id, table_id, order_number, status,
                     subtotal, tax, total, discount_amount, final_total_paid,
                     split_reference_count, notes, created_by, payment_method,
-                    tip_amount, tip_included, created_at
+                    tip_amount, tip_included, cash_register_id, created_at
                 ) VALUES (
                     @CompanyId, @BranchId, @TableId, @OrderNumber, 'completed',
                     @Subtotal, 0, @Total, 0, @FinalTotalPaid,
                     1, @Notes, @CreatedBy, @PaymentMethod,
-                    0, FALSE, NOW()
+                    0, FALSE, @CashRegisterId, NOW()
                 )
                 RETURNING id";
 
@@ -263,7 +298,8 @@ public class PosDeliController : ControllerBase
                 FinalTotalPaid = total,
                 Notes = request.Notes,
                 CreatedBy = _tenantContext.UserId,
-                PaymentMethod = paymentMethod
+                PaymentMethod = paymentMethod,
+                CashRegisterId = cashRegisterId
             }, transaction);
 
             const string itemSql = @"
@@ -297,6 +333,53 @@ public class PosDeliController : ControllerBase
                     payment.Amount,
                     payment.Reference
                 }, transaction);
+            }
+
+            if (cashRegisterId.HasValue)
+            {
+                var totalCashSales = request.Payments
+                    .Where(p => p.Method.Trim().Equals("cash", StringComparison.OrdinalIgnoreCase))
+                    .Sum(p => p.Amount);
+                var totalCardSales = request.Payments
+                    .Where(p => p.Method.Trim().Equals("card", StringComparison.OrdinalIgnoreCase))
+                    .Sum(p => p.Amount);
+                var totalTransferSales = request.Payments
+                    .Where(p => p.Method.Trim().Equals("transfer", StringComparison.OrdinalIgnoreCase)
+                             || p.Method.Trim().Equals("nequi", StringComparison.OrdinalIgnoreCase))
+                    .Sum(p => p.Amount);
+                var totalOtherSales = request.Payments
+                    .Where(p => !new[] { "cash", "card", "transfer", "nequi" }
+                        .Contains(p.Method.Trim().ToLowerInvariant()))
+                    .Sum(p => p.Amount);
+
+                const string updateRegisterSql = @"
+                    UPDATE sales.cash_registers
+                    SET total_sales = total_sales + @TotalSales,
+                        total_cash_sales = total_cash_sales + @TotalCashSales,
+                        total_card_sales = total_card_sales + @TotalCardSales,
+                        total_transfer_sales = total_transfer_sales + @TotalTransferSales,
+                        total_other_sales = total_other_sales + @TotalOtherSales,
+                        order_count = order_count + 1,
+                        updated_at = NOW()
+                    WHERE id = @CashRegisterId
+                      AND company_id = @CompanyId
+                      AND branch_id = @BranchId
+                      AND status = 'open'";
+
+                var updatedRegisters = await connection.ExecuteAsync(updateRegisterSql, new
+                {
+                    CashRegisterId = cashRegisterId.Value,
+                    CompanyId = _tenantContext.CompanyId,
+                    BranchId = branchId.Value,
+                    TotalSales = total,
+                    TotalCashSales = totalCashSales,
+                    TotalCardSales = totalCardSales,
+                    TotalTransferSales = totalTransferSales,
+                    TotalOtherSales = totalOtherSales
+                }, transaction);
+
+                if (updatedRegisters != 1)
+                    throw new BusinessException("La caja dejó de estar disponible durante la venta");
             }
 
             const string stockSql = @"

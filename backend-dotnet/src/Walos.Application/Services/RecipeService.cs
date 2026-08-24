@@ -17,8 +17,11 @@ public class RecipeService : IRecipeService
         _inventoryRepository = inventoryRepository;
     }
 
-    public Task<IEnumerable<Recipe>> GetByProductAsync(long productId, long companyId)
-        => _recipeRepository.GetByProductAsync(productId, companyId);
+    public async Task<IEnumerable<Recipe>> GetByProductAsync(long productId, long companyId)
+    {
+        await GetActiveProductAsync(productId, companyId, "Producto");
+        return await _recipeRepository.GetByProductAsync(productId, companyId);
+    }
 
     public async Task<Recipe> UpsertIngredientAsync(long productId, long companyId, UpsertRecipeIngredientRequest request)
     {
@@ -26,6 +29,12 @@ public class RecipeService : IRecipeService
             throw new ValidationException("IngredientId requerido");
         if (request.Quantity <= 0)
             throw new ValidationException("La cantidad debe ser mayor a 0");
+
+        await GetActiveProductAsync(productId, companyId, "Producto");
+        await GetActiveProductAsync(request.IngredientId, companyId, "Ingrediente");
+        if (request.UnitId.HasValue &&
+            !await _inventoryRepository.IsActiveUnitInCompanyAsync(request.UnitId.Value, companyId))
+            throw new NotFoundException("Unidad");
 
         var recipe = new Recipe
         {
@@ -44,6 +53,8 @@ public class RecipeService : IRecipeService
 
     public async Task<bool> RemoveIngredientAsync(long productId, long ingredientId, long companyId)
     {
+        await GetActiveProductAsync(productId, companyId, "Producto");
+        await GetActiveProductAsync(ingredientId, companyId, "Ingrediente");
         var ok = await _recipeRepository.RemoveIngredientAsync(productId, ingredientId, companyId);
         if (ok)
             await RecalculatePreparedProductPricingAsync(productId, companyId);
@@ -52,6 +63,7 @@ public class RecipeService : IRecipeService
 
     public async Task ClearRecipeAsync(long productId, long companyId)
     {
+        await GetActiveProductAsync(productId, companyId, "Producto");
         await _recipeRepository.ClearRecipeAsync(productId, companyId);
         await RecalculatePreparedProductPricingAsync(productId, companyId);
     }
@@ -88,6 +100,14 @@ public class RecipeService : IRecipeService
             Math.Round(calculatedCost, 2, MidpointRounding.AwayFromZero),
             calculatedSalePrice
         );
+    }
+
+    private async Task<Product> GetActiveProductAsync(long productId, long companyId, string resourceName)
+    {
+        var product = await _inventoryRepository.GetProductByIdAsync(productId, companyId);
+        if (product is null || !product.IsActive)
+            throw new NotFoundException(resourceName);
+        return product;
     }
 }
 

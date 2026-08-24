@@ -1,158 +1,289 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using Walos.Application.DTOs.Sales;
+using Walos.Application.Services;
 using Walos.Domain.Entities;
+using Walos.Domain.Exceptions;
 
 namespace Walos.Tests.Integration;
 
 public class CashRegisterRepositoryIntegrationTests : IntegrationTestBase
 {
+    private CashRegisterService Service => new(CashRegisterRepository, OrderPaymentRepository, NullLogger<CashRegisterService>.Instance);
+
     [SkippableFact]
-    public async Task GetActiveByUserAsync_Should_Return_Only_Open_Register_For_Requested_Company_Branch_And_User()
+    public async Task OpenAsync_Persists_Opening_Amount()
     {
-        var companyA = await SeedCompanyAsync("Cash Co A");
-        var companyB = await SeedCompanyAsync("Cash Co B");
-        var branchA1 = await SeedBranchAsync(companyA, "A-1");
-        var branchA2 = await SeedBranchAsync(companyA, "A-2");
-        var branchB1 = await SeedBranchAsync(companyB, "B-1");
-        var userA1 = await SeedUserAsync(companyA, branchA1, $"cash-a1-{Guid.NewGuid():N}@test.com");
-        var userA2 = await SeedUserAsync(companyA, branchA2, $"cash-a2-{Guid.NewGuid():N}@test.com");
-        var userB1 = await SeedUserAsync(companyB, branchB1, $"cash-b1-{Guid.NewGuid():N}@test.com");
+        var (company, branch, user) = await SeedContextAsync("Open");
+        var opened = await Service.OpenAsync(company, branch, user, new OpenCashRegisterRequest(125m, "Inicio"));
 
-        var registerA1 = await CashRegisterRepository.OpenAsync(new CashRegister
-        {
-            CompanyId = companyA,
-            BranchId = branchA1,
-            OpenedBy = userA1,
-            Status = "open",
-            OpeningAmount = 100000m,
-            OpenedAt = DateTime.UtcNow
-        });
-
-        await CashRegisterRepository.OpenAsync(new CashRegister
-        {
-            CompanyId = companyA,
-            BranchId = branchA2,
-            OpenedBy = userA2,
-            Status = "open",
-            OpeningAmount = 200000m,
-            OpenedAt = DateTime.UtcNow
-        });
-
-        await CashRegisterRepository.OpenAsync(new CashRegister
-        {
-            CompanyId = companyB,
-            BranchId = branchB1,
-            OpenedBy = userB1,
-            Status = "open",
-            OpeningAmount = 300000m,
-            OpenedAt = DateTime.UtcNow
-        });
-
-        var active = await CashRegisterRepository.GetActiveByUserAsync(companyA, branchA1, userA1);
-        var wrongBranch = await CashRegisterRepository.GetActiveByUserAsync(companyA, branchA2, userA1);
-        var wrongCompany = await CashRegisterRepository.GetActiveByUserAsync(companyB, branchB1, userA1);
-
-        Assert.NotNull(active);
-        Assert.Equal(registerA1.Id, active!.Id);
-        Assert.Equal(companyA, active.CompanyId);
-        Assert.Equal(branchA1, active.BranchId);
-        Assert.Null(wrongBranch);
-        Assert.Null(wrongCompany);
+        Assert.Equal("open", opened.Status);
+        Assert.Equal(125m, opened.OpeningAmount);
+        Assert.Equal(0m, opened.CashIn);
+        Assert.Equal(0m, opened.CashOut);
     }
 
     [SkippableFact]
-    public async Task GetHistoryAsync_Should_Return_Only_Registers_For_Requested_Company_And_Branch()
+    public async Task Cash_Sale_Updates_Only_Cash_And_Total_Sales()
     {
-        var companyA = await SeedCompanyAsync("History Co A");
-        var companyB = await SeedCompanyAsync("History Co B");
-        var branchA1 = await SeedBranchAsync(companyA, "A-1");
-        var branchA2 = await SeedBranchAsync(companyA, "A-2");
-        var branchB1 = await SeedBranchAsync(companyB, "B-1");
-        var userA1 = await SeedUserAsync(companyA, branchA1, $"history-a1-{Guid.NewGuid():N}@test.com");
-        var userA2 = await SeedUserAsync(companyA, branchA2, $"history-a2-{Guid.NewGuid():N}@test.com");
-        var userB1 = await SeedUserAsync(companyB, branchB1, $"history-b1-{Guid.NewGuid():N}@test.com");
+        var ctx = await CreateOpenRegisterAsync("Cash sale", 50m);
+        await CashRegisterRepository.UpdateTotalsAsync(ctx.Register.Id, ctx.Company, 100m, 100m, 0, 0, 0, 0, 0, 0, 1);
 
-        await SeedCashRegisterAsync(companyA, branchA1, userA1, "closed", 50000m);
-        await SeedCashRegisterAsync(companyA, branchA2, userA2, "closed", 60000m);
-        await SeedCashRegisterAsync(companyB, branchB1, userB1, "closed", 70000m);
-
-        var history = (await CashRegisterRepository.GetHistoryAsync(companyA, branchA1, null, null, 1, 20)).ToList();
-        var count = await CashRegisterRepository.GetHistoryCountAsync(companyA, branchA1, null, null);
-
-        Assert.Single(history);
-        Assert.Equal(1, count);
-        Assert.Equal(companyA, history[0].CompanyId);
-        Assert.Equal(branchA1, history[0].BranchId);
+        var register = await GetRegisterAsync(ctx.Register.Id, ctx.Company);
+        Assert.Equal(100m, register.TotalSales);
+        Assert.Equal(100m, register.TotalCashSales);
+        Assert.Equal(0m, register.TotalCardSales);
+        Assert.Equal(1, register.OrderCount);
     }
 
     [SkippableFact]
-    public async Task GetMovementsAsync_Should_Not_Return_Movements_From_Another_Company()
+    public async Task Card_Sale_Does_Not_Increase_Physical_Cash()
     {
-        var companyA = await SeedCompanyAsync("Movements Co A");
-        var companyB = await SeedCompanyAsync("Movements Co B");
-        var branchA = await SeedBranchAsync(companyA, "A");
-        var branchB = await SeedBranchAsync(companyB, "B");
-        var userA = await SeedUserAsync(companyA, branchA, $"moves-a-{Guid.NewGuid():N}@test.com");
-        var userB = await SeedUserAsync(companyB, branchB, $"moves-b-{Guid.NewGuid():N}@test.com");
+        var ctx = await CreateOpenRegisterAsync("Card sale", 50m);
+        await CashRegisterRepository.UpdateTotalsAsync(ctx.Register.Id, ctx.Company, 100m, 0, 100m, 0, 0, 0, 0, 0, 1);
+        var closed = await Service.CloseAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CloseCashRegisterRequest(50m, null));
 
-        var registerA = await SeedCashRegisterAsync(companyA, branchA, userA, "open", 50000m);
-        var registerB = await SeedCashRegisterAsync(companyB, branchB, userB, "open", 80000m);
-
-        await SeedCashMovementAsync(companyA, registerA, "in", 10000m, "Ingreso A", userA);
-        await SeedCashMovementAsync(companyB, registerB, "out", 9000m, "Salida B", userB);
-
-        var movements = (await CashRegisterRepository.GetMovementsAsync(registerA, companyA)).ToList();
-
-        Assert.Single(movements);
-        Assert.Equal(companyA, movements[0].CompanyId);
-        Assert.Equal(registerA, movements[0].CashRegisterId);
-        Assert.Equal("Ingreso A", movements[0].Reason);
+        Assert.Equal(100m, closed.TotalSales);
+        Assert.Equal(100m, closed.TotalCardSales);
+        Assert.Equal(50m, closed.ExpectedCash);
+        Assert.Equal(0m, closed.Difference);
     }
 
-    private async Task<long> SeedCashRegisterAsync(long companyId, long branchId, long openedBy, string status, decimal openingAmount)
+    [SkippableFact]
+    public async Task Mixed_Sale_Separates_Cash_And_Card()
     {
-        using var conn = await ConnectionFactory.CreateConnectionAsync();
-        using var cmd = new NpgsqlCommand(@"
-            INSERT INTO sales.cash_registers (
-                company_id, branch_id, opened_by, closed_by, status, opening_amount, closing_amount,
-                expected_cash, difference, total_sales, total_cash_sales, total_card_sales,
-                total_transfer_sales, total_other_sales, total_discounts, total_credits, total_tips,
-                cash_in, cash_out, order_count, notes, opened_at, closed_at, created_at, updated_at
-            )
-            VALUES (
-                @companyId, @branchId, @openedBy, CASE WHEN @status = 'closed' THEN @openedBy ELSE NULL END, @status, @openingAmount, 
-                CASE WHEN @status = 'closed' THEN @openingAmount ELSE NULL END,
-                CASE WHEN @status = 'closed' THEN @openingAmount ELSE NULL END,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NOW(),
-                CASE WHEN @status = 'closed' THEN NOW() ELSE NULL END, NOW(), NOW()
-            )
-            RETURNING id", (NpgsqlConnection)conn);
-        cmd.Parameters.AddWithValue("@companyId", companyId);
-        cmd.Parameters.AddWithValue("@branchId", branchId);
-        cmd.Parameters.AddWithValue("@openedBy", openedBy);
-        cmd.Parameters.AddWithValue("@status", status);
-        cmd.Parameters.AddWithValue("@openingAmount", openingAmount);
-        var result = await cmd.ExecuteScalarAsync();
-        return (long)(result ?? throw new InvalidOperationException("Failed to seed cash register"));
+        var ctx = await CreateOpenRegisterAsync("Mixed sale", 50m);
+        await CashRegisterRepository.UpdateTotalsAsync(ctx.Register.Id, ctx.Company, 100m, 40m, 60m, 0, 0, 0, 0, 0, 1);
+        var closed = await Service.CloseAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CloseCashRegisterRequest(90m, null));
+
+        Assert.Equal(100m, closed.TotalSales);
+        Assert.Equal(40m, closed.TotalCashSales);
+        Assert.Equal(60m, closed.TotalCardSales);
+        Assert.Equal(90m, closed.ExpectedCash);
     }
 
-    private async Task<long> SeedCashMovementAsync(long companyId, long cashRegisterId, string type, decimal amount, string reason, long createdBy)
+    [SkippableFact]
+    public async Task Partial_Credit_Is_Not_Subtracted_From_Expected_Cash()
     {
-        using var conn = await ConnectionFactory.CreateConnectionAsync();
-        using var cmd = new NpgsqlCommand(@"
-            INSERT INTO sales.cash_movements (
-                company_id, cash_register_id, type, amount, reason, notes, created_by, created_at
-            )
-            VALUES (
-                @companyId, @cashRegisterId, @type, @amount, @reason, NULL, @createdBy, NOW()
-            )
-            RETURNING id", (NpgsqlConnection)conn);
-        cmd.Parameters.AddWithValue("@companyId", companyId);
-        cmd.Parameters.AddWithValue("@cashRegisterId", cashRegisterId);
-        cmd.Parameters.AddWithValue("@type", type);
-        cmd.Parameters.AddWithValue("@amount", amount);
-        cmd.Parameters.AddWithValue("@reason", reason);
-        cmd.Parameters.AddWithValue("@createdBy", createdBy);
-        var result = await cmd.ExecuteScalarAsync();
-        return (long)(result ?? throw new InvalidOperationException("Failed to seed cash movement"));
+        var ctx = await CreateOpenRegisterAsync("Credit sale", 50m);
+        await CashRegisterRepository.UpdateTotalsAsync(ctx.Register.Id, ctx.Company, 100m, 40m, 0, 0, 0, 0, 60m, 0, 1);
+        var closed = await Service.CloseAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CloseCashRegisterRequest(90m, null));
+
+        Assert.Equal(100m, closed.TotalSales);
+        Assert.Equal(60m, closed.TotalCredits);
+        Assert.Equal(90m, closed.ExpectedCash);
+        Assert.Equal(0m, closed.Difference);
+    }
+
+    [SkippableFact]
+    public async Task Cash_In_Creates_Movement_And_Increments_Accumulator()
+    {
+        var ctx = await CreateOpenRegisterAsync("Cash in", 50m);
+        var movement = await Service.AddMovementAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User,
+            new CashMovementRequest("in", 20m, "Cambio", null));
+
+        var register = await GetRegisterAsync(ctx.Register.Id, ctx.Company);
+        Assert.Equal("in", movement.Type);
+        Assert.Equal(20m, register.CashIn);
+        Assert.Equal(0m, register.CashOut);
+        Assert.Single(await CashRegisterRepository.GetMovementsAsync(ctx.Register.Id, ctx.Company, ctx.Branch));
+    }
+
+    [SkippableFact]
+    public async Task Cash_Out_Creates_Movement_And_Increments_Accumulator()
+    {
+        var ctx = await CreateOpenRegisterAsync("Cash out", 50m);
+        await Service.AddMovementAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User,
+            new CashMovementRequest("out", 15m, "Compra menor", null));
+
+        var register = await GetRegisterAsync(ctx.Register.Id, ctx.Company);
+        Assert.Equal(0m, register.CashIn);
+        Assert.Equal(15m, register.CashOut);
+    }
+
+    [SkippableFact]
+    public async Task Multiple_Movements_Accumulate_Independently()
+    {
+        var ctx = await CreateOpenRegisterAsync("Many movements", 100m);
+        await Service.AddMovementAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CashMovementRequest("in", 20m, "Entrada 1", null));
+        await Service.AddMovementAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CashMovementRequest("out", 7m, "Salida 1", null));
+        await Service.AddMovementAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CashMovementRequest("IN", 5m, "Entrada 2", null));
+
+        var register = await GetRegisterAsync(ctx.Register.Id, ctx.Company);
+        Assert.Equal(25m, register.CashIn);
+        Assert.Equal(7m, register.CashOut);
+        Assert.Equal(3, (await CashRegisterRepository.GetMovementsAsync(ctx.Register.Id, ctx.Company, ctx.Branch)).Count());
+    }
+
+    [SkippableFact]
+    public async Task Zero_Movement_Is_Rejected_Without_Writes()
+    {
+        var ctx = await CreateOpenRegisterAsync("Zero movement", 50m);
+        await Assert.ThrowsAsync<ValidationException>(() => Service.AddMovementAsync(
+            ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CashMovementRequest("in", 0m, "Inválido", null)));
+        await AssertRegisterHasNoMovementsAsync(ctx.Register.Id, ctx.Company);
+    }
+
+    [SkippableFact]
+    public async Task Negative_Movement_Is_Rejected_Without_Writes()
+    {
+        var ctx = await CreateOpenRegisterAsync("Negative movement", 50m);
+        await Assert.ThrowsAsync<ValidationException>(() => Service.AddMovementAsync(
+            ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CashMovementRequest("out", -1m, "Inválido", null)));
+        await AssertRegisterHasNoMovementsAsync(ctx.Register.Id, ctx.Company);
+    }
+
+    [SkippableFact]
+    public async Task Movement_On_Closed_Register_Is_Rejected()
+    {
+        var ctx = await CreateOpenRegisterAsync("Closed movement", 50m);
+        await Service.CloseAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CloseCashRegisterRequest(50m, null));
+        await Assert.ThrowsAsync<BusinessException>(() => Service.AddMovementAsync(
+            ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CashMovementRequest("in", 10m, "Tarde", null)));
+        await AssertRegisterHasNoMovementsAsync(ctx.Register.Id, ctx.Company);
+    }
+
+    [SkippableFact]
+    public async Task Movement_On_Another_Company_Register_Is_Rejected()
+    {
+        var owner = await CreateOpenRegisterAsync("Owner", 50m);
+        var (companyB, branchB, userB) = await SeedContextAsync("Attacker");
+        await Assert.ThrowsAsync<NotFoundException>(() => Service.AddMovementAsync(
+            owner.Register.Id, companyB, branchB, userB, new CashMovementRequest("out", 10m, "Ataque", null)));
+        await AssertRegisterHasNoMovementsAsync(owner.Register.Id, owner.Company);
+    }
+
+    [SkippableFact]
+    public async Task Movements_Summary_And_ZReport_Source_Are_Not_Visible_From_Another_Branch()
+    {
+        var company = await SeedCompanyAsync("Cash Branch Scope");
+        var branchA = await SeedBranchAsync(company, "A");
+        var branchB = await SeedBranchAsync(company, "B");
+        var userA = await SeedUserAsync(company, branchA, $"a-{Guid.NewGuid():N}@test.com");
+        var register = await CashRegisterRepository.OpenAsync(new CashRegister
+        {
+            CompanyId = company,
+            BranchId = branchA,
+            OpenedBy = userA,
+            Status = "open",
+            OpeningAmount = 25m,
+            OpenedAt = DateTime.UtcNow
+        });
+        await Service.AddMovementAsync(register.Id, company, branchA, userA,
+            new CashMovementRequest("in", 5m, "Entrada", null));
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            Service.GetMovementsAsync(register.Id, company, branchB));
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            Service.GetSummaryAsync(register.Id, company, branchB));
+
+        Assert.Single(await Service.GetMovementsAsync(register.Id, company, branchA));
+        Assert.Equal(register.Id, (await Service.GetSummaryAsync(register.Id, company, branchA)).Register.Id);
+    }
+
+    [SkippableFact]
+    public async Task Exact_Close_Has_Zero_Difference()
+    {
+        var ctx = await CreateOpenRegisterAsync("Exact close", 100m);
+        await CashRegisterRepository.UpdateTotalsAsync(ctx.Register.Id, ctx.Company, 80m, 30m, 50m, 0, 0, 0, 0, 0, 1);
+        await Service.AddMovementAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CashMovementRequest("in", 20m, "Entrada", null));
+        await Service.AddMovementAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CashMovementRequest("out", 10m, "Salida", null));
+        var closed = await Service.CloseAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CloseCashRegisterRequest(140m, null));
+
+        Assert.Equal(140m, closed.ExpectedCash);
+        Assert.Equal(0m, closed.Difference);
+        Assert.Equal("closed", closed.Status);
+        Assert.Equal(ctx.User, closed.ClosedBy);
+        Assert.NotNull(closed.ClosedAt);
+    }
+
+    [SkippableFact]
+    public async Task Close_With_Shortage_Has_Negative_Difference()
+    {
+        var ctx = await CreateOpenRegisterAsync("Short close", 50m);
+        await CashRegisterRepository.UpdateTotalsAsync(ctx.Register.Id, ctx.Company, 100m, 100m, 0, 0, 0, 0, 0, 0, 1);
+        var closed = await Service.CloseAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CloseCashRegisterRequest(140m, null));
+
+        Assert.Equal(150m, closed.ExpectedCash);
+        Assert.Equal(-10m, closed.Difference);
+    }
+
+    [SkippableFact]
+    public async Task Close_With_Overage_Has_Positive_Difference()
+    {
+        var ctx = await CreateOpenRegisterAsync("Over close", 50m);
+        await CashRegisterRepository.UpdateTotalsAsync(ctx.Register.Id, ctx.Company, 100m, 100m, 0, 0, 0, 0, 0, 0, 1);
+        var closed = await Service.CloseAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CloseCashRegisterRequest(155m, null));
+
+        Assert.Equal(150m, closed.ExpectedCash);
+        Assert.Equal(5m, closed.Difference);
+    }
+
+    [SkippableFact]
+    public async Task Movement_Insert_Failure_Rolls_Back_Accumulator()
+    {
+        var ctx = await CreateOpenRegisterAsync("Rollback movement", 50m);
+        var invalidMovement = new CashMovement
+        {
+            CompanyId = ctx.Company,
+            CashRegisterId = ctx.Register.Id,
+            Type = "in",
+            Amount = 20m,
+            Reason = new string('x', 301),
+            CreatedBy = ctx.User
+        };
+
+        var exception = await Assert.ThrowsAsync<PostgresException>(() => CashRegisterRepository.AddMovementAsync(invalidMovement, ctx.Branch));
+
+        Assert.Equal("22001", exception.SqlState);
+        await AssertRegisterHasNoMovementsAsync(ctx.Register.Id, ctx.Company);
+    }
+
+    [SkippableFact]
+    public async Task Second_Close_Is_Controlled_And_Does_Not_Overwrite_First_Close()
+    {
+        var ctx = await CreateOpenRegisterAsync("Double close", 50m);
+        var first = await Service.CloseAsync(ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CloseCashRegisterRequest(50m, "Primero"));
+        await Assert.ThrowsAsync<BusinessException>(() => Service.CloseAsync(
+            ctx.Register.Id, ctx.Company, ctx.Branch, ctx.User, new CloseCashRegisterRequest(999m, "Segundo")));
+
+        var persisted = await GetRegisterAsync(ctx.Register.Id, ctx.Company);
+        Assert.Equal(first.ClosingAmount, persisted.ClosingAmount);
+        Assert.Equal(50m, persisted.ClosingAmount);
+    }
+
+    private async Task<(long Company, long Branch, long User)> SeedContextAsync(string prefix)
+    {
+        var company = await SeedCompanyAsync($"{prefix} Company");
+        var branch = await SeedBranchAsync(company, $"{prefix} Branch");
+        var user = await SeedUserAsync(company, branch, $"{prefix.ToLowerInvariant().Replace(' ', '-')}-{Guid.NewGuid():N}@test.com");
+        return (company, branch, user);
+    }
+
+    private async Task<(long Company, long Branch, long User, CashRegister Register)> CreateOpenRegisterAsync(string prefix, decimal openingAmount)
+    {
+        var (company, branch, user) = await SeedContextAsync(prefix);
+        var register = await CashRegisterRepository.OpenAsync(new CashRegister
+        {
+            CompanyId = company,
+            BranchId = branch,
+            OpenedBy = user,
+            Status = "open",
+            OpeningAmount = openingAmount,
+            OpenedAt = DateTime.UtcNow
+        });
+        return (company, branch, user, register);
+    }
+
+    private async Task<CashRegister> GetRegisterAsync(long id, long companyId) =>
+        await CashRegisterRepository.GetByIdAsync(id, companyId)
+        ?? throw new InvalidOperationException("Cash register was not found");
+
+    private async Task AssertRegisterHasNoMovementsAsync(long id, long companyId)
+    {
+        var register = await GetRegisterAsync(id, companyId);
+        Assert.Equal(0m, register.CashIn);
+        Assert.Equal(0m, register.CashOut);
+        Assert.Empty(await CashRegisterRepository.GetMovementsAsync(id, companyId, register.BranchId));
     }
 }

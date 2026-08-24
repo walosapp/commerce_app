@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Sales;
 using Walos.Application.Services;
+using Walos.Application.Security;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
 
@@ -10,7 +11,7 @@ namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/sales")]
-[Authorize]
+[Authorize(Policy = WalosPolicies.SalesOperator)]
 public class SalesController : ControllerBase
 {
     private readonly ISalesRepository _salesRepo;
@@ -54,110 +55,130 @@ public class SalesController : ControllerBase
     [HttpGet("tables")]
     public async Task<IActionResult> GetTables([FromQuery] long? branchId)
     {
-        var branch = branchId ?? _tenant.BranchId;
-
-        if (branch is null)
-            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId, required: true);
 
         var tables = (await _salesService.GetActiveTablesAsync(_tenant.CompanyId, branch.Value)).ToList();
         return Ok(ApiResponse<List<SalesTable>>.Ok(tables, count: tables.Count));
     }
 
     [HttpPost("tables")]
-    public async Task<IActionResult> CreateTable([FromBody] CreateTableRequest request)
+    [Authorize(Policy = WalosPolicies.SalesOperator)]
+    public async Task<IActionResult> CreateTable([FromBody] CreateTableRequest request, [FromQuery] long? branchId = null)
     {
-        var branchId = _tenant.BranchId;
-        if (branchId is null)
-            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId, required: true);
 
-        var result = await _salesService.CreateTableAsync(_tenant.CompanyId, branchId.Value, _tenant.UserId, request);
+        var result = await _salesService.CreateTableAsync(_tenant.CompanyId, branch.Value, _tenant.UserId, request);
         return StatusCode(StatusCodes.Status201Created,
             ApiResponse<SalesTable>.Ok(result.Table, "Mesa creada exitosamente"));
     }
 
     [HttpPost("tables/{id:long}/invoice")]
-    public async Task<IActionResult> InvoiceTable(long id, [FromBody] InvoiceTableRequest? request)
+    [Authorize(Policy = WalosPolicies.SalesOperator)]
+    public async Task<IActionResult> InvoiceTable(long id, [FromBody] InvoiceTableRequest? request, [FromQuery] long? branchId = null)
     {
-        var branchId = _tenant.BranchId;
-        if (branchId is null)
-            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId, required: true);
 
         request ??= new InvoiceTableRequest();
-        var result = await _salesService.InvoiceTableAsync(_tenant.CompanyId, branchId.Value, _tenant.UserId, id, request);
+        var result = await _salesService.InvoiceTableAsync(_tenant.CompanyId, branch.Value, _tenant.UserId, id, request);
         return Ok(ApiResponse<InvoiceResult>.Ok(result, "Mesa facturada exitosamente"));
     }
 
     [HttpDelete("tables/{id:long}")]
-    public async Task<IActionResult> CancelTable(long id)
+    [Authorize(Policy = WalosPolicies.SalesOperator)]
+    public async Task<IActionResult> CancelTable(long id, [FromQuery] long? branchId = null)
     {
-        await _salesService.CancelTableAsync(_tenant.CompanyId, id);
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId);
+        await _salesService.CancelTableAsync(_tenant.CompanyId, branch, id);
         return Ok(ApiResponse.Ok("Mesa cancelada"));
     }
 
     [HttpPatch("items/{itemId:long}/quantity")]
-    public async Task<IActionResult> UpdateItemQuantity(long itemId, [FromBody] UpdateItemQuantityRequest request)
+    [Authorize(Policy = WalosPolicies.SalesOperator)]
+    public async Task<IActionResult> UpdateItemQuantity(long itemId, [FromBody] UpdateItemQuantityRequest request, [FromQuery] long? branchId = null)
     {
-        var branchId = _tenant.BranchId ?? 0;
-        await _salesService.UpdateItemQuantityAsync(_tenant.CompanyId, branchId, itemId, request);
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId, required: true);
+        await _salesService.UpdateItemQuantityAsync(_tenant.CompanyId, branch.Value, itemId, request);
         return Ok(ApiResponse.Ok("Cantidad actualizada"));
     }
 
     [HttpPost("tables/{id:long}/items")]
-    public async Task<IActionResult> AddItemsToTable(long id, [FromBody] List<CreateTableItemDto> items)
+    [Authorize(Policy = WalosPolicies.SalesOperator)]
+    public async Task<IActionResult> AddItemsToTable(long id, [FromBody] List<CreateTableItemDto> items, [FromQuery] long? branchId = null)
     {
-        await _salesService.AddItemsToTableAsync(_tenant.CompanyId, id, items);
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId, required: true);
+
+        await _salesService.AddItemsToTableAsync(_tenant.CompanyId, branch.Value, id, items);
         return Ok(ApiResponse.Ok("Productos agregados exitosamente"));
     }
 
     [HttpPatch("tables/{id:long}/name")]
-    public async Task<IActionResult> RenameTable(long id, [FromBody] RenameTableRequest request)
+    [Authorize(Policy = WalosPolicies.SalesOperator)]
+    public async Task<IActionResult> RenameTable(long id, [FromBody] RenameTableRequest request, [FromQuery] long? branchId = null)
     {
-        await _salesService.RenameTableAsync(_tenant.CompanyId, id, request.Name ?? string.Empty);
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId);
+        await _salesService.RenameTableAsync(_tenant.CompanyId, branch, id, request.Name ?? string.Empty);
         return Ok(ApiResponse.Ok("Mesa renombrada"));
     }
 
     [HttpGet("orders/{id:long}/items")]
-    public async Task<IActionResult> GetOrderItems(long id)
+    public async Task<IActionResult> GetOrderItems(long id, [FromQuery] long? branchId = null)
     {
-        var items = (await _salesRepo.GetOrderItemsAsync(id, _tenant.CompanyId)).ToList();
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId);
+        var items = (await _salesService.GetOrderItemsAsync(_tenant.CompanyId, branch, id)).ToList();
         return Ok(ApiResponse<List<OrderItem>>.Ok(items, count: items.Count));
     }
 
     [HttpGet("summary")]
-    public async Task<IActionResult> GetSummary([FromQuery] long branchId, [FromQuery] string? date)
+    public async Task<IActionResult> GetSummary([FromQuery] long? branchId, [FromQuery] string? date)
     {
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId, required: true);
         var parsedDate = DateTime.TryParse(date, out var d) ? d.Date : DateTime.UtcNow.Date;
         var (dateFrom, dateTo) = await GetBusinessDayRangeAsync(parsedDate);
-        var summary = await _salesRepo.GetSalesSummaryAsync(_tenant.CompanyId, branchId, dateFrom, dateTo);
+        var summary = await _salesRepo.GetSalesSummaryAsync(_tenant.CompanyId, branch.Value, dateFrom, dateTo);
         return Ok(ApiResponse<SalesSummary>.Ok(summary));
     }
 
     [HttpGet("orders/completed")]
-    public async Task<IActionResult> GetCompletedOrders([FromQuery] long branchId, [FromQuery] string? date)
+    public async Task<IActionResult> GetCompletedOrders([FromQuery] long? branchId, [FromQuery] string? date)
     {
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId, required: true);
         var parsedDate = DateTime.TryParse(date, out var d) ? d.Date : DateTime.UtcNow.Date;
         var (dateFrom, dateTo) = await GetBusinessDayRangeAsync(parsedDate);
-        var orders = (await _salesRepo.GetCompletedOrdersAsync(_tenant.CompanyId, branchId, dateFrom, dateTo)).ToList();
+        var orders = (await _salesRepo.GetCompletedOrdersAsync(_tenant.CompanyId, branch.Value, dateFrom, dateTo)).ToList();
         return Ok(ApiResponse<List<CompletedOrder>>.Ok(orders, count: orders.Count));
     }
 
     [HttpGet("orders/{id:long}/receipt")]
-    public async Task<IActionResult> GetReceipt(long id)
+    public async Task<IActionResult> GetReceipt(long id, [FromQuery] long? branchId = null)
     {
-        var result = await _salesService.GetReceiptAsync(_tenant.CompanyId, id);
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId);
+        var result = await _salesService.GetReceiptAsync(_tenant.CompanyId, branch, id);
         return Ok(ApiResponse<ReceiptData>.Ok(result));
     }
 
     [HttpGet("orders/{id:long}/kitchen")]
-    public async Task<IActionResult> GetKitchenTicket(long id)
+    public async Task<IActionResult> GetKitchenTicket(long id, [FromQuery] long? branchId = null)
     {
-        var result = await _salesService.GetKitchenTicketAsync(_tenant.CompanyId, id);
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId);
+        var result = await _salesService.GetKitchenTicketAsync(_tenant.CompanyId, branch, id);
         return Ok(ApiResponse<KitchenTicketData>.Ok(result));
     }
 
     [HttpGet("orders/search")]
     public async Task<IActionResult> SearchOrders(
-        [FromQuery] long branchId,
+        [FromQuery] long? branchId,
         [FromQuery] string? dateFrom,
         [FromQuery] string? dateTo,
         [FromQuery] string? status,
@@ -171,9 +192,11 @@ public class SalesController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int limit = 20)
     {
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId, required: true);
         var request = new OrderSearchRequest
         {
-            BranchId = branchId,
+            BranchId = branch.Value,
             DateFrom = DateTime.TryParse(dateFrom, out var df) ? df : null,
             DateTo = DateTime.TryParse(dateTo, out var dt) ? dt.Date.AddDays(1).AddTicks(-1) : null,
             Status = status,
@@ -193,15 +216,17 @@ public class SalesController : ControllerBase
     }
 
     [HttpGet("orders/{id:long}/detail")]
-    public async Task<IActionResult> GetOrderDetail(long id)
+    public async Task<IActionResult> GetOrderDetail(long id, [FromQuery] long? branchId = null)
     {
-        var result = await _salesService.GetOrderDetailAsync(_tenant.CompanyId, id);
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId);
+        var result = await _salesService.GetOrderDetailAsync(_tenant.CompanyId, branch, id);
         return Ok(ApiResponse<OrderDetailResponse>.Ok(result));
     }
 
     [HttpGet("orders/export")]
     public async Task<IActionResult> ExportOrders(
-        [FromQuery] long branchId,
+        [FromQuery] long? branchId,
         [FromQuery] string? dateFrom,
         [FromQuery] string? dateTo,
         [FromQuery] string? status,
@@ -213,9 +238,11 @@ public class SalesController : ControllerBase
         [FromQuery] string sortBy = "created_at",
         [FromQuery] string sortDir = "desc")
     {
+        var branch = await _salesService.ResolveBranchAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId, required: true);
         var request = new OrderSearchRequest
         {
-            BranchId = branchId,
+            BranchId = branch.Value,
             DateFrom = DateTime.TryParse(dateFrom, out var df) ? df : null,
             DateTo = DateTime.TryParse(dateTo, out var dt) ? dt.Date.AddDays(1).AddTicks(-1) : null,
             Status = status,

@@ -89,7 +89,10 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task<SalesTable?> GetTableByIdAsync(long tableId, long companyId)
+    public Task<SalesTable?> GetTableByIdAsync(long tableId, long companyId)
+        => GetTableByIdAsync(tableId, companyId, null);
+
+    public async Task<SalesTable?> GetTableByIdAsync(long tableId, long companyId, long? branchId)
     {
         try
         {
@@ -100,9 +103,12 @@ public class SalesRepository : ISalesRepository
                        table_number AS TableNumber, name AS Name, status AS Status,
                        created_by AS CreatedBy, created_at AS CreatedAt
                 FROM sales.tables
-                WHERE id = @TableId AND company_id = @CompanyId AND deleted_at IS NULL";
+                WHERE id = @TableId AND company_id = @CompanyId
+                  AND (@BranchId IS NULL OR branch_id = @BranchId)
+                  AND deleted_at IS NULL";
 
-            return await connection.QueryFirstOrDefaultAsync<SalesTable>(sql, new { TableId = tableId, CompanyId = companyId });
+            return await connection.QueryFirstOrDefaultAsync<SalesTable>(sql,
+                new { TableId = tableId, CompanyId = companyId, BranchId = branchId });
         }
         catch (Exception ex)
         {
@@ -204,7 +210,10 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task<Order?> GetOrderByTableIdAsync(long tableId, long companyId)
+    public Task<Order?> GetOrderByTableIdAsync(long tableId, long companyId)
+        => GetOrderByTableIdAsync(tableId, companyId, null);
+
+    public async Task<Order?> GetOrderByTableIdAsync(long tableId, long companyId, long? branchId)
     {
         try
         {
@@ -216,10 +225,13 @@ public class SalesRepository : ISalesRepository
                         subtotal AS Subtotal, tax AS Tax, total AS Total, notes AS Notes,
                         created_by AS CreatedBy, created_at AS CreatedAt
                  FROM sales.orders
-                WHERE table_id = @TableId AND company_id = @CompanyId AND status = 'pending'
+                WHERE table_id = @TableId AND company_id = @CompanyId
+                  AND (@BranchId IS NULL OR branch_id = @BranchId)
+                  AND status = 'pending'
                 ORDER BY created_at DESC";
 
-            return await connection.QueryFirstOrDefaultAsync<Order>(sql, new { TableId = tableId, CompanyId = companyId });
+            return await connection.QueryFirstOrDefaultAsync<Order>(sql,
+                new { TableId = tableId, CompanyId = companyId, BranchId = branchId });
         }
         catch (Exception ex)
         {
@@ -228,7 +240,10 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task<Order?> GetOrderByIdAsync(long orderId, long companyId)
+    public Task<Order?> GetOrderByIdAsync(long orderId, long companyId)
+        => GetOrderByIdAsync(orderId, companyId, null);
+
+    public async Task<Order?> GetOrderByIdAsync(long orderId, long companyId, long? branchId)
     {
         try
         {
@@ -246,9 +261,11 @@ public class SalesRepository : ISalesRepository
                         refund_status AS RefundStatus,
                         created_by AS CreatedBy, created_at AS CreatedAt
                 FROM sales.orders
-                WHERE id = @OrderId AND company_id = @CompanyId";
+                WHERE id = @OrderId AND company_id = @CompanyId
+                  AND (@BranchId IS NULL OR branch_id = @BranchId)";
 
-            return await connection.QueryFirstOrDefaultAsync<Order>(sql, new { OrderId = orderId, CompanyId = companyId });
+            return await connection.QueryFirstOrDefaultAsync<Order>(sql,
+                new { OrderId = orderId, CompanyId = companyId, BranchId = branchId });
         }
         catch (Exception ex)
         {
@@ -257,7 +274,10 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task<IEnumerable<OrderItem>> GetOrderItemsAsync(long orderId, long companyId)
+    public Task<IEnumerable<OrderItem>> GetOrderItemsAsync(long orderId, long companyId)
+        => GetOrderItemsAsync(orderId, companyId, null);
+
+    public async Task<IEnumerable<OrderItem>> GetOrderItemsAsync(long orderId, long companyId, long? branchId)
     {
         try
         {
@@ -269,11 +289,14 @@ public class SalesRepository : ISalesRepository
                        oi.unit_price AS UnitPrice, oi.subtotal AS Subtotal,
                        p.image_url AS ImageUrl
                 FROM sales.order_items oi
+                INNER JOIN sales.orders o ON o.id = oi.order_id AND o.company_id = oi.company_id
                 LEFT JOIN inventory.products p ON oi.product_id = p.id AND p.company_id = oi.company_id
                 WHERE oi.order_id = @OrderId AND oi.company_id = @CompanyId
+                  AND (@BranchId IS NULL OR o.branch_id = @BranchId)
                 ORDER BY oi.id ASC";
 
-            return await connection.QueryAsync<OrderItem>(sql, new { OrderId = orderId, CompanyId = companyId });
+            return await connection.QueryAsync<OrderItem>(sql,
+                new { OrderId = orderId, CompanyId = companyId, BranchId = branchId });
         }
         catch (Exception ex)
         {
@@ -282,7 +305,10 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task<OrderItem?> GetOrderItemByIdAsync(long itemId, long companyId)
+    public Task<OrderItem?> GetOrderItemByIdAsync(long itemId, long companyId)
+        => GetOrderItemByIdAsync(itemId, companyId, null);
+
+    public async Task<OrderItem?> GetOrderItemByIdAsync(long itemId, long companyId, long? branchId)
     {
         try
         {
@@ -294,10 +320,13 @@ public class SalesRepository : ISalesRepository
                        oi.unit_price AS UnitPrice, oi.subtotal AS Subtotal,
                        p.image_url AS ImageUrl
                 FROM sales.order_items oi
+                INNER JOIN sales.orders o ON o.id = oi.order_id AND o.company_id = oi.company_id
                 LEFT JOIN inventory.products p ON oi.product_id = p.id AND p.company_id = oi.company_id
-                WHERE oi.id = @ItemId AND oi.company_id = @CompanyId";
+                WHERE oi.id = @ItemId AND oi.company_id = @CompanyId
+                  AND (@BranchId IS NULL OR o.branch_id = @BranchId)";
 
-            return await connection.QueryFirstOrDefaultAsync<OrderItem>(sql, new { ItemId = itemId, CompanyId = companyId });
+            return await connection.QueryFirstOrDefaultAsync<OrderItem>(sql,
+                new { ItemId = itemId, CompanyId = companyId, BranchId = branchId });
         }
         catch (Exception ex)
         {
@@ -306,7 +335,10 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task UpdateTableStatusAsync(long tableId, long companyId, string status)
+    public Task UpdateTableStatusAsync(long tableId, long companyId, string status)
+        => UpdateTableStatusAsync(tableId, companyId, null, status);
+
+    public async Task UpdateTableStatusAsync(long tableId, long companyId, long? branchId, string status)
     {
         try
         {
@@ -315,9 +347,11 @@ public class SalesRepository : ISalesRepository
             const string sql = @"
                 UPDATE sales.tables
                 SET status = @Status, updated_at = NOW()
-                WHERE id = @TableId AND company_id = @CompanyId";
+                WHERE id = @TableId AND company_id = @CompanyId
+                  AND (@BranchId IS NULL OR branch_id = @BranchId)";
 
-            await connection.ExecuteAsync(sql, new { TableId = tableId, CompanyId = companyId, Status = status });
+            await connection.ExecuteAsync(sql,
+                new { TableId = tableId, CompanyId = companyId, BranchId = branchId, Status = status });
         }
         catch (Exception ex)
         {
@@ -326,7 +360,10 @@ public class SalesRepository : ISalesRepository
         }
     }
 
-    public async Task UpdateOrderStatusAsync(long orderId, long companyId, string status)
+    public Task UpdateOrderStatusAsync(long orderId, long companyId, string status)
+        => UpdateOrderStatusAsync(orderId, companyId, null, status);
+
+    public async Task UpdateOrderStatusAsync(long orderId, long companyId, long? branchId, string status)
     {
         try
         {
@@ -335,9 +372,11 @@ public class SalesRepository : ISalesRepository
             const string sql = @"
                 UPDATE sales.orders
                 SET status = @Status, updated_at = NOW()
-                WHERE id = @OrderId AND company_id = @CompanyId";
+                WHERE id = @OrderId AND company_id = @CompanyId
+                  AND (@BranchId IS NULL OR branch_id = @BranchId)";
 
-            await connection.ExecuteAsync(sql, new { OrderId = orderId, CompanyId = companyId, Status = status });
+            await connection.ExecuteAsync(sql,
+                new { OrderId = orderId, CompanyId = companyId, BranchId = branchId, Status = status });
         }
         catch (Exception ex)
         {
@@ -442,7 +481,10 @@ public class SalesRepository : ISalesRepository
             throw;
         }
     }
-    public async Task RenameTableAsync(long tableId, long companyId, string name)
+    public Task RenameTableAsync(long tableId, long companyId, string name)
+        => RenameTableAsync(tableId, companyId, null, name);
+
+    public async Task RenameTableAsync(long tableId, long companyId, long? branchId, string name)
     {
         try
         {
@@ -450,8 +492,11 @@ public class SalesRepository : ISalesRepository
             const string sql = @"
                 UPDATE sales.tables
                 SET name = @Name, updated_at = NOW()
-                WHERE id = @TableId AND company_id = @CompanyId AND deleted_at IS NULL";
-            await connection.ExecuteAsync(sql, new { TableId = tableId, CompanyId = companyId, Name = name });
+                WHERE id = @TableId AND company_id = @CompanyId
+                  AND (@BranchId IS NULL OR branch_id = @BranchId)
+                  AND deleted_at IS NULL";
+            await connection.ExecuteAsync(sql,
+                new { TableId = tableId, CompanyId = companyId, BranchId = branchId, Name = name });
         }
         catch (Exception ex)
         {

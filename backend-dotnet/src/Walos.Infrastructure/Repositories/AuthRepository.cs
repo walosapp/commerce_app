@@ -40,14 +40,24 @@ public class AuthRepository : IAuthRepository
                    u.created_at AS CreatedAt,
                    r.code AS RoleCode,
                    r.name AS RoleName,
-                   b.name AS BranchName,
-                   c.name AS CompanyName
-            FROM core.users u
-            INNER JOIN core.roles r ON u.role_id = r.id AND r.company_id = u.company_id
-            INNER JOIN core.companies c ON u.company_id = c.id
-            LEFT JOIN core.branches b ON u.branch_id = b.id AND b.company_id = u.company_id
-            WHERE u.email = @Email
-              AND u.deleted_at IS NULL";
+                    b.name AS BranchName,
+                    c.name AS CompanyName,
+                    c.tax_id AS CompanyTaxId
+             FROM core.users u
+             INNER JOIN core.roles r ON u.role_id = r.id
+                 AND r.company_id = u.company_id
+                 AND r.is_active = TRUE
+                 AND r.deleted_at IS NULL
+             INNER JOIN core.companies c ON u.company_id = c.id
+                 AND c.is_active = TRUE
+                 AND c.deleted_at IS NULL
+             LEFT JOIN core.branches b ON u.branch_id = b.id
+                 AND b.company_id = u.company_id
+                 AND b.is_active = TRUE
+                 AND b.deleted_at IS NULL
+             WHERE u.email = @Email
+               AND u.deleted_at IS NULL
+               AND (u.branch_id IS NULL OR b.id IS NOT NULL)";
 
         return await conn.QueryFirstOrDefaultAsync<User>(sql, new { Email = email });
     }
@@ -134,15 +144,27 @@ public class AuthRepository : IAuthRepository
                    u.email AS Email,
                    u.refresh_token AS RefreshToken,
                    u.refresh_token_expires_at AS RefreshTokenExpiresAt,
-                   u.is_active AS IsActive,
-                   r.code AS RoleCode,
-                   r.name AS RoleName
-            FROM core.users u
-            INNER JOIN core.roles r ON u.role_id = r.id AND r.company_id = u.company_id
-            WHERE u.refresh_token = @RefreshToken
-              AND u.refresh_token_expires_at > NOW()
-              AND u.deleted_at IS NULL
-              AND u.is_active = TRUE";
+                    u.is_active AS IsActive,
+                    r.code AS RoleCode,
+                    r.name AS RoleName,
+                    c.tax_id AS CompanyTaxId
+             FROM core.users u
+             INNER JOIN core.roles r ON u.role_id = r.id
+                 AND r.company_id = u.company_id
+                 AND r.is_active = TRUE
+                 AND r.deleted_at IS NULL
+             INNER JOIN core.companies c ON u.company_id = c.id
+                 AND c.is_active = TRUE
+                 AND c.deleted_at IS NULL
+             LEFT JOIN core.branches b ON u.branch_id = b.id
+                 AND b.company_id = u.company_id
+                 AND b.is_active = TRUE
+                 AND b.deleted_at IS NULL
+             WHERE u.refresh_token = @RefreshToken
+               AND u.refresh_token_expires_at > NOW()
+               AND u.deleted_at IS NULL
+               AND u.is_active = TRUE
+               AND (u.branch_id IS NULL OR b.id IS NOT NULL)";
 
         return await conn.QueryFirstOrDefaultAsync<User>(sql, new { RefreshToken = refreshToken });
     }

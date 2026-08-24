@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Inventory;
+using Walos.Application.Security;
 using Walos.Application.Services;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
@@ -77,6 +78,7 @@ public class InventoryController : ControllerBase
     /// POST /api/v1/inventory/products - Crear producto
     /// </summary>
     [HttpPost("products")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> CreateProduct([FromBody] CreateProductRequest request)
     {
         try
@@ -96,6 +98,7 @@ public class InventoryController : ControllerBase
     /// PUT /api/v1/inventory/products/{id} - Actualizar producto
     /// </summary>
     [HttpPut("products/{id:long}")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> UpdateProduct(long id, [FromBody] UpdateProductRequest request)
     {
         var updated = await _service.UpdateProductAsync(id, _tenant.CompanyId, _tenant.UserId, request);
@@ -109,6 +112,7 @@ public class InventoryController : ControllerBase
     /// POST /api/v1/inventory/products/{id}/image - Subir imagen de producto
     /// </summary>
     [HttpPost("products/{id:long}/image")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     [RequestSizeLimit(2 * 1024 * 1024)] // 2MB
     public async Task<IActionResult> UploadProductImage(long id, IFormFile file)
     {
@@ -152,6 +156,7 @@ public class InventoryController : ControllerBase
     /// DELETE /api/v1/inventory/products/{id} - Eliminar producto (soft delete)
     /// </summary>
     [HttpDelete("products/{id:long}")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> DeleteProduct(long id)
     {
         var companyId = _tenant.CompanyId;
@@ -182,7 +187,7 @@ public class InventoryController : ControllerBase
     /// POST /api/v1/inventory/products/import - Importar productos desde Excel
     /// </summary>
     [HttpPost("products/import")]
-    [Authorize(Roles = "dev,super_admin,admin,manager")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> ImportProducts(IFormFile file)
     {
         if (file is null || file.Length == 0)
@@ -306,10 +311,7 @@ public class InventoryController : ControllerBase
     public async Task<IActionResult> GetStock([FromQuery] long? branchId)
     {
         var companyId = _tenant.CompanyId;
-        var branch = branchId ?? _tenant.BranchId;
-
-        if (branch is null)
-            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+        var branch = await _service.ResolveBranchAsync(companyId, _tenant.BranchId, branchId, required: true);
 
         var stock = await _repository.GetStockByBranchAsync(branch.Value, companyId);
         var list = stock.ToList();
@@ -324,10 +326,7 @@ public class InventoryController : ControllerBase
     public async Task<IActionResult> GetLowStock([FromQuery] long? branchId)
     {
         var companyId = _tenant.CompanyId;
-        var branch = branchId ?? _tenant.BranchId;
-
-        if (branch is null)
-            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+        var branch = await _service.ResolveBranchAsync(companyId, _tenant.BranchId, branchId, required: true);
 
         var lowStock = await _service.GetLowStockProductsAsync(companyId, branch.Value);
         var list = lowStock.ToList();
@@ -339,6 +338,7 @@ public class InventoryController : ControllerBase
     /// POST /api/v1/inventory/stock/add - Agregar stock manualmente
     /// </summary>
     [HttpPost("stock/add")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> AddStock([FromBody] AddStockRequest request)
     {
         var stock = await _service.AddStockAsync(_tenant.CompanyId, _tenant.UserId, _tenant.BranchId, request);
@@ -349,6 +349,7 @@ public class InventoryController : ControllerBase
     /// POST /api/v1/inventory/ai/process - Procesar entrada con IA
     /// </summary>
     [HttpPost("ai/process")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> ProcessAIInput([FromBody] AiInputRequest request)
     {
         var companyId = _tenant.CompanyId;
@@ -373,6 +374,7 @@ public class InventoryController : ControllerBase
     /// POST /api/v1/inventory/ai/confirm/{interactionId} - Confirmar acción de IA
     /// </summary>
     [HttpPost("ai/confirm/{interactionId:long}")]
+    [Authorize(Policy = WalosPolicies.InventoryWrite)]
     public async Task<IActionResult> ConfirmAIAction(long interactionId)
     {
         var companyId = _tenant.CompanyId;
@@ -390,7 +392,7 @@ public class InventoryController : ControllerBase
     public async Task<IActionResult> GetAlerts([FromQuery] long? branchId)
     {
         var companyId = _tenant.CompanyId;
-        var branch = branchId ?? _tenant.BranchId;
+        var branch = await _service.ResolveBranchAsync(companyId, _tenant.BranchId, branchId);
 
         var alerts = await _repository.GetActiveAlertsAsync(companyId, branch);
         var list = alerts.ToList();
@@ -402,16 +404,14 @@ public class InventoryController : ControllerBase
     /// GET /api/v1/inventory/reports/profits - Reporte de ganancias
     /// </summary>
     [HttpGet("reports/profits")]
+    [Authorize(Policy = WalosPolicies.Finance)]
     public async Task<IActionResult> GetProfitsReport(
         [FromQuery] long? branchId,
         [FromQuery] DateTime? startDate,
         [FromQuery] DateTime? endDate)
     {
         var companyId = _tenant.CompanyId;
-        var branch = branchId ?? _tenant.BranchId;
-
-        if (branch is null)
-            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+        var branch = await _service.ResolveBranchAsync(companyId, _tenant.BranchId, branchId, required: true);
 
         var dateRange = (startDate.HasValue || endDate.HasValue)
             ? new DateRange { StartDate = startDate, EndDate = endDate }

@@ -20,6 +20,8 @@ public class CreditPaymentResponse
 {
     public long Id { get; set; }
     public decimal Amount { get; set; }
+    public string? PaymentMethod { get; set; }
+    public long? CashRegisterId { get; set; }
     public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; }
 }
@@ -27,5 +29,6 @@ public class CreditPaymentResponse
 public class AddCreditPaymentRequest
 {
     public decimal Amount { get; set; }
+    public string PaymentMethod { get; set; } = "cash";
     public string? Notes { get; set; }
 }

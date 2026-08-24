@@ -24,7 +24,20 @@ public class CreditPayment
     public long CompanyId { get; set; }
     public long CreditId { get; set; }
     public decimal Amount { get; set; }
+    public string? PaymentMethod { get; set; }
+    public long? CashRegisterId { get; set; }
     public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; }
     public long? CreatedBy { get; set; }
+}
+
+public sealed class CreditPaymentCommand
+{
+    public long CreditId { get; init; }
+    public long CompanyId { get; init; }
+    public long BranchId { get; init; }
+    public long UserId { get; init; }
+    public decimal Amount { get; init; }
+    public string PaymentMethod { get; init; } = string.Empty;
+    public string? Notes { get; init; }
 }

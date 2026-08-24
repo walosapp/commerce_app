@@ -19,6 +19,7 @@ public class SalesServiceTests
     private readonly Mock<IOrderPaymentRepository> _orderPaymentRepoMock;
     private readonly Mock<IUsersRepository> _usersRepoMock;
     private readonly Mock<IRefundRepository> _refundRepoMock;
+    private readonly Mock<ICheckoutRepository> _checkoutRepoMock;
     private readonly Mock<ILogger<SalesService>> _loggerMock;
     private readonly SalesService _service;
 
@@ -37,6 +38,7 @@ public class SalesServiceTests
         _orderPaymentRepoMock = new Mock<IOrderPaymentRepository>();
         _usersRepoMock = new Mock<IUsersRepository>();
         _refundRepoMock = new Mock<IRefundRepository>();
+        _checkoutRepoMock = new Mock<ICheckoutRepository>();
         _loggerMock = new Mock<ILogger<SalesService>>();
         _service = new SalesService(
             _salesRepoMock.Object,
@@ -48,7 +50,39 @@ public class SalesServiceTests
             _orderPaymentRepoMock.Object,
             _usersRepoMock.Object,
             _refundRepoMock.Object,
+            _checkoutRepoMock.Object,
             _loggerMock.Object);
+    }
+
+    [Fact]
+    public async Task ResolveBranch_Rejects_RequestOverride_ForBranchBoundUser()
+    {
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            _service.ResolveBranchAsync(CompanyId, BranchId, BranchId + 1, required: true));
+
+        _inventoryRepoMock.Verify(repository => repository.IsActiveBranchInCompanyAsync(
+            It.IsAny<long>(), It.IsAny<long>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResolveBranch_ReturnsNotFound_ForForeignOrInactiveCompanyWideSelection()
+    {
+        _inventoryRepoMock.Setup(repository => repository.IsActiveBranchInCompanyAsync(99, CompanyId))
+            .ReturnsAsync(false);
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            _service.ResolveBranchAsync(CompanyId, null, 99, required: true));
+    }
+
+    [Fact]
+    public async Task ResolveBranch_AllowsActiveSameCompanyBranch_ForCompanyWideUser()
+    {
+        _inventoryRepoMock.Setup(repository => repository.IsActiveBranchInCompanyAsync(BranchId, CompanyId))
+            .ReturnsAsync(true);
+
+        var result = await _service.ResolveBranchAsync(CompanyId, null, BranchId, required: true);
+
+        Assert.Equal(BranchId, result);
     }
 
     // ── CreateTableAsync ──
@@ -60,6 +94,9 @@ public class SalesServiceTests
 
         await Assert.ThrowsAsync<ValidationException>(() =>
             _service.CreateTableAsync(CompanyId, BranchId, UserId, request));
+
+        _salesRepoMock.Verify(r => r.CreateTableAsync(It.IsAny<SalesTable>()), Times.Never);
+        _salesRepoMock.Verify(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()), Times.Never);
     }
 
     [Fact]
@@ -78,6 +115,9 @@ public class SalesServiceTests
 
         await Assert.ThrowsAsync<ValidationException>(() =>
             _service.CreateTableAsync(CompanyId, BranchId, UserId, request));
+
+        _salesRepoMock.Verify(r => r.CreateTableAsync(It.IsAny<SalesTable>()), Times.Never);
+        _salesRepoMock.Verify(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()), Times.Never);
     }
 
     [Fact]
@@ -96,6 +136,9 @@ public class SalesServiceTests
 
         await Assert.ThrowsAsync<ValidationException>(() =>
             _service.CreateTableAsync(CompanyId, BranchId, UserId, request));
+
+        _salesRepoMock.Verify(r => r.CreateTableAsync(It.IsAny<SalesTable>()), Times.Never);
+        _salesRepoMock.Verify(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()), Times.Never);
     }
 
     [Fact]
@@ -116,13 +159,16 @@ public class SalesServiceTests
 
         await Assert.ThrowsAsync<ValidationException>(() =>
             _service.CreateTableAsync(CompanyId, BranchId, UserId, request));
+
+        _salesRepoMock.Verify(r => r.CreateTableAsync(It.IsAny<SalesTable>()), Times.Never);
+        _salesRepoMock.Verify(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()), Times.Never);
     }
 
     [Fact]
     public async Task CreateTable_SkipsStockCheck_WhenProductDoesNotTrackStock()
     {
         _inventoryRepoMock.Setup(r => r.GetProductByIdAsync(1, CompanyId))
-            .ReturnsAsync(new Product { Id = 1, Name = "Servicio", IsActive = true, TrackStock = false });
+            .ReturnsAsync(new Product { Id = 1, Name = "Servicio", SalePrice = 5, IsActive = true, TrackStock = false });
         _salesRepoMock.Setup(r => r.GetNextTableNumberAsync(CompanyId, BranchId)).ReturnsAsync(1);
         _salesRepoMock.Setup(r => r.CreateTableAsync(It.IsAny<SalesTable>()))
             .ReturnsAsync((SalesTable t) => { t.Id = 50; return t; });
@@ -148,7 +194,7 @@ public class SalesServiceTests
     public async Task CreateTable_Success_ReturnsResult()
     {
         _inventoryRepoMock.Setup(r => r.GetProductByIdAsync(1, CompanyId))
-            .ReturnsAsync(new Product { Id = 1, Name = "Ron", IsActive = true, TrackStock = true });
+            .ReturnsAsync(new Product { Id = 1, Name = "Ron", SalePrice = 25, IsActive = true, TrackStock = true });
         _inventoryRepoMock.Setup(r => r.GetStockByProductAsync(BranchId, 1, CompanyId))
             .ReturnsAsync(new Stock { ProductId = 1, ProductName = "Ron", AvailableQuantity = 20, ReservedQuantity = 0 });
         _salesRepoMock.Setup(r => r.GetNextTableNumberAsync(CompanyId, BranchId)).ReturnsAsync(3);
@@ -173,133 +219,244 @@ public class SalesServiceTests
         _salesRepoMock.Verify(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()), Times.Once);
     }
 
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(1)]
+    [InlineData(999)]
+    public async Task CreateTable_UsesDatabasePrice_WhenClientPriceIsManipulated(int submittedPrice)
+    {
+        _inventoryRepoMock.Setup(r => r.GetProductByIdAsync(1, CompanyId))
+            .ReturnsAsync(new Product
+            {
+                Id = 1,
+                Name = "Producto real",
+                SalePrice = 125.50m,
+                IsActive = true,
+                IsForSale = true,
+                TrackStock = false
+            });
+        _salesRepoMock.Setup(r => r.GetNextTableNumberAsync(CompanyId, BranchId)).ReturnsAsync(1);
+        _salesRepoMock.Setup(r => r.CreateTableAsync(It.IsAny<SalesTable>()))
+            .ReturnsAsync((SalesTable table) => { table.Id = 50; return table; });
+
+        Order? persistedOrder = null;
+        List<OrderItem>? persistedItems = null;
+        _salesRepoMock.Setup(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()))
+            .Callback<Order, List<OrderItem>>((order, items) =>
+            {
+                persistedOrder = order;
+                persistedItems = items;
+            })
+            .ReturnsAsync(new Order { Id = 10 });
+
+        var result = await _service.CreateTableAsync(CompanyId, BranchId, UserId, new CreateTableRequest
+        {
+            Items = [new CreateTableItemDto
+            {
+                ProductId = 1,
+                ProductName = "Nombre manipulado",
+                Quantity = 2,
+                UnitPrice = submittedPrice
+            }]
+        });
+
+        Assert.Equal(251m, result.Total);
+        Assert.Equal(251m, persistedOrder!.Subtotal);
+        Assert.Equal(125.50m, Assert.Single(persistedItems!).UnitPrice);
+    }
+
+    [Fact]
+    public async Task CreateTable_UsesCanonicalProductName()
+    {
+        _inventoryRepoMock.Setup(r => r.GetProductByIdAsync(1, CompanyId))
+            .ReturnsAsync(new Product
+            {
+                Id = 1,
+                Name = "Nombre canonico",
+                SalePrice = 20,
+                IsActive = true,
+                IsForSale = true,
+                TrackStock = false
+            });
+        _salesRepoMock.Setup(r => r.GetNextTableNumberAsync(CompanyId, BranchId)).ReturnsAsync(1);
+        _salesRepoMock.Setup(r => r.CreateTableAsync(It.IsAny<SalesTable>()))
+            .ReturnsAsync((SalesTable table) => { table.Id = 50; return table; });
+
+        List<OrderItem>? persistedItems = null;
+        _salesRepoMock.Setup(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()))
+            .Callback<Order, List<OrderItem>>((_, items) => persistedItems = items)
+            .ReturnsAsync(new Order { Id = 10 });
+
+        await _service.CreateTableAsync(CompanyId, BranchId, UserId, new CreateTableRequest
+        {
+            Items = [new CreateTableItemDto
+            {
+                ProductId = 1,
+                ProductName = "Nombre falso",
+                Quantity = 1,
+                UnitPrice = 1
+            }]
+        });
+
+        Assert.Equal("Nombre canonico", Assert.Single(persistedItems!).ProductName);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task CreateTable_RejectsNonPositiveQuantity_WithoutWrites(int quantity)
+    {
+        var request = new CreateTableRequest
+        {
+            Items = [new CreateTableItemDto { ProductId = 1, Quantity = quantity }]
+        };
+
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            _service.CreateTableAsync(CompanyId, BranchId, UserId, request));
+
+        _inventoryRepoMock.Verify(
+            r => r.GetProductByIdAsync(It.IsAny<long>(), It.IsAny<long>()), Times.Never);
+        _salesRepoMock.Verify(r => r.CreateTableAsync(It.IsAny<SalesTable>()), Times.Never);
+        _salesRepoMock.Verify(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateTable_AllowsPositiveDecimalQuantity_ForWeightedProduct()
+    {
+        _inventoryRepoMock.Setup(r => r.GetProductByIdAsync(1, CompanyId))
+            .ReturnsAsync(new Product
+            {
+                Id = 1,
+                Name = "Producto pesado",
+                ProductType = "weighted",
+                SalePrice = 40,
+                IsActive = true,
+                IsForSale = true,
+                TrackStock = false
+            });
+        _salesRepoMock.Setup(r => r.GetNextTableNumberAsync(CompanyId, BranchId)).ReturnsAsync(1);
+        _salesRepoMock.Setup(r => r.CreateTableAsync(It.IsAny<SalesTable>()))
+            .ReturnsAsync((SalesTable table) => { table.Id = 50; return table; });
+        _salesRepoMock.Setup(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()))
+            .ReturnsAsync(new Order { Id = 10 });
+
+        var result = await _service.CreateTableAsync(CompanyId, BranchId, UserId, new CreateTableRequest
+        {
+            Items = [new CreateTableItemDto { ProductId = 1, Quantity = 1.25m }]
+        });
+
+        Assert.Equal(50m, result.Total);
+        Assert.Equal(1.25m, Assert.Single(result.Table.Items!).Quantity);
+    }
+
+    [Fact]
+    public async Task CreateTable_RejectsProductNotForSale_WithoutWrites()
+    {
+        _inventoryRepoMock.Setup(r => r.GetProductByIdAsync(1, CompanyId))
+            .ReturnsAsync(new Product
+            {
+                Id = 1,
+                Name = "Solo inventario",
+                SalePrice = 20,
+                IsActive = true,
+                IsForSale = false,
+                TrackStock = false
+            });
+
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            _service.CreateTableAsync(CompanyId, BranchId, UserId, new CreateTableRequest
+            {
+                Items = [new CreateTableItemDto { ProductId = 1, Quantity = 1 }]
+            }));
+
+        _salesRepoMock.Verify(r => r.CreateTableAsync(It.IsAny<SalesTable>()), Times.Never);
+        _salesRepoMock.Verify(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateTable_RejectsNegativeDatabasePrice_WithoutWrites()
+    {
+        _inventoryRepoMock.Setup(r => r.GetProductByIdAsync(1, CompanyId))
+            .ReturnsAsync(new Product
+            {
+                Id = 1,
+                Name = "Precio invalido",
+                SalePrice = -10,
+                IsActive = true,
+                IsForSale = true,
+                TrackStock = false
+            });
+
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            _service.CreateTableAsync(CompanyId, BranchId, UserId, new CreateTableRequest
+            {
+                Items = [new CreateTableItemDto { ProductId = 1, Quantity = 1, UnitPrice = 100 }]
+            }));
+
+        _salesRepoMock.Verify(r => r.CreateTableAsync(It.IsAny<SalesTable>()), Times.Never);
+        _salesRepoMock.Verify(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateTable_RejectsProductFromAnotherCompany_WithoutWrites()
+    {
+        _inventoryRepoMock.Setup(r => r.GetProductByIdAsync(1, CompanyId))
+            .ReturnsAsync((Product?)null);
+
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            _service.CreateTableAsync(CompanyId, BranchId, UserId, new CreateTableRequest
+            {
+                Items = [new CreateTableItemDto { ProductId = 1, Quantity = 1 }]
+            }));
+
+        _salesRepoMock.Verify(r => r.CreateTableAsync(It.IsAny<SalesTable>()), Times.Never);
+        _salesRepoMock.Verify(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()), Times.Never);
+    }
+
     // ── InvoiceTableAsync ──
 
     [Fact]
-    public async Task InvoiceTable_ThrowsNotFound_WhenTableMissing()
+    public async Task InvoiceTable_Delegates_AtomicCheckout_AndMapsResult()
     {
-        _salesRepoMock.Setup(r => r.GetTableByIdAsync(99, CompanyId)).ReturnsAsync((SalesTable?)null);
+        _checkoutRepoMock.Setup(repository => repository.ProcessAsync(It.IsAny<CheckoutCommand>()))
+            .ReturnsAsync(new CheckoutResult
+            {
+                TableNumber = 5,
+                OrderNumber = "ORD-10",
+                Subtotal = 100m,
+                DiscountType = "none",
+                AmountPaid = 100m,
+                SplitCount = 1,
+                InvoicedAt = DateTime.UtcNow,
+                Payments = [new CheckoutPayment("cash", 100m, null)]
+            });
 
-        await Assert.ThrowsAsync<NotFoundException>(() =>
-            _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 99, new InvoiceTableRequest()));
+        var result = await _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 1,
+            new InvoiceTableRequest
+            {
+                Payments = [new PaymentLineDto(" CASH ", 100m, null)]
+            });
+
+        Assert.Equal("ORD-10", result.OrderNumber);
+        Assert.Equal(100m, result.FinalTotalPaid);
+        _checkoutRepoMock.Verify(repository => repository.ProcessAsync(It.Is<CheckoutCommand>(command =>
+            command.CompanyId == CompanyId &&
+            command.BranchId == BranchId &&
+            command.UserId == UserId &&
+            command.TableId == 1 &&
+            command.Payments.Count == 1)), Times.Once);
     }
 
     [Fact]
-    public async Task InvoiceTable_ThrowsBusiness_WhenTableNotOpen()
+    public async Task InvoiceTable_Propagates_ControlledCheckoutFailure()
     {
-        _salesRepoMock.Setup(r => r.GetTableByIdAsync(1, CompanyId))
-            .ReturnsAsync(new SalesTable { Id = 1, Status = "invoiced" });
+        _checkoutRepoMock.Setup(repository => repository.ProcessAsync(It.IsAny<CheckoutCommand>()))
+            .ThrowsAsync(new BusinessException("La venta ya fue procesada", "checkout_already_processed"));
 
-        await Assert.ThrowsAsync<BusinessException>(() =>
+        var exception = await Assert.ThrowsAsync<BusinessException>(() =>
             _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 1, new InvoiceTableRequest()));
-    }
 
-    [Fact]
-    public async Task InvoiceTable_ThrowsValidation_WhenInvalidDiscountType()
-    {
-        _salesRepoMock.Setup(r => r.GetTableByIdAsync(1, CompanyId))
-            .ReturnsAsync(new SalesTable { Id = 1, Status = "open", TableNumber = 1 });
-        _salesRepoMock.Setup(r => r.GetOrderByTableIdAsync(1, CompanyId))
-            .ReturnsAsync(new Order { Id = 10, Subtotal = 100 });
-        _salesRepoMock.Setup(r => r.GetOrderItemsAsync(10, CompanyId))
-            .ReturnsAsync(new List<OrderItem>());
-
-        await Assert.ThrowsAsync<ValidationException>(() =>
-            _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 1,
-                new InvoiceTableRequest { DiscountType = "invalid" }));
-    }
-
-    [Fact]
-    public async Task InvoiceTable_ThrowsBusiness_WhenDiscountDisabled()
-    {
-        _salesRepoMock.Setup(r => r.GetTableByIdAsync(1, CompanyId))
-            .ReturnsAsync(new SalesTable { Id = 1, Status = "open", TableNumber = 1 });
-        _salesRepoMock.Setup(r => r.GetOrderByTableIdAsync(1, CompanyId))
-            .ReturnsAsync(new Order { Id = 10, Subtotal = 100 });
-        _salesRepoMock.Setup(r => r.GetOrderItemsAsync(10, CompanyId))
-            .ReturnsAsync(new List<OrderItem>());
-        _companyRepoMock.Setup(r => r.GetCompanyOperationsSettingsAsync(CompanyId))
-            .ReturnsAsync(new CompanyOperationsSettings { ManualDiscountEnabled = false, RequireCashRegister = false });
-
-        await Assert.ThrowsAsync<BusinessException>(() =>
-            _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 1,
-                new InvoiceTableRequest { DiscountType = "percentage", DiscountValue = 10 }));
-    }
-
-    [Fact]
-    public async Task InvoiceTable_Success_NoDiscount()
-    {
-        _salesRepoMock.Setup(r => r.GetTableByIdAsync(1, CompanyId))
-            .ReturnsAsync(new SalesTable { Id = 1, Status = "open", TableNumber = 5 });
-        _salesRepoMock.Setup(r => r.GetOrderByTableIdAsync(1, CompanyId))
-            .ReturnsAsync(new Order { Id = 10, Subtotal = 200, OrderNumber = "ORD-10" });
-        _salesRepoMock.Setup(r => r.GetOrderItemsAsync(10, CompanyId))
-            .ReturnsAsync(new List<OrderItem>
-            {
-                new() { ProductId = 1, Quantity = 2, UnitPrice = 100 }
-            });
-        _companyRepoMock.Setup(r => r.GetCompanyOperationsSettingsAsync(CompanyId))
-            .ReturnsAsync(new CompanyOperationsSettings { RequireCashRegister = false });
-        _recipeRepoMock.Setup(r => r.GetAllIngredientsForSaleAsync(It.IsAny<IEnumerable<(long, decimal)>>(), CompanyId))
-            .ReturnsAsync(new List<Recipe>());
-
-        var result = await _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 1,
-            new InvoiceTableRequest
-            {
-                Payments = new List<PaymentLineDto> { new("cash", 200, null) }
-            });
-
-        Assert.Equal(200, result.FinalTotalPaid);
-        Assert.Equal(0, result.DiscountAmount);
-        Assert.Equal("none", result.DiscountType);
-        _salesRepoMock.Verify(r => r.UpdateOrderStatusAsync(10, CompanyId, "completed"), Times.Once);
-        _salesRepoMock.Verify(r => r.UpdateTableStatusAsync(1, CompanyId, "invoiced"), Times.Once);
-    }
-
-    [Fact]
-    public async Task InvoiceTable_Allows_Full_Credit_Without_Payment_Methods()
-    {
-        _salesRepoMock.Setup(r => r.GetTableByIdAsync(1, CompanyId))
-            .ReturnsAsync(new SalesTable { Id = 1, Status = "open", TableNumber = 5, Name = "Mesa fiada" });
-        _salesRepoMock.Setup(r => r.GetOrderByTableIdAsync(1, CompanyId))
-            .ReturnsAsync(new Order { Id = 10, Subtotal = 200, OrderNumber = "ORD-10" });
-        _salesRepoMock.Setup(r => r.GetOrderItemsAsync(10, CompanyId))
-            .ReturnsAsync(new List<OrderItem>
-            {
-                new() { ProductId = 1, Quantity = 2, UnitPrice = 100 }
-            });
-        _companyRepoMock.Setup(r => r.GetCompanyOperationsSettingsAsync(CompanyId))
-            .ReturnsAsync(new CompanyOperationsSettings { RequireCashRegister = false });
-        _recipeRepoMock.Setup(r => r.GetAllIngredientsForSaleAsync(It.IsAny<IEnumerable<(long, decimal)>>(), CompanyId))
-            .ReturnsAsync(new List<Recipe>());
-        _creditRepoMock.Setup(r => r.CreateCreditAsync(It.IsAny<Credit>()))
-            .ReturnsAsync((Credit c) =>
-            {
-                c.Id = 99;
-                return c;
-            });
-
-        var result = await _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 1,
-            new InvoiceTableRequest
-            {
-                HasCredit = true,
-                CreditAmountPaid = 0,
-                CreditCustomerName = "Cliente fiado",
-                Payments = new List<PaymentLineDto>()
-            });
-
-        Assert.Equal(0, result.FinalTotalPaid);
-        Assert.Equal(99, result.CreditId);
-        Assert.Equal(200, result.CreditAmount);
-        Assert.Empty(result.Payments);
-        _orderPaymentRepoMock.Verify(r => r.CreateAsync(It.IsAny<OrderPayment>()), Times.Never);
-        _creditRepoMock.Verify(r => r.CreateCreditAsync(It.Is<Credit>(c =>
-            c.CompanyId == CompanyId &&
-            c.BranchId == BranchId &&
-            c.OrderId == 10 &&
-            c.AmountPaid == 0 &&
-            c.CreditAmount == 200 &&
-            c.CustomerName == "Cliente fiado")), Times.Once);
+        Assert.Equal("checkout_already_processed", exception.Code);
     }
 
     // ── CancelTableAsync ──
@@ -327,37 +484,73 @@ public class SalesServiceTests
         _salesRepoMock.Verify(r => r.UpdateTableStatusAsync(1, CompanyId, "cancelled"), Times.Once);
     }
 
-    // ── UpdateItemQuantityAsync ──
+    [Fact]
+    public async Task CancelTable_ScopedBranch_DoesNotMutateTableFromAnotherBranch()
+    {
+        _salesRepoMock.Setup(repository => repository.GetTableByIdAsync(1, CompanyId, BranchId))
+            .ReturnsAsync((SalesTable?)null);
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            _service.CancelTableAsync(CompanyId, BranchId, 1));
+
+        _salesRepoMock.Verify(repository => repository.UpdateOrderStatusAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<long?>(), It.IsAny<string>()), Times.Never);
+        _salesRepoMock.Verify(repository => repository.UpdateTableStatusAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<long?>(), It.IsAny<string>()), Times.Never);
+    }
 
     [Fact]
-    public async Task UpdateItemQuantity_ThrowsValidation_WhenNegative()
+    public async Task GetOrderItems_ScopedBranch_DoesNotExposeOrderFromAnotherBranch()
+    {
+        _salesRepoMock.Setup(repository => repository.GetOrderByIdAsync(10, CompanyId, BranchId))
+            .ReturnsAsync((Order?)null);
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            _service.GetOrderItemsAsync(CompanyId, BranchId, 10));
+
+        _salesRepoMock.Verify(repository => repository.GetOrderItemsAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<long?>()), Times.Never);
+    }
+
+    // ── UpdateItemQuantityAsync ──
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task UpdateItemQuantity_RejectsNonPositiveQuantity_WithoutWrites(int quantity)
     {
         await Assert.ThrowsAsync<ValidationException>(() =>
-            _service.UpdateItemQuantityAsync(CompanyId, BranchId, 1, new UpdateItemQuantityRequest { Quantity = -1 }));
+            _service.UpdateItemQuantityAsync(
+                CompanyId, BranchId, 1, new UpdateItemQuantityRequest { Quantity = quantity }));
+
+        _salesRepoMock.Verify(repository => repository.GetOrderItemByIdAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<long?>()), Times.Never);
+        _checkoutRepoMock.Verify(repository => repository.UpdateItemQuantityAsync(
+            It.IsAny<UpdateOrderItemQuantityCommand>()), Times.Never);
     }
 
     [Fact]
     public async Task UpdateItemQuantity_ThrowsNotFound_WhenItemMissing()
     {
-        _salesRepoMock.Setup(r => r.GetOrderItemByIdAsync(99, CompanyId)).ReturnsAsync((OrderItem?)null);
+        _salesRepoMock.Setup(r => r.GetOrderItemByIdAsync(99, CompanyId, BranchId)).ReturnsAsync((OrderItem?)null);
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
             _service.UpdateItemQuantityAsync(CompanyId, BranchId, 99, new UpdateItemQuantityRequest { Quantity = 1 }));
     }
 
     [Fact]
-    public async Task UpdateItemQuantity_DeletesItem_WhenQuantityZero()
+    public async Task UpdateItemQuantity_RecalculatesActualOrder_IgnoringClientOrderId()
     {
-        _salesRepoMock.Setup(r => r.GetOrderItemByIdAsync(1, CompanyId))
+        _salesRepoMock.Setup(r => r.GetOrderItemByIdAsync(1, CompanyId, BranchId))
             .ReturnsAsync(new OrderItem { Id = 1, OrderId = 10, ProductId = 1, Quantity = 3 });
-        _salesRepoMock.Setup(r => r.GetOrderByIdAsync(10, CompanyId))
+        _salesRepoMock.Setup(r => r.GetOrderByIdAsync(10, CompanyId, BranchId))
             .ReturnsAsync(new Order { Id = 10, BranchId = BranchId });
 
         await _service.UpdateItemQuantityAsync(CompanyId, BranchId, 1,
-            new UpdateItemQuantityRequest { Quantity = 0, OrderId = 10 });
+            new UpdateItemQuantityRequest { Quantity = 2, OrderId = 999 });
 
-        _salesRepoMock.Verify(r => r.DeleteOrderItemAsync(1, CompanyId), Times.Once);
-        _salesRepoMock.Verify(r => r.RecalculateOrderTotalAsync(10, CompanyId), Times.Once);
+        _checkoutRepoMock.Verify(r => r.UpdateItemQuantityAsync(It.Is<UpdateOrderItemQuantityCommand>(command =>
+            command.OrderItemId == 1 && command.Quantity == 2)), Times.Once);
     }
 
     // ── AddItemsToTableAsync ──
@@ -365,19 +558,89 @@ public class SalesServiceTests
     [Fact]
     public async Task AddItems_ThrowsNotFound_WhenTableMissing()
     {
-        _salesRepoMock.Setup(r => r.GetTableByIdAsync(99, CompanyId)).ReturnsAsync((SalesTable?)null);
+        SetupSaleableProduct(5);
+        _checkoutRepoMock.Setup(repository => repository.AddItemsAsync(It.IsAny<AddOrderItemsCommand>()))
+            .ThrowsAsync(new NotFoundException("Mesa"));
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
-            _service.AddItemsToTableAsync(CompanyId, 99, new List<CreateTableItemDto>()));
+            _service.AddItemsToTableAsync(CompanyId, BranchId, 99,
+                [new CreateTableItemDto { ProductId = 5, Quantity = 1 }]));
     }
 
     [Fact]
     public async Task AddItems_ThrowsBusiness_WhenTableNotOpen()
     {
-        _salesRepoMock.Setup(r => r.GetTableByIdAsync(1, CompanyId))
-            .ReturnsAsync(new SalesTable { Id = 1, Status = "invoiced" });
+        SetupSaleableProduct(5);
+        _checkoutRepoMock.Setup(repository => repository.AddItemsAsync(It.IsAny<AddOrderItemsCommand>()))
+            .ThrowsAsync(new BusinessException("La mesa ya fue procesada"));
 
         await Assert.ThrowsAsync<BusinessException>(() =>
-            _service.AddItemsToTableAsync(CompanyId, 1, new List<CreateTableItemDto>()));
+            _service.AddItemsToTableAsync(CompanyId, BranchId, 1,
+                [new CreateTableItemDto { ProductId = 5, Quantity = 1 }]));
     }
+
+    [Fact]
+    public async Task AddItems_UsesCanonicalProductData_WhenClientValuesAreManipulated()
+    {
+        _inventoryRepoMock.Setup(r => r.GetProductByIdAsync(5, CompanyId))
+            .ReturnsAsync(new Product
+            {
+                Id = 5,
+                Name = "Producto real",
+                SalePrice = 75.25m,
+                IsActive = true,
+                IsForSale = true,
+                TrackStock = false
+            });
+        OrderItem? persistedItem = null;
+        _checkoutRepoMock.Setup(r => r.AddItemsAsync(It.IsAny<AddOrderItemsCommand>()))
+            .Callback<AddOrderItemsCommand>(command => persistedItem = command.Items.Single())
+            .Returns(Task.CompletedTask);
+
+        await _service.AddItemsToTableAsync(CompanyId, BranchId, 1,
+        [
+            new CreateTableItemDto
+            {
+                ProductId = 5,
+                ProductName = "Nombre falso",
+                Quantity = 1.5m,
+                UnitPrice = 0.01m
+            }
+        ]);
+
+        Assert.NotNull(persistedItem);
+        Assert.Equal("Producto real", persistedItem!.ProductName);
+        Assert.Equal(75.25m, persistedItem.UnitPrice);
+        Assert.Equal(1.5m, persistedItem.Quantity);
+        _checkoutRepoMock.Verify(r => r.AddItemsAsync(It.IsAny<AddOrderItemsCommand>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task AddItems_RejectsNonPositiveQuantity_WithoutItemOrOrderChanges(int quantity)
+    {
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            _service.AddItemsToTableAsync(CompanyId, BranchId, 1,
+            [
+                new CreateTableItemDto { ProductId = 5, Quantity = quantity }
+            ]));
+
+        _checkoutRepoMock.Verify(r => r.AddItemsAsync(It.IsAny<AddOrderItemsCommand>()), Times.Never);
+    }
+
+    private void SetupSaleableProduct(long productId)
+    {
+        _inventoryRepoMock.Setup(repository => repository.GetProductByIdAsync(productId, CompanyId))
+            .ReturnsAsync(new Product
+            {
+                Id = productId,
+                Name = "Producto",
+                SalePrice = 100m,
+                IsActive = true,
+                IsForSale = true,
+                TrackStock = false
+            });
+    }
+
 }

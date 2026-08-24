@@ -15,8 +15,10 @@ public class CreateDeliveryOrderRequest
 public class DeliveryOrderItemRequest
 {
     public long ProductId { get; set; }
+    // Legacy compatibility only. The backend persists the canonical product snapshot.
     public string ProductName { get; set; } = string.Empty;
     public decimal Quantity { get; set; }
+    // Legacy compatibility only. The backend loads sale_price from inventory.products.
     public decimal UnitPrice { get; set; }
     public string? Notes { get; set; }
 }

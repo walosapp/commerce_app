@@ -6,18 +6,25 @@ namespace Walos.Application.Services;
 
 public interface ISalesService
 {
+    Task<long?> ResolveBranchAsync(long companyId, long? tenantBranchId, long? requestedBranchId, bool required = false);
     Task<IEnumerable<SalesTable>> GetActiveTablesAsync(long companyId, long branchId);
     Task<CreateTableResult> CreateTableAsync(long companyId, long branchId, long userId, CreateTableRequest request);
     Task<InvoiceResult> InvoiceTableAsync(long companyId, long branchId, long userId, long tableId, InvoiceTableRequest request);
     Task CancelTableAsync(long companyId, long tableId);
+    Task CancelTableAsync(long companyId, long? branchId, long tableId);
     Task UpdateItemQuantityAsync(long companyId, long branchId, long itemId, UpdateItemQuantityRequest request);
-    Task AddItemsToTableAsync(long companyId, long tableId, List<CreateTableItemDto> items);
+    Task AddItemsToTableAsync(long companyId, long branchId, long tableId, List<CreateTableItemDto> items);
     Task RenameTableAsync(long companyId, long tableId, string name);
+    Task RenameTableAsync(long companyId, long? branchId, long tableId, string name);
+    Task<IEnumerable<OrderItem>> GetOrderItemsAsync(long companyId, long? branchId, long orderId);
     Task<ReceiptData> GetReceiptAsync(long companyId, long orderId);
+    Task<ReceiptData> GetReceiptAsync(long companyId, long? branchId, long orderId);
     Task<KitchenTicketData> GetKitchenTicketAsync(long companyId, long orderId);
+    Task<KitchenTicketData> GetKitchenTicketAsync(long companyId, long? branchId, long orderId);
     Task<(List<OrderDetailResponse> Items, int TotalCount)> SearchOrdersAsync(long companyId, OrderSearchRequest request);
     Task<byte[]> ExportOrdersCsvAsync(long companyId, OrderSearchRequest request);
     Task<OrderDetailResponse> GetOrderDetailAsync(long companyId, long orderId);
+    Task<OrderDetailResponse> GetOrderDetailAsync(long companyId, long? branchId, long orderId);
 }
 
 public class CreateTableResult

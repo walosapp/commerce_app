@@ -21,9 +21,12 @@ public abstract class IntegrationTestBase : IDisposable
     protected readonly ISuppliersRepository SuppliersRepository;
     protected readonly IPurchaseOrderRepository PurchaseOrderRepository;
     protected readonly ICreditRepository CreditRepository;
+    protected readonly IRefundRepository RefundRepository;
     protected readonly ICashRegisterRepository CashRegisterRepository;
     protected readonly IOrderPaymentRepository OrderPaymentRepository;
+    protected readonly ICheckoutRepository CheckoutRepository;
     protected readonly ICatalogRepository CatalogRepository;
+    protected readonly IRecipeRepository RecipeRepository;
 
     protected IntegrationTestBase()
     {
@@ -55,9 +58,12 @@ public abstract class IntegrationTestBase : IDisposable
         SuppliersRepository = new SuppliersRepository(ConnectionFactory, NullLogger<SuppliersRepository>.Instance);
         PurchaseOrderRepository = new PurchaseOrderRepository(ConnectionFactory);
         CreditRepository = new CreditRepository(ConnectionFactory, NullLogger<CreditRepository>.Instance);
+        RefundRepository = new RefundRepository(ConnectionFactory, NullLogger<RefundRepository>.Instance);
         CashRegisterRepository = new CashRegisterRepository(ConnectionFactory, NullLogger<CashRegisterRepository>.Instance);
         OrderPaymentRepository = new OrderPaymentRepository(ConnectionFactory, NullLogger<OrderPaymentRepository>.Instance);
+        CheckoutRepository = new CheckoutRepository(ConnectionFactory, NullLogger<CheckoutRepository>.Instance);
         CatalogRepository = new CatalogRepository(ConnectionFactory);
+        RecipeRepository = new RecipeRepository(ConnectionFactory);
     }
 
     private static void TestConnection(string connectionString)
@@ -79,10 +85,11 @@ public abstract class IntegrationTestBase : IDisposable
     {
         using var conn = await ConnectionFactory.CreateConnectionAsync();
         using var cmd = new NpgsqlCommand(@"
-            INSERT INTO core.companies (name, email, phone, is_active, created_by)
-            VALUES (@name, 'test@test.com', '123456', true, 1)
+            INSERT INTO core.companies (name, legal_name, tax_id, email, phone, is_active, created_by)
+            VALUES (@name, @name, @taxId, 'test@test.com', '123456', true, 1)
             RETURNING id", (NpgsqlConnection)conn);
         cmd.Parameters.AddWithValue("@name", name);
+        cmd.Parameters.AddWithValue("@taxId", $"TEST-{Guid.NewGuid():N}");
         var result = await cmd.ExecuteScalarAsync();
         return (long)(result ?? throw new InvalidOperationException("Failed to seed company"));
     }
@@ -91,11 +98,16 @@ public abstract class IntegrationTestBase : IDisposable
     {
         using var conn = await ConnectionFactory.CreateConnectionAsync();
         using var cmd = new NpgsqlCommand(@"
-            INSERT INTO core.branches (company_id, name, address, is_active, created_by)
-            VALUES (@companyId, @name, 'Test Address', true, 1)
+            INSERT INTO core.branches (
+                company_id, name, code, branch_type, address, city, is_active, created_by
+            )
+            VALUES (
+                @companyId, @name, @code, 'store', 'Test Address', 'Test City', true, 1
+            )
             RETURNING id", (NpgsqlConnection)conn);
         cmd.Parameters.AddWithValue("@companyId", companyId);
         cmd.Parameters.AddWithValue("@name", name);
+        cmd.Parameters.AddWithValue("@code", $"T{Guid.NewGuid():N}"[..20]);
         var result = await cmd.ExecuteScalarAsync();
         return (long)(result ?? throw new InvalidOperationException("Failed to seed branch"));
     }
@@ -133,6 +145,7 @@ public abstract class IntegrationTestBase : IDisposable
         using var conn = await ConnectionFactory.CreateConnectionAsync();
         using var cmd = new NpgsqlCommand(@"
             -- Clean up in reverse dependency order
+            DELETE FROM inventory.recipes WHERE company_id > 900000;
             DELETE FROM inventory.movements WHERE company_id > 900000;
             DELETE FROM inventory.stock WHERE company_id > 900000;
             DELETE FROM inventory.products WHERE company_id > 900000;

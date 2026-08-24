@@ -4,7 +4,7 @@
  * Para que? Revertir ventas con motivo obligatorio, opcion parcial por item
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, RotateCcw, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatCurrency';
 
@@ -13,6 +13,11 @@ const RefundModal = ({ isOpen, onClose, onConfirm, order }) => {
   const [reason, setReason] = useState('');
   const [selectedItems, setSelectedItems] = useState({});
   const [saving, setSaving] = useState(false);
+  const idempotencyKeyRef = useRef(null);
+
+  useEffect(() => {
+    idempotencyKeyRef.current = null;
+  }, [order?.id]);
 
   if (!isOpen || !order) return null;
 
@@ -56,6 +61,7 @@ const RefundModal = ({ isOpen, onClose, onConfirm, order }) => {
         orderId: order.id,
         refundType,
         reason: reason.trim(),
+        idempotencyKey: idempotencyKeyRef.current ??= crypto.randomUUID(),
       };
 
       if (refundType === 'partial') {

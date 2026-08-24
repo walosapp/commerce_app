@@ -6,7 +6,10 @@ namespace Walos.Infrastructure.Repositories;
 
 public partial class FinanceRepository
 {
-    public async Task<IEnumerable<FinancialCategory>> GetCategoriesAsync(long companyId, string? type = null)
+    public Task<IEnumerable<FinancialCategory>> GetCategoriesAsync(long companyId, string? type = null)
+        => GetCategoriesAsync(companyId, type, null);
+
+    public async Task<IEnumerable<FinancialCategory>> GetCategoriesAsync(long companyId, string? type, long? branchId)
     {
         try
         {
@@ -34,12 +37,17 @@ public partial class FinanceRepository
                     COUNT(e.id) AS EntryCount,
                     COALESCE(SUM(e.amount), 0) AS TotalAmount
                 FROM finance.categories c
-                LEFT JOIN finance.entries e ON e.category_id = c.id AND e.company_id = c.company_id AND e.deleted_at IS NULL
+                LEFT JOIN finance.entries e
+                  ON e.category_id = c.id
+                 AND e.company_id = c.company_id
+                 AND e.deleted_at IS NULL
+                 AND (@BranchId IS NULL OR e.branch_id = @BranchId)
                 WHERE c.company_id = @CompanyId
                   AND c.deleted_at IS NULL
-                  AND c.is_active = TRUE";
+                  AND c.is_active = TRUE
+                  AND (@BranchId IS NULL OR c.branch_id IS NULL OR c.branch_id = @BranchId)";
 
-            var parameters = new DynamicParameters(new { CompanyId = companyId });
+            var parameters = new DynamicParameters(new { CompanyId = companyId, BranchId = branchId });
             if (!string.IsNullOrWhiteSpace(type))
             {
                 sql += " AND c.type = @Type";
@@ -59,7 +67,10 @@ public partial class FinanceRepository
         }
     }
 
-    public async Task<FinancialCategory?> GetCategoryByIdAsync(long id, long companyId)
+    public Task<FinancialCategory?> GetCategoryByIdAsync(long id, long companyId)
+        => GetCategoryByIdAsync(id, companyId, null, false);
+
+    public async Task<FinancialCategory?> GetCategoryByIdAsync(long id, long companyId, long? branchId, bool includeGlobal)
     {
         try
         {
@@ -74,9 +85,15 @@ public partial class FinanceRepository
                        created_by AS CreatedBy, created_at AS CreatedAt, updated_at AS UpdatedAt,
                        deleted_at AS DeletedAt
                 FROM finance.categories
-                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL";
+                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL
+                  AND (
+                    @BranchId IS NULL
+                    OR branch_id = @BranchId
+                    OR (@IncludeGlobal = TRUE AND branch_id IS NULL)
+                  )";
 
-            return await connection.QueryFirstOrDefaultAsync<FinancialCategory>(sql, new { Id = id, CompanyId = companyId });
+            return await connection.QueryFirstOrDefaultAsync<FinancialCategory>(sql,
+                new { Id = id, CompanyId = companyId, BranchId = branchId, IncludeGlobal = includeGlobal });
         }
         catch (Exception ex)
         {
@@ -92,7 +109,12 @@ public partial class FinanceRepository
             using var connection = await _connectionFactory.CreateConnectionAsync();
             const string sql = @"
                 INSERT INTO finance.categories (company_id, branch_id, name, type, color_hex, default_amount, day_of_month, nature, frequency, biweekly_day_1, biweekly_day_2, auto_include_in_month, is_system, is_active, created_by)
-                VALUES (@CompanyId, @BranchId, @Name, @Type, @ColorHex, @DefaultAmount, @DayOfMonth, @Nature, @Frequency, @BiweeklyDay1, @BiweeklyDay2, @AutoIncludeInMonth, @IsSystem, @IsActive, @CreatedBy)
+                SELECT @CompanyId, @BranchId, @Name, @Type, @ColorHex, @DefaultAmount, @DayOfMonth, @Nature, @Frequency, @BiweeklyDay1, @BiweeklyDay2, @AutoIncludeInMonth, @IsSystem, @IsActive, @CreatedBy
+                WHERE @BranchId IS NULL OR EXISTS (
+                    SELECT 1 FROM core.branches b
+                    WHERE b.id = @BranchId AND b.company_id = @CompanyId
+                      AND b.is_active = TRUE AND b.deleted_at IS NULL
+                )
                 RETURNING id AS Id, company_id AS CompanyId, branch_id AS BranchId, name AS Name,
                        type AS Type, color_hex AS ColorHex, default_amount AS DefaultAmount,
                        day_of_month AS DayOfMonth, nature AS Nature, frequency AS Frequency,
@@ -101,7 +123,8 @@ public partial class FinanceRepository
                        is_active AS IsActive, created_by AS CreatedBy,
                        created_at AS CreatedAt, updated_at AS UpdatedAt";
 
-            return await connection.QuerySingleAsync<FinancialCategory>(sql, category);
+            return await connection.QueryFirstOrDefaultAsync<FinancialCategory>(sql, category)
+                ?? throw new Walos.Domain.Exceptions.NotFoundException("Sucursal");
         }
         catch (Exception ex)
         {
@@ -110,7 +133,10 @@ public partial class FinanceRepository
         }
     }
 
-    public async Task<FinancialCategory> UpdateCategoryAsync(FinancialCategory category)
+    public Task<FinancialCategory> UpdateCategoryAsync(FinancialCategory category)
+        => UpdateCategoryAsync(category, null);
+
+    public async Task<FinancialCategory> UpdateCategoryAsync(FinancialCategory category, long? scopeBranchId)
     {
         try
         {
@@ -130,7 +156,13 @@ public partial class FinanceRepository
                     auto_include_in_month = @AutoIncludeInMonth,
                     is_active = @IsActive,
                     updated_at = NOW()
-                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL;
+                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL
+                  AND (@ScopeBranchId IS NULL OR branch_id = @ScopeBranchId)
+                  AND (@BranchId IS NULL OR EXISTS (
+                    SELECT 1 FROM core.branches b
+                    WHERE b.id = @BranchId AND b.company_id = @CompanyId
+                      AND b.is_active = TRUE AND b.deleted_at IS NULL
+                  ));
 
                 SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId, name AS Name, type AS Type,
                        color_hex AS ColorHex, default_amount AS DefaultAmount,
@@ -140,9 +172,19 @@ public partial class FinanceRepository
                        created_by AS CreatedBy, created_at AS CreatedAt, updated_at AS UpdatedAt,
                        deleted_at AS DeletedAt
                 FROM finance.categories
-                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL;";
+                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL
+                  AND branch_id IS NOT DISTINCT FROM @BranchId
+                  AND (@ScopeBranchId IS NULL OR branch_id = @ScopeBranchId)
+                  AND (@BranchId IS NULL OR EXISTS (
+                    SELECT 1 FROM core.branches b
+                    WHERE b.id = @BranchId AND b.company_id = @CompanyId
+                      AND b.is_active = TRUE AND b.deleted_at IS NULL
+                  ));";
 
-            return await connection.QuerySingleAsync<FinancialCategory>(sql, category);
+            var parameters = new DynamicParameters(category);
+            parameters.Add("ScopeBranchId", scopeBranchId);
+            return await connection.QueryFirstOrDefaultAsync<FinancialCategory>(sql, parameters)
+                ?? throw new Walos.Domain.Exceptions.NotFoundException("Item financiero");
         }
         catch (Exception ex)
         {
@@ -151,7 +193,10 @@ public partial class FinanceRepository
         }
     }
 
-    public async Task SoftDeleteCategoryAsync(long id, long companyId)
+    public Task SoftDeleteCategoryAsync(long id, long companyId)
+        => SoftDeleteCategoryAsync(id, companyId, null);
+
+    public async Task SoftDeleteCategoryAsync(long id, long companyId, long? branchId)
     {
         try
         {
@@ -161,9 +206,10 @@ public partial class FinanceRepository
                 SET deleted_at = NOW(),
                     is_active = FALSE,
                     updated_at = NOW()
-                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL";
+                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL
+                  AND (@BranchId IS NULL OR branch_id = @BranchId)";
 
-            await connection.ExecuteAsync(sql, new { Id = id, CompanyId = companyId });
+            await connection.ExecuteAsync(sql, new { Id = id, CompanyId = companyId, BranchId = branchId });
         }
         catch (Exception ex)
         {
@@ -203,6 +249,13 @@ public partial class FinanceRepository
                     WHERE c.company_id = @CompanyId
                       AND c.deleted_at IS NULL
                       AND c.is_active = TRUE
+                      AND (
+                          @BranchId IS NULL OR EXISTS (
+                              SELECT 1 FROM core.branches b
+                              WHERE b.id = @BranchId AND b.company_id = @CompanyId
+                                AND b.is_active = TRUE AND b.deleted_at IS NULL
+                          )
+                      )
                       AND (
                           @BranchId IS NULL
                           OR c.branch_id = @BranchId

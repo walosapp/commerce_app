@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using Walos.API.Authorization;
 using Walos.API.Middleware;
 using Walos.API.Services;
 using Walos.Application;
@@ -150,7 +151,7 @@ try
             };
         });
 
-    builder.Services.AddAuthorization();
+    builder.Services.AddWalosAuthorization();
 
     // CORS
     var corsOrigins = (builder.Configuration["Cors:Origins"] ?? "*")
@@ -251,10 +252,10 @@ try
 
     // Auth
     app.UseAuthentication();
-    app.UseAuthorization();
 
     // Tenant context (MUST be after auth so JWT claims are available)
     app.UseMiddleware<TenantContextMiddleware>();
+    app.UseAuthorization();
 
     // Map controllers
     app.MapControllers();

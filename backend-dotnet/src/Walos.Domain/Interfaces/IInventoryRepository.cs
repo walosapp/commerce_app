@@ -6,6 +6,9 @@ public interface IInventoryRepository
 {
     Task<IEnumerable<Product>> GetAllProductsAsync(long companyId, ProductFilter? filters = null);
     Task<Product?> GetProductByIdAsync(long productId, long companyId);
+    Task<bool> IsActiveBranchInCompanyAsync(long branchId, long companyId);
+    Task<bool> IsActiveCategoryInCompanyAsync(long categoryId, long companyId);
+    Task<bool> IsActiveUnitInCompanyAsync(long unitId, long companyId);
     Task<Product> CreateProductAsync(Product product);
     Task<IEnumerable<Stock>> GetStockByBranchAsync(long branchId, long companyId);
     Task<Stock> UpdateStockAsync(long branchId, long productId, decimal quantity, long companyId);

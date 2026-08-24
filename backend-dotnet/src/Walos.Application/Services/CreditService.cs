@@ -8,10 +8,10 @@ namespace Walos.Application.Services;
 
 public interface ICreditService
 {
-    Task<IEnumerable<CreditResponse>> GetCreditsAsync(long companyId, string? status, string? search);
-    Task<CreditResponse> GetCreditByIdAsync(long creditId, long companyId);
-    Task<CreditResponse> AddPaymentAsync(long creditId, long companyId, long userId, AddCreditPaymentRequest request);
-    Task CancelCreditAsync(long creditId, long companyId);
+    Task<IEnumerable<CreditResponse>> GetCreditsAsync(long companyId, long branchId, string? status, string? search);
+    Task<CreditResponse> GetCreditByIdAsync(long creditId, long companyId, long branchId);
+    Task<CreditResponse> AddPaymentAsync(long creditId, long companyId, long branchId, long userId, AddCreditPaymentRequest request);
+    Task CancelCreditAsync(long creditId, long companyId, long branchId);
 }
 
 public class CreditService : ICreditService
@@ -25,64 +25,55 @@ public class CreditService : ICreditService
         _logger = logger;
     }
 
-    public async Task<IEnumerable<CreditResponse>> GetCreditsAsync(long companyId, string? status, string? search)
+    public async Task<IEnumerable<CreditResponse>> GetCreditsAsync(long companyId, long branchId, string? status, string? search)
     {
-        var credits = await _creditRepo.GetCreditsAsync(companyId, status, search);
+        var credits = await _creditRepo.GetCreditsAsync(companyId, branchId, status, search);
         return credits.Select(MapToResponse);
     }
 
-    public async Task<CreditResponse> GetCreditByIdAsync(long creditId, long companyId)
+    public async Task<CreditResponse> GetCreditByIdAsync(long creditId, long companyId, long branchId)
     {
-        var credit = await _creditRepo.GetCreditByIdAsync(creditId, companyId)
+        var credit = await _creditRepo.GetCreditByIdAsync(creditId, companyId, branchId)
             ?? throw new NotFoundException("Credito no encontrado");
         return MapToResponse(credit);
     }
 
-    public async Task<CreditResponse> AddPaymentAsync(long creditId, long companyId, long userId, AddCreditPaymentRequest request)
+    public async Task<CreditResponse> AddPaymentAsync(long creditId, long companyId, long branchId, long userId, AddCreditPaymentRequest request)
     {
         if (request.Amount <= 0)
             throw new ValidationException("El monto del abono debe ser mayor a cero");
 
-        var credit = await _creditRepo.GetCreditByIdAsync(creditId, companyId)
-            ?? throw new NotFoundException("Credito no encontrado");
+        var paymentMethod = request.PaymentMethod?.Trim().ToLowerInvariant();
+        if (paymentMethod is not ("cash" or "card" or "transfer" or "nequi" or "other"))
+            throw new ValidationException("Metodo de pago invalido");
 
-        if (credit.Status is "paid" or "cancelled")
-            throw new BusinessException("Este credito ya fue saldado o cancelado");
-
-        if (request.Amount > credit.CreditAmount)
-            throw new ValidationException($"El abono no puede superar el saldo pendiente de {credit.CreditAmount:N2}");
-
-        await _creditRepo.AddPaymentAsync(new CreditPayment
+        var credit = await _creditRepo.ProcessPaymentAsync(new CreditPaymentCommand
         {
-            CompanyId = companyId,
             CreditId = creditId,
+            CompanyId = companyId,
+            BranchId = branchId,
+            UserId = userId,
             Amount = request.Amount,
-            Notes = request.Notes,
-            CreatedBy = userId
+            PaymentMethod = paymentMethod,
+            Notes = request.Notes?.Trim()
         });
 
-        var newAmountPaid   = credit.AmountPaid + request.Amount;
-        var newCreditAmount = Math.Round(credit.CreditAmount - request.Amount, 2);
-        var newStatus       = newCreditAmount <= 0 ? "paid" : "partial";
-        var paidAt          = newStatus == "paid" ? (DateTime?)DateTime.UtcNow : null;
-
-        await _creditRepo.UpdateCreditAfterPaymentAsync(creditId, companyId, newAmountPaid, newCreditAmount, newStatus, paidAt);
-
         _logger.LogInformation("Abono de {Amount} registrado en credito {CreditId}. Saldo restante: {Remaining}",
-            request.Amount, creditId, newCreditAmount);
+            request.Amount, creditId, credit.CreditAmount);
 
-        return await GetCreditByIdAsync(creditId, companyId);
+        return MapToResponse(await _creditRepo.GetCreditByIdAsync(creditId, companyId, branchId) ?? credit);
     }
 
-    public async Task CancelCreditAsync(long creditId, long companyId)
+    public async Task CancelCreditAsync(long creditId, long companyId, long branchId)
     {
-        var credit = await _creditRepo.GetCreditByIdAsync(creditId, companyId)
+        var credit = await _creditRepo.GetCreditByIdAsync(creditId, companyId, branchId)
             ?? throw new NotFoundException("Credito no encontrado");
 
         if (credit.Status == "paid")
             throw new BusinessException("No se puede cancelar un credito ya pagado");
 
-        await _creditRepo.CancelCreditAsync(creditId, companyId);
+        if (!await _creditRepo.CancelCreditAsync(creditId, companyId, branchId))
+            throw new BusinessException("El credito dejo de estar disponible durante la cancelacion");
     }
 
     private static CreditResponse MapToResponse(Credit c) => new()
@@ -102,6 +93,8 @@ public class CreditService : ICreditService
         {
             Id        = p.Id,
             Amount    = p.Amount,
+            PaymentMethod = p.PaymentMethod,
+            CashRegisterId = p.CashRegisterId,
             Notes     = p.Notes,
             CreatedAt = p.CreatedAt
         }).ToList()

@@ -5,55 +5,63 @@ namespace Walos.Tests.Integration;
 public class CreditRepositoryIntegrationTests : IntegrationTestBase
 {
     [SkippableFact]
-    public async Task GetCreditsAsync_Should_Return_Only_Credits_For_Requested_Company()
+    public async Task GetCreditsAsync_Should_Return_Only_Credits_For_Requested_Company_And_Branch()
     {
         var companyA = await SeedCompanyAsync("Credit Co A");
         var companyB = await SeedCompanyAsync("Credit Co B");
         var branchA = await SeedBranchAsync(companyA, "A");
+        var branchA2 = await SeedBranchAsync(companyA, "A2");
         var branchB = await SeedBranchAsync(companyB, "B");
 
         await SeedCreditAsync(companyA, branchA, "Cliente A", "CR-A", "pending", 20000m, 5000m);
+        await SeedCreditAsync(companyA, branchA2, "Cliente A2", "CR-A2", "pending", 22000m, 5000m);
         await SeedCreditAsync(companyB, branchB, "Cliente B", "CR-B", "pending", 30000m, 10000m);
 
-        var creditsA = (await CreditRepository.GetCreditsAsync(companyA, "pending", null)).ToList();
+        var creditsA = (await CreditRepository.GetCreditsAsync(companyA, branchA, "pending", null)).ToList();
 
         Assert.Single(creditsA);
         Assert.Equal(companyA, creditsA[0].CompanyId);
         Assert.Equal("CR-A", creditsA[0].OrderNumber);
+        Assert.DoesNotContain(creditsA, c => c.OrderNumber == "CR-A2");
         Assert.DoesNotContain(creditsA, c => c.OrderNumber == "CR-B");
     }
 
     [SkippableFact]
-    public async Task GetCreditByIdAsync_Should_Return_Null_For_Credit_From_Another_Company()
+    public async Task GetCreditByIdAsync_Should_Return_Null_For_Credit_From_Another_Company_Or_Branch()
     {
         var companyA = await SeedCompanyAsync("Credit Read A");
         var companyB = await SeedCompanyAsync("Credit Read B");
         var branchA = await SeedBranchAsync(companyA, "A");
+        var branchA2 = await SeedBranchAsync(companyA, "A2");
 
         var creditId = await SeedCreditAsync(companyA, branchA, "Cliente A", "CR-READ", "pending", 25000m, 10000m);
 
-        var correctRead = await CreditRepository.GetCreditByIdAsync(creditId, companyA);
-        var wrongRead = await CreditRepository.GetCreditByIdAsync(creditId, companyB);
+        var correctRead = await CreditRepository.GetCreditByIdAsync(creditId, companyA, branchA);
+        var wrongCompanyRead = await CreditRepository.GetCreditByIdAsync(creditId, companyB, branchA);
+        var wrongBranchRead = await CreditRepository.GetCreditByIdAsync(creditId, companyA, branchA2);
 
         Assert.NotNull(correctRead);
         Assert.Equal(companyA, correctRead!.CompanyId);
-        Assert.Null(wrongRead);
+        Assert.Null(wrongCompanyRead);
+        Assert.Null(wrongBranchRead);
     }
 
     [SkippableFact]
-    public async Task CancelCreditAsync_Should_Not_Cancel_Credit_From_Another_Company()
+    public async Task CancelCreditAsync_Should_Not_Cancel_Credit_From_Another_Company_Or_Branch()
     {
         var companyA = await SeedCompanyAsync("Credit Cancel A");
         var companyB = await SeedCompanyAsync("Credit Cancel B");
         var branchA = await SeedBranchAsync(companyA, "A");
+        var branchA2 = await SeedBranchAsync(companyA, "A2");
 
         var creditId = await SeedCreditAsync(companyA, branchA, "Cliente A", "CR-CANCEL", "pending", 18000m, 6000m);
 
-        await CreditRepository.CancelCreditAsync(creditId, companyB);
-        var afterWrongCancel = await CreditRepository.GetCreditByIdAsync(creditId, companyA);
+        Assert.False(await CreditRepository.CancelCreditAsync(creditId, companyB, branchA));
+        Assert.False(await CreditRepository.CancelCreditAsync(creditId, companyA, branchA2));
+        var afterWrongCancel = await CreditRepository.GetCreditByIdAsync(creditId, companyA, branchA);
 
-        await CreditRepository.CancelCreditAsync(creditId, companyA);
-        var afterCorrectCancel = await CreditRepository.GetCreditByIdAsync(creditId, companyA);
+        Assert.True(await CreditRepository.CancelCreditAsync(creditId, companyA, branchA));
+        var afterCorrectCancel = await CreditRepository.GetCreditByIdAsync(creditId, companyA, branchA);
 
         Assert.NotNull(afterWrongCancel);
         Assert.Equal("pending", afterWrongCancel!.Status);

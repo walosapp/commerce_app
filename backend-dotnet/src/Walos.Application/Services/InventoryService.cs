@@ -23,6 +23,31 @@ public class InventoryService : IInventoryService
         _logger = logger;
     }
 
+    public async Task<long?> ResolveBranchAsync(
+        long companyId,
+        long? tenantBranchId,
+        long? requestedBranchId,
+        bool required = false)
+    {
+        if (tenantBranchId.HasValue &&
+            requestedBranchId.HasValue &&
+            requestedBranchId.Value != tenantBranchId.Value)
+            throw new ValidationException("La sucursal solicitada no coincide con la sucursal autenticada");
+
+        var branchId = tenantBranchId ?? requestedBranchId;
+        if (!branchId.HasValue)
+        {
+            if (required)
+                throw new ValidationException("ID de sucursal requerido");
+            return null;
+        }
+
+        if (!await _repository.IsActiveBranchInCompanyAsync(branchId.Value, companyId))
+            throw new NotFoundException("Sucursal");
+
+        return branchId;
+    }
+
     public async Task<Product> CreateProductAsync(long companyId, long userId, long? branchId, CreateProductRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -31,6 +56,14 @@ public class InventoryService : IInventoryService
             throw new ValidationException("Selecciona una categoria valida. Puedes crear categorias en Configuracion > Catalogo");
         if (request.UnitId <= 0)
             throw new ValidationException("Selecciona una unidad de medida valida. Puedes crearlas en Configuracion > Catalogo");
+
+        if (!await _repository.IsActiveCategoryInCompanyAsync(request.CategoryId, companyId))
+            throw new NotFoundException("Categoria");
+        if (!await _repository.IsActiveUnitInCompanyAsync(request.UnitId, companyId))
+            throw new NotFoundException("Unidad");
+
+        if (branchId.HasValue && !await _repository.IsActiveBranchInCompanyAsync(branchId.Value, companyId))
+            throw new NotFoundException("Sucursal");
 
         var sku = string.IsNullOrWhiteSpace(request.Sku)
             ? $"SKU-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}"
@@ -75,6 +108,11 @@ public class InventoryService : IInventoryService
         if (existing is null)
             return null;
 
+        if (!await _repository.IsActiveCategoryInCompanyAsync(request.CategoryId, companyId))
+            throw new NotFoundException("Categoria");
+        if (!await _repository.IsActiveUnitInCompanyAsync(request.UnitId, companyId))
+            throw new NotFoundException("Unidad");
+
         existing.Name = request.Name;
         existing.Sku = request.Sku;
         existing.Barcode = request.Barcode;
@@ -103,10 +141,7 @@ public class InventoryService : IInventoryService
 
     public async Task<Stock> AddStockAsync(long companyId, long userId, long? tenantBranchId, AddStockRequest request)
     {
-        var branchId = request.BranchId ?? tenantBranchId;
-
-        if (branchId is null)
-            throw new ValidationException("ID de sucursal requerido");
+        var branchId = await ResolveBranchAsync(companyId, tenantBranchId, request.BranchId, required: true);
         if (request.ProductId <= 0)
             throw new ValidationException("Producto requerido");
         if (request.Quantity <= 0)

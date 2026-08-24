@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
+using Walos.Application.DTOs.Inventory;
 using Walos.Application.Services;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
@@ -99,4 +100,86 @@ public class InventoryServiceTests
 
         _repoMock.Verify(r => r.SaveAiInteractionAsync(It.IsAny<AiInteraction>()), Times.Once);
     }
+
+    [Fact]
+    public async Task AddStock_Rejects_Body_Branch_That_Overrides_Jwt_Before_Any_Write()
+    {
+        await Assert.ThrowsAsync<ValidationException>(() => _service.AddStockAsync(
+            1, 10, 20, new AddStockRequest { ProductId = 30, BranchId = 21, Quantity = 2 }));
+
+        _repoMock.Verify(r => r.UpdateProductCostAndPriceAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<decimal>(), It.IsAny<decimal?>()), Times.Never);
+        _repoMock.Verify(r => r.UpdateStockAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<decimal>(), It.IsAny<long>()), Times.Never);
+        _repoMock.Verify(r => r.CreateMovementAsync(It.IsAny<Movement>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AddStock_Rejects_Foreign_Branch_For_CompanyWide_User_Before_Any_Write()
+    {
+        _repoMock.Setup(r => r.IsActiveBranchInCompanyAsync(99, 1)).ReturnsAsync(false);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.AddStockAsync(
+            1, 10, null, new AddStockRequest { ProductId = 30, BranchId = 99, Quantity = 2 }));
+
+        _repoMock.Verify(r => r.UpdateStockAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<decimal>(), It.IsAny<long>()), Times.Never);
+        _repoMock.Verify(r => r.CreateMovementAsync(It.IsAny<Movement>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AddStock_Uses_Authenticated_Branch_When_Body_Omits_It()
+    {
+        _repoMock.Setup(r => r.IsActiveBranchInCompanyAsync(20, 1)).ReturnsAsync(true);
+        _repoMock.Setup(r => r.GetProductByIdAsync(30, 1))
+            .ReturnsAsync(new Product { Id = 30, CompanyId = 1, IsActive = true });
+        _repoMock.Setup(r => r.UpdateStockAsync(20, 30, 2, 1))
+            .ReturnsAsync(new Stock { CompanyId = 1, BranchId = 20, ProductId = 30, Quantity = 2 });
+        _repoMock.Setup(r => r.CreateMovementAsync(It.IsAny<Movement>()))
+            .ReturnsAsync((Movement m) => m);
+
+        var result = await _service.AddStockAsync(
+            1, 10, 20, new AddStockRequest { ProductId = 30, Quantity = 2 });
+
+        Assert.Equal(20, result.BranchId);
+        _repoMock.Verify(r => r.UpdateStockAsync(20, 30, 2, 1), Times.Once);
+        _repoMock.Verify(r => r.CreateMovementAsync(It.Is<Movement>(m =>
+            m.CompanyId == 1 && m.BranchId == 20 && m.ProductId == 30)), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateProduct_Rejects_Category_From_Another_Company()
+    {
+        _repoMock.Setup(r => r.IsActiveCategoryInCompanyAsync(50, 1)).ReturnsAsync(false);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.CreateProductAsync(
+            1, 10, 20, ValidProductRequest(categoryId: 50, unitId: 60)));
+
+        _repoMock.Verify(r => r.CreateProductAsync(It.IsAny<Product>()), Times.Never);
+        _repoMock.Verify(r => r.CreateStockEntryAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<decimal>(), It.IsAny<long>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateProduct_Rejects_Unit_From_Another_Company()
+    {
+        _repoMock.Setup(r => r.IsActiveCategoryInCompanyAsync(50, 1)).ReturnsAsync(true);
+        _repoMock.Setup(r => r.IsActiveUnitInCompanyAsync(60, 1)).ReturnsAsync(false);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.CreateProductAsync(
+            1, 10, 20, ValidProductRequest(categoryId: 50, unitId: 60)));
+
+        _repoMock.Verify(r => r.CreateProductAsync(It.IsAny<Product>()), Times.Never);
+    }
+
+    private static CreateProductRequest ValidProductRequest(long categoryId, long unitId) => new()
+    {
+        Name = "Producto",
+        Sku = "SKU-TEST",
+        CategoryId = categoryId,
+        UnitId = unitId,
+        ProductType = "simple",
+        TrackStock = true,
+        IsForSale = true,
+    };
 }

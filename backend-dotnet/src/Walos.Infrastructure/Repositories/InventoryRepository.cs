@@ -1,6 +1,7 @@
 ﻿using Dapper;
 using Microsoft.Extensions.Logging;
 using Walos.Domain.Entities;
+using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
 
 namespace Walos.Infrastructure.Repositories;
@@ -134,6 +135,42 @@ public class InventoryRepository : IInventoryRepository
         }
     }
 
+    public async Task<bool> IsActiveBranchInCompanyAsync(long branchId, long companyId)
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+        const string sql = @"
+            SELECT EXISTS (
+                SELECT 1 FROM core.branches
+                WHERE id = @BranchId AND company_id = @CompanyId
+                  AND is_active = TRUE AND deleted_at IS NULL
+            )";
+        return await connection.ExecuteScalarAsync<bool>(sql, new { BranchId = branchId, CompanyId = companyId });
+    }
+
+    public async Task<bool> IsActiveCategoryInCompanyAsync(long categoryId, long companyId)
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+        const string sql = @"
+            SELECT EXISTS (
+                SELECT 1 FROM inventory.categories
+                WHERE id = @CategoryId AND company_id = @CompanyId
+                  AND is_active = TRUE AND deleted_at IS NULL
+            )";
+        return await connection.ExecuteScalarAsync<bool>(sql, new { CategoryId = categoryId, CompanyId = companyId });
+    }
+
+    public async Task<bool> IsActiveUnitInCompanyAsync(long unitId, long companyId)
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+        const string sql = @"
+            SELECT EXISTS (
+                SELECT 1 FROM inventory.units
+                WHERE id = @UnitId AND company_id = @CompanyId
+                  AND is_active = TRUE AND deleted_at IS NULL
+            )";
+        return await connection.ExecuteScalarAsync<bool>(sql, new { UnitId = unitId, CompanyId = companyId });
+    }
+
     public async Task<Product> CreateProductAsync(Product product)
     {
         try
@@ -147,12 +184,21 @@ public class InventoryRepository : IInventoryRepository
                     min_stock, max_stock, reorder_point, is_perishable,
                     shelf_life_days, product_type, track_stock, is_for_sale,
                     created_by
-                ) VALUES (
+                ) SELECT
                     @CompanyId, @Name, @Sku, @Barcode, @Description,
                     @CategoryId, @UnitId, @CostPrice, @SalePrice,
                     @MinStock, @MaxStock, @ReorderPoint, @IsPerishable,
                     @ShelfLifeDays, @ProductType, @TrackStock, @IsForSale,
                     @CreatedBy
+                WHERE EXISTS (
+                    SELECT 1 FROM inventory.categories c
+                    WHERE c.id = @CategoryId AND c.company_id = @CompanyId
+                      AND c.is_active = TRUE AND c.deleted_at IS NULL
+                )
+                  AND EXISTS (
+                    SELECT 1 FROM inventory.units u
+                    WHERE u.id = @UnitId AND u.company_id = @CompanyId
+                      AND u.is_active = TRUE AND u.deleted_at IS NULL
                 )
                 ON CONFLICT (company_id, sku) DO UPDATE SET
                     name           = EXCLUDED.name,
@@ -188,7 +234,8 @@ public class InventoryRepository : IInventoryRepository
                        created_by AS CreatedBy,
                        created_at AS CreatedAt";
 
-            return await connection.QuerySingleAsync<Product>(sql, product);
+            return await connection.QueryFirstOrDefaultAsync<Product>(sql, product)
+                ?? throw new NotFoundException("Categoria o unidad");
         }
         catch (Exception ex)
         {
@@ -797,7 +844,17 @@ public class InventoryRepository : IInventoryRepository
                     track_stock = @TrackStock,
                     is_for_sale = @IsForSale,
                     updated_at = NOW()
-                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL;
+                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL
+                  AND EXISTS (
+                    SELECT 1 FROM inventory.categories c
+                    WHERE c.id = @CategoryId AND c.company_id = @CompanyId
+                      AND c.is_active = TRUE AND c.deleted_at IS NULL
+                  )
+                  AND EXISTS (
+                    SELECT 1 FROM inventory.units u
+                    WHERE u.id = @UnitId AND u.company_id = @CompanyId
+                      AND u.is_active = TRUE AND u.deleted_at IS NULL
+                  );
 
                 SELECT id AS Id, company_id AS CompanyId, name AS Name, sku AS Sku,
                        barcode AS Barcode, description AS Description,
@@ -811,7 +868,19 @@ public class InventoryRepository : IInventoryRepository
                        is_for_sale AS IsForSale, is_active AS IsActive,
                        image_url AS ImageUrl,
                        created_by AS CreatedBy, created_at AS CreatedAt, updated_at AS UpdatedAt
-                FROM inventory.products WHERE id = @Id AND company_id = @CompanyId;";
+                FROM inventory.products
+                WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL
+                  AND category_id = @CategoryId AND unit_id = @UnitId
+                  AND EXISTS (
+                    SELECT 1 FROM inventory.categories c
+                    WHERE c.id = @CategoryId AND c.company_id = @CompanyId
+                      AND c.is_active = TRUE AND c.deleted_at IS NULL
+                  )
+                  AND EXISTS (
+                    SELECT 1 FROM inventory.units u
+                    WHERE u.id = @UnitId AND u.company_id = @CompanyId
+                      AND u.is_active = TRUE AND u.deleted_at IS NULL
+                  );";
 
             var updated = await connection.QueryFirstOrDefaultAsync<Product>(sql, new
             {
@@ -835,7 +904,7 @@ public class InventoryRepository : IInventoryRepository
                 product.IsForSale
             });
 
-            return updated ?? throw new Exception("Producto no encontrado para actualizar");
+            return updated ?? throw new NotFoundException("Producto, categoria o unidad");
         }
         catch (Exception ex)
         {

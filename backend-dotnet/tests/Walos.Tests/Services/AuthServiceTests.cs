@@ -5,6 +5,8 @@ using Walos.Application.Services;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
+using Walos.Application.Security;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace Walos.Tests.Services;
 
@@ -155,6 +157,33 @@ public class AuthServiceTests
         _repoMock.Verify(r => r.ResetFailedLoginAsync(5), Times.Once);
         _repoMock.Verify(r => r.UpdateLastLoginAsync(5, "127.0.0.1"), Times.Once);
         _repoMock.Verify(r => r.SaveRefreshTokenAsync(5, It.IsAny<string>(), It.IsAny<DateTime>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("WALOS-SYSTEM-001", "true")]
+    [InlineData("TENANT-OTHER", "false")]
+    public async Task Login_PlatformAdmin_Claim_Requires_Dev_From_Trusted_System_Company(
+        string companyTaxId,
+        string expectedClaim)
+    {
+        var hash = BCrypt.Net.BCrypt.HashPassword("mypass");
+        _repoMock.Setup(r => r.GetUserByEmailAsync("dev@test.com"))
+            .ReturnsAsync(new User
+            {
+                Id = 50,
+                Email = "dev@test.com",
+                IsActive = true,
+                PasswordHash = hash,
+                CompanyId = 10,
+                BranchId = 20,
+                RoleCode = WalosRoles.Dev,
+                CompanyTaxId = companyTaxId,
+            });
+
+        var result = await _service.LoginAsync("dev@test.com", "mypass", null);
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(result.Token);
+
+        Assert.Equal(expectedClaim, token.Claims.Single(c => c.Type == WalosClaimTypes.PlatformAdmin).Value);
     }
 
     // ── RefreshTokenAsync ──

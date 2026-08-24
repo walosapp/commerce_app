@@ -552,33 +552,14 @@ Idioma: español.";
             var action = parsed.TryGetProperty("action", out var a) ? a.GetString() ?? "query" : "query";
             var responseText = parsed.TryGetProperty("response", out var r) ? r.GetString() ?? aiRaw : aiRaw;
 
-            if (action == "update_status" &&
-                parsed.TryGetProperty("order_number", out var on) &&
-                parsed.TryGetProperty("new_status", out var ns))
+            if (action == "update_status")
             {
-                var orderNumber = on.GetString() ?? "";
-                var newStatus = ns.GetString() ?? "";
-                var order = activeOrders.FirstOrDefault(o =>
-                    o.OrderNumber.Contains(orderNumber, StringComparison.OrdinalIgnoreCase));
-
-                if (order != null)
+                return new AiChatResponse
                 {
-                    await _delivery.UpdateOrderStatusAsync(order.Id, companyId, newStatus, null, null, new Dictionary<string, DateTime?>());
-                    return new AiChatResponse
-                    {
-                        AgentType = "delivery",
-                        ResponseType = "delivery_status",
-                        Message = responseText,
-                        Payload = new AiDeliveryPayload
-                        {
-                            OrderId = order.Id,
-                            OrderNumber = order.OrderNumber,
-                            Status = newStatus,
-                            CustomerName = order.CustomerName ?? "",
-                            Address = order.CustomerAddress ?? ""
-                        }
-                    };
-                }
+                    AgentType = "delivery",
+                    ResponseType = "text",
+                    Message = "Por seguridad, los cambios de estado deben realizarse desde el modulo de domicilios. Puedo ayudarte a consultar el pedido."
+                };
             }
 
             return new AiChatResponse { AgentType = "delivery", ResponseType = "text", Message = responseText };

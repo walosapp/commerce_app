@@ -1,13 +1,20 @@
+using System.Runtime.CompilerServices;
+
 namespace Walos.Tests.Repositories;
 
 public class TenantIsolationSqlTests
 {
-    private static string ReadRepositoryFile(string fileName)
+    private static string ReadRepositoryFile(
+        string fileName,
+        [CallerFilePath] string testSourceFile = "")
     {
-        var path = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory,
-            "..", "..", "..", "..", "..",
-            "src", "Walos.Infrastructure", "Repositories", fileName));
+        var testSourceDirectory = Path.GetDirectoryName(testSourceFile)
+            ?? throw new DirectoryNotFoundException(
+                $"No se pudo resolver el directorio fuente de {testSourceFile}.");
+        var backendRoot = Path.GetFullPath(Path.Combine(
+            testSourceDirectory, "..", "..", ".."));
+        var path = Path.Combine(
+            backendRoot, "src", "Walos.Infrastructure", "Repositories", fileName);
 
         Assert.True(File.Exists(path), $"No se encontro el archivo esperado: {path}");
         return File.ReadAllText(path);

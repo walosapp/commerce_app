@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Platform;
+using Walos.Application.Security;
 using Walos.Domain.Entities.Platform;
 using Walos.Domain.Interfaces;
 
@@ -9,7 +10,7 @@ namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/platform/admin")]
-[Authorize(Roles = "dev")]
+[Authorize(Policy = WalosPolicies.PlatformAdmin)]
 public class PlatformAdminController : ControllerBase
 {
     private readonly IPlatformRepository _platformRepo;

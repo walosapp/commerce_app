@@ -15,7 +15,11 @@ public interface IUsersRepository
     Task<bool> SoftDeleteAsync(long userId, long companyId);
     Task<bool> EmailExistsAsync(string email, long? excludeUserId = null);
     Task<IEnumerable<RoleOption>> GetRolesAsync(long companyId, bool excludeDev = true);
+    Task<RoleAssignmentInfo?> GetRoleForAssignmentAsync(long roleId, long companyId);
+    Task<RoleAssignmentInfo?> GetUserRoleForAssignmentAsync(long userId, long companyId);
+    Task<bool> IsActiveBranchInCompanyAsync(long branchId, long companyId);
     Task<bool> ResetPasswordAsync(long userId, long companyId, string newPasswordHash);
 }
 
+public sealed record RoleAssignmentInfo(long Id, string Code, int AccessLevel);
 

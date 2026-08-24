@@ -2,7 +2,10 @@ import api from '../config/api';
 
 export const refundService = {
   create: async (data) => {
-    const response = await api.post('/sales/refunds', data);
+    const { idempotencyKey, ...payload } = data;
+    const response = await api.post('/sales/refunds', payload, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
     return response.data;
   },
 

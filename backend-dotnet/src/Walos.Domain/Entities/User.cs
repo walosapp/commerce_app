@@ -30,4 +30,5 @@ public class User
     public string? RoleName { get; set; }
     public string? BranchName { get; set; }
     public string? CompanyName { get; set; }
+    public string? CompanyTaxId { get; set; }
 }

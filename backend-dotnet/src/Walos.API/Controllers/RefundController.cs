@@ -3,13 +3,14 @@ using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Sales;
 using Walos.Application.Services;
+using Walos.Application.Security;
 using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/sales/refunds")]
-[Authorize]
+[Authorize(Policy = WalosPolicies.CashOperator)]
 public class RefundController : ControllerBase
 {
     private readonly IRefundService _refundService;
@@ -22,13 +23,15 @@ public class RefundController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] CreateRefundRequest request)
+    public async Task<IActionResult> Create(
+        [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
+        [FromBody] CreateRefundRequest request)
     {
         if (!_tenant.BranchId.HasValue)
             return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
 
         var result = await _refundService.CreateRefundAsync(
-            _tenant.CompanyId, _tenant.BranchId.Value, _tenant.UserId, request);
+            _tenant.CompanyId, _tenant.BranchId.Value, _tenant.UserId, idempotencyKey, request);
 
         return Ok(ApiResponse<RefundResponse>.Ok(result, "Devolucion creada exitosamente"));
     }
@@ -52,7 +55,10 @@ public class RefundController : ControllerBase
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetById(long id)
     {
-        var result = await _refundService.GetByIdAsync(id, _tenant.CompanyId);
+        if (!_tenant.BranchId.HasValue)
+            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+
+        var result = await _refundService.GetByIdAsync(id, _tenant.CompanyId, _tenant.BranchId.Value);
         if (result == null) return NotFound(ApiResponse.Fail("Devolucion no encontrada"));
         return Ok(ApiResponse<RefundResponse>.Ok(result));
     }
@@ -60,7 +66,10 @@ public class RefundController : ControllerBase
     [HttpGet("by-order/{orderId:long}")]
     public async Task<IActionResult> GetByOrder(long orderId)
     {
-        var result = await _refundService.GetByOrderIdAsync(orderId, _tenant.CompanyId);
+        if (!_tenant.BranchId.HasValue)
+            return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
+
+        var result = await _refundService.GetByOrderIdAsync(orderId, _tenant.CompanyId, _tenant.BranchId.Value);
         return Ok(ApiResponse<IEnumerable<RefundResponse>>.Ok(result));
     }
 }

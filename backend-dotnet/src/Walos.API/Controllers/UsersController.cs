@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Users;
 using Walos.Application.Services;
+using Walos.Application.Security;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
 
@@ -10,7 +11,7 @@ namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/users")]
-[Authorize]
+[Authorize(Policy = WalosPolicies.Users)]
 public class UsersController : ControllerBase
 {
     private readonly IUsersService _service;
@@ -47,38 +48,37 @@ public class UsersController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> Create([FromBody] CreateUserRequest request)
     {
-        var created = await _service.CreateAsync(_tenant.CompanyId, request);
+        var created = await _service.CreateAsync(
+            _tenant.CompanyId, _tenant.UserId, _tenant.Role, request);
         return Created($"api/v1/users/{created.Id}", ApiResponse<User>.Ok(created, "Usuario creado exitosamente"));
     }
 
     [HttpPut("{id:long}")]
-    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> Update(long id, [FromBody] UpdateUserRequest request)
     {
-        var updated = await _service.UpdateAsync(_tenant.CompanyId, id, request);
+        var updated = await _service.UpdateAsync(
+            _tenant.CompanyId, _tenant.UserId, _tenant.Role, id, request);
         if (updated is null)
             return NotFound(ApiResponse.Fail("Usuario no encontrado"));
         return Ok(ApiResponse<User>.Ok(updated, "Usuario actualizado"));
     }
 
     [HttpPatch("{id:long}/status")]
-    [Authorize(Roles = "dev,super_admin,admin,manager")]
     public async Task<IActionResult> SetStatus(long id, [FromBody] bool isActive)
     {
-        var ok = await _service.SetStatusAsync(_tenant.CompanyId, _tenant.UserId, id, isActive);
+        var ok = await _service.SetStatusAsync(
+            _tenant.CompanyId, _tenant.UserId, _tenant.Role, id, isActive);
         if (!ok)
             return NotFound(ApiResponse.Fail("Usuario no encontrado"));
         return Ok(ApiResponse.Ok(isActive ? "Usuario activado" : "Usuario desactivado"));
     }
 
     [HttpDelete("{id:long}")]
-    [Authorize(Roles = "dev,super_admin,admin")]
     public async Task<IActionResult> Delete(long id)
     {
-        var ok = await _service.DeleteAsync(_tenant.CompanyId, _tenant.UserId, id);
+        var ok = await _service.DeleteAsync(_tenant.CompanyId, _tenant.UserId, _tenant.Role, id);
         if (!ok)
             return NotFound(ApiResponse.Fail("Usuario no encontrado"));
         return Ok(ApiResponse.Ok("Usuario eliminado"));

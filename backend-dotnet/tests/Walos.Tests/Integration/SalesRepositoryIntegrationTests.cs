@@ -68,6 +68,46 @@ public class SalesRepositoryIntegrationTests : IntegrationTestBase
         Assert.Null(orderWrongCompany);
     }
 
+    [SkippableFact]
+    public async Task ScopedReads_Should_Hide_SameCompanyResources_FromAnotherBranch()
+    {
+        var company = await SeedCompanyAsync("Sales Branch Scope");
+        var branchA = await SeedBranchAsync(company, "Sales A");
+        var branchB = await SeedBranchAsync(company, "Sales B");
+        var tableB = await SeedTableAsync(company, branchB, 40, "Mesa B", "open");
+        var orderB = await SeedOrderAsync(company, branchB, tableB, "B-SCOPED", "pending", 100m);
+
+        Assert.Null(await SalesRepository.GetTableByIdAsync(tableB, company, branchA));
+        Assert.Null(await SalesRepository.GetOrderByTableIdAsync(tableB, company, branchA));
+        Assert.Null(await SalesRepository.GetOrderByIdAsync(orderB, company, branchA));
+        Assert.Empty(await SalesRepository.GetOrderItemsAsync(orderB, company, branchA));
+
+        Assert.NotNull(await SalesRepository.GetTableByIdAsync(tableB, company, branchB));
+        Assert.NotNull(await SalesRepository.GetOrderByIdAsync(orderB, company, branchB));
+    }
+
+    [SkippableFact]
+    public async Task ScopedMutations_Should_NotChange_SameCompanyTableOrOrder_FromAnotherBranch()
+    {
+        var company = await SeedCompanyAsync("Sales Mutation Scope");
+        var branchA = await SeedBranchAsync(company, "Mutation A");
+        var branchB = await SeedBranchAsync(company, "Mutation B");
+        var tableB = await SeedTableAsync(company, branchB, 50, "Original", "open");
+        var orderB = await SeedOrderAsync(company, branchB, tableB, "B-MUTATION", "pending", 100m);
+
+        await SalesRepository.RenameTableAsync(tableB, company, branchA, "Intrusión");
+        await SalesRepository.UpdateTableStatusAsync(tableB, company, branchA, "cancelled");
+        await SalesRepository.UpdateOrderStatusAsync(orderB, company, branchA, "cancelled");
+
+        var table = await SalesRepository.GetTableByIdAsync(tableB, company, branchB);
+        var order = await SalesRepository.GetOrderByIdAsync(orderB, company, branchB);
+        Assert.NotNull(table);
+        Assert.Equal("Original", table!.Name);
+        Assert.Equal("open", table.Status);
+        Assert.NotNull(order);
+        Assert.Equal("pending", order!.Status);
+    }
+
     private async Task<long> SeedTableAsync(long companyId, long branchId, int tableNumber, string name, string status)
     {
         using var conn = await ConnectionFactory.CreateConnectionAsync();

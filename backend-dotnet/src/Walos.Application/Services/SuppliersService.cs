@@ -18,8 +18,8 @@ public class SuppliersService : ISuppliersService
     public Task<IEnumerable<Supplier>> GetAllAsync(long companyId, long? branchId)
         => _repository.GetAllAsync(companyId, branchId);
 
-    public Task<Supplier?> GetByIdAsync(long supplierId, long companyId)
-        => _repository.GetByIdAsync(supplierId, companyId);
+    public Task<Supplier?> GetByIdAsync(long supplierId, long companyId, long? branchId)
+        => _repository.GetByIdAsync(supplierId, companyId, branchId);
 
     public async Task<Supplier> CreateAsync(long companyId, long? branchId, long userId, CreateSupplierRequest request)
     {
@@ -39,10 +39,11 @@ public class SuppliersService : ISuppliersService
             CreatedBy = userId,
         };
 
-        return await _repository.CreateAsync(supplier);
+        return await _repository.CreateAsync(supplier)
+            ?? throw new NotFoundException("Sucursal");
     }
 
-    public async Task<Supplier?> UpdateAsync(long companyId, long supplierId, UpdateSupplierRequest request)
+    public async Task<Supplier?> UpdateAsync(long companyId, long? branchId, long supplierId, UpdateSupplierRequest request)
     {
         var supplier = new Supplier
         {
@@ -56,13 +57,13 @@ public class SuppliersService : ISuppliersService
             Notes = request.Notes,
         };
 
-        return await _repository.UpdateAsync(supplier);
+        return await _repository.UpdateAsync(supplier, branchId);
     }
 
-    public Task<bool> DeleteAsync(long supplierId, long companyId)
-        => _repository.SoftDeleteAsync(supplierId, companyId);
+    public Task<bool> DeleteAsync(long supplierId, long companyId, long? branchId)
+        => _repository.SoftDeleteAsync(supplierId, companyId, branchId);
 
-    public async Task<SupplierProduct> AddProductAsync(long supplierId, AddSupplierProductRequest request)
+    public async Task<SupplierProduct> AddProductAsync(long companyId, long? branchId, long supplierId, AddSupplierProductRequest request)
     {
         var supplierProduct = new SupplierProduct
         {
@@ -74,15 +75,16 @@ public class SuppliersService : ISuppliersService
             Notes = request.Notes,
         };
 
-        return await _repository.AddSupplierProductAsync(supplierProduct);
+        return await _repository.AddSupplierProductAsync(companyId, branchId, supplierProduct)
+            ?? throw new NotFoundException("Proveedor o producto");
     }
 
-    public Task<bool> RemoveProductAsync(long supplierId, long productId)
-        => _repository.RemoveSupplierProductAsync(supplierId, productId);
+    public Task<bool> RemoveProductAsync(long companyId, long? branchId, long supplierId, long productId)
+        => _repository.RemoveSupplierProductAsync(companyId, branchId, supplierId, productId);
 
     public async Task<SuggestedOrderResponse?> GetSuggestedOrderAsync(long supplierId, long companyId, long branchId)
     {
-        var supplier = await _repository.GetByIdAsync(supplierId, companyId);
+        var supplier = await _repository.GetByIdAsync(supplierId, companyId, branchId);
         if (supplier is null)
             return null;
 

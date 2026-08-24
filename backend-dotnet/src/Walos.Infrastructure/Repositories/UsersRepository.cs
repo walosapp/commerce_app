@@ -33,8 +33,8 @@ public class UsersRepository : IUsersRepository
                 r.code AS RoleCode, r.name AS RoleName,
                 b.name AS BranchName
             FROM core.users u
-            JOIN core.roles r ON r.id = u.role_id
-            LEFT JOIN core.branches b ON b.id = u.branch_id
+            JOIN core.roles r ON r.id = u.role_id AND r.company_id = u.company_id
+            LEFT JOIN core.branches b ON b.id = u.branch_id AND b.company_id = u.company_id
             WHERE u.company_id = @CompanyId
               AND u.deleted_at IS NULL
               AND r.code != 'dev'
@@ -57,8 +57,8 @@ public class UsersRepository : IUsersRepository
                 b.name AS BranchName,
                 c.name AS CompanyName
             FROM core.users u
-            JOIN core.roles r ON r.id = u.role_id
-            LEFT JOIN core.branches b ON b.id = u.branch_id
+            JOIN core.roles r ON r.id = u.role_id AND r.company_id = u.company_id
+            LEFT JOIN core.branches b ON b.id = u.branch_id AND b.company_id = u.company_id
             JOIN core.companies c ON c.id = u.company_id
             WHERE u.deleted_at IS NULL
               AND r.code != 'dev'
@@ -81,8 +81,8 @@ public class UsersRepository : IUsersRepository
                 r.code AS RoleCode, r.name AS RoleName,
                 b.name AS BranchName
             FROM core.users u
-            JOIN core.roles r ON r.id = u.role_id
-            LEFT JOIN core.branches b ON b.id = u.branch_id
+            JOIN core.roles r ON r.id = u.role_id AND r.company_id = u.company_id
+            LEFT JOIN core.branches b ON b.id = u.branch_id AND b.company_id = u.company_id
             WHERE u.id = @UserId AND u.company_id = @CompanyId AND u.deleted_at IS NULL";
         return await conn.QueryFirstOrDefaultAsync<User>(sql, new { UserId = userId, CompanyId = companyId });
     }
@@ -92,7 +92,19 @@ public class UsersRepository : IUsersRepository
         using var conn = await _db.CreateConnectionAsync();
         const string sql = @"
             INSERT INTO core.users (company_id, branch_id, role_id, first_name, last_name, email, phone, password_hash, is_active, created_by)
-            VALUES (@CompanyId, @BranchId, @RoleId, @FirstName, @LastName, @Email, @Phone, @PasswordHash, TRUE, @CreatedBy)
+            SELECT @CompanyId, @BranchId, @RoleId, @FirstName, @LastName, @Email, @Phone, @PasswordHash, TRUE, @CreatedBy
+            WHERE EXISTS (
+                SELECT 1 FROM core.roles r
+                WHERE r.id = @RoleId AND r.company_id = @CompanyId
+                  AND r.code <> 'dev' AND r.is_active = TRUE AND r.deleted_at IS NULL
+            )
+              AND (
+                  @BranchId IS NULL OR EXISTS (
+                      SELECT 1 FROM core.branches b
+                      WHERE b.id = @BranchId AND b.company_id = @CompanyId
+                        AND b.is_active = TRUE AND b.deleted_at IS NULL
+                  )
+              )
             RETURNING id AS Id, company_id AS CompanyId, branch_id AS BranchId,
                       role_id AS RoleId, first_name AS FirstName, last_name AS LastName,
                       email AS Email, phone AS Phone, is_active AS IsActive,
@@ -114,6 +126,18 @@ public class UsersRepository : IUsersRepository
             SET first_name = @FirstName, last_name = @LastName, phone = @Phone,
                 role_id = @RoleId, branch_id = @BranchId, updated_at = NOW()
             WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL
+              AND EXISTS (
+                  SELECT 1 FROM core.roles r
+                  WHERE r.id = @RoleId AND r.company_id = @CompanyId
+                    AND r.code <> 'dev' AND r.is_active = TRUE AND r.deleted_at IS NULL
+              )
+              AND (
+                  @BranchId IS NULL OR EXISTS (
+                      SELECT 1 FROM core.branches b
+                      WHERE b.id = @BranchId AND b.company_id = @CompanyId
+                        AND b.is_active = TRUE AND b.deleted_at IS NULL
+                  )
+              )
             RETURNING id AS Id, company_id AS CompanyId, branch_id AS BranchId,
                       role_id AS RoleId, first_name AS FirstName, last_name AS LastName,
                       email AS Email, phone AS Phone, is_active AS IsActive,
@@ -168,5 +192,49 @@ public class UsersRepository : IUsersRepository
             WHERE r.company_id = @CompanyId AND r.is_active = TRUE AND r.deleted_at IS NULL {where}
             ORDER BY r.access_level DESC, r.name ASC";
         return await conn.QueryAsync<RoleOption>(sql, new { CompanyId = companyId });
+    }
+
+    public async Task<RoleAssignmentInfo?> GetRoleForAssignmentAsync(long roleId, long companyId)
+    {
+        using var conn = await _db.CreateConnectionAsync();
+        const string sql = @"
+            SELECT id AS Id, code AS Code, COALESCE(access_level, 1) AS AccessLevel
+            FROM core.roles
+            WHERE id = @RoleId
+              AND company_id = @CompanyId
+              AND is_active = TRUE
+              AND deleted_at IS NULL";
+        return await conn.QueryFirstOrDefaultAsync<RoleAssignmentInfo>(sql, new { RoleId = roleId, CompanyId = companyId });
+    }
+
+    public async Task<RoleAssignmentInfo?> GetUserRoleForAssignmentAsync(long userId, long companyId)
+    {
+        using var conn = await _db.CreateConnectionAsync();
+        const string sql = @"
+            SELECT r.id AS Id, r.code AS Code, COALESCE(r.access_level, 1) AS AccessLevel
+            FROM core.users u
+            INNER JOIN core.roles r ON r.id = u.role_id AND r.company_id = u.company_id
+            WHERE u.id = @UserId
+              AND u.company_id = @CompanyId
+              AND u.is_active = TRUE
+              AND u.deleted_at IS NULL
+              AND r.is_active = TRUE
+              AND r.deleted_at IS NULL";
+        return await conn.QueryFirstOrDefaultAsync<RoleAssignmentInfo>(sql, new { UserId = userId, CompanyId = companyId });
+    }
+
+    public async Task<bool> IsActiveBranchInCompanyAsync(long branchId, long companyId)
+    {
+        using var conn = await _db.CreateConnectionAsync();
+        const string sql = @"
+            SELECT EXISTS (
+                SELECT 1
+                FROM core.branches
+                WHERE id = @BranchId
+                  AND company_id = @CompanyId
+                  AND is_active = TRUE
+                  AND deleted_at IS NULL
+            )";
+        return await conn.ExecuteScalarAsync<bool>(sql, new { BranchId = branchId, CompanyId = companyId });
     }
 }
