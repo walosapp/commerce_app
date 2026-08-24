@@ -6,6 +6,7 @@ using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using Walos.Application.Services;
+using Walos.Application.Storage;
 
 namespace Walos.API.Controllers;
 
@@ -16,11 +17,16 @@ public class PwaController : ControllerBase
 {
     private static readonly int[] AllowedIconSizes = [72, 96, 128, 144, 152, 180, 192, 384, 512];
     private readonly ICompanyService _companyService;
+    private readonly IFileStorage _fileStorage;
     private readonly IWebHostEnvironment _environment;
 
-    public PwaController(ICompanyService companyService, IWebHostEnvironment environment)
+    public PwaController(
+        ICompanyService companyService,
+        IFileStorage fileStorage,
+        IWebHostEnvironment environment)
     {
         _companyService = companyService;
+        _fileStorage = fileStorage;
         _environment = environment;
     }
 
@@ -30,11 +36,12 @@ public class PwaController : ControllerBase
         if (tenantId <= 0)
             return BadRequest(new { message = "tenantId es obligatorio" });
 
-        var settings = await _companyService.GetSettingsAsync(tenantId);
+        var settings = await _companyService.GetSettingsWithRawLogoAsync(tenantId);
         var displayName = string.IsNullOrWhiteSpace(settings.DisplayName) ? settings.Name : settings.DisplayName;
         var shortName = displayName.Length > 24 ? displayName[..24] : displayName;
         var version = string.IsNullOrWhiteSpace(v) ? settings.LogoUrl ?? "default" : v;
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        var appOrigin = ResolveAppOrigin(Request.Headers.Origin.FirstOrDefault()) ?? baseUrl;
 
         var manifest = new
         {
@@ -46,11 +53,11 @@ public class PwaController : ControllerBase
             background_color = "#ffffff",
             display = "standalone",
             orientation = "portrait",
-            scope = "/",
-            start_url = "/",
+            scope = $"{appOrigin}/",
+            start_url = $"{appOrigin}/",
             icons = AllowedIconSizes.Select(size => new
             {
-                src = $"{baseUrl}/api/v1/pwa/icon/{tenantId}/{size}.png?v={Uri.EscapeDataString(version)}",
+                src = $"/api/v1/pwa/icon/{tenantId}/{size}.png?v={Uri.EscapeDataString(version)}",
                 sizes = $"{size}x{size}",
                 type = "image/png",
                 purpose = "any maskable"
@@ -69,13 +76,12 @@ public class PwaController : ControllerBase
         if (!AllowedIconSizes.Contains(size))
             return BadRequest(new { message = "Tamano de icono no permitido" });
 
-        var settings = await _companyService.GetSettingsAsync(tenantId);
-        var logoPath = ResolveLogoPhysicalPath(settings.LogoUrl);
+        var settings = await _companyService.GetSettingsWithRawLogoAsync(tenantId);
+        await using var sourceStream = await OpenLogoStreamAsync(settings.LogoUrl, tenantId);
 
-        if (logoPath is null)
+        if (sourceStream is null)
             return NotFound(new { message = "El tenant no tiene logo configurado" });
 
-        await using var sourceStream = System.IO.File.OpenRead(logoPath);
         using var sourceImage = await Image.LoadAsync<Rgba32>(sourceStream);
 
         sourceImage.Mutate(image => image.AutoOrient());
@@ -103,19 +109,64 @@ public class PwaController : ControllerBase
         return File(output, "image/png");
     }
 
-    private string? ResolveLogoPhysicalPath(string? logoUrl)
+    private async Task<Stream?> OpenLogoStreamAsync(string? logoReference, long tenantId)
     {
-        if (string.IsNullOrWhiteSpace(logoUrl))
+        if (string.IsNullOrWhiteSpace(logoReference))
+            return null;
+
+        if (IsCanonicalBrandingKey(logoReference, tenantId))
+        {
+            if (!_fileStorage.IsManagedReference(logoReference))
+                return null;
+
+            return await _fileStorage.OpenReadAsync(logoReference, HttpContext.RequestAborted);
+        }
+
+        var logoPath = ResolveLegacyLogoPhysicalPath(logoReference);
+        return logoPath is null ? null : System.IO.File.OpenRead(logoPath);
+    }
+
+    private string? ResolveLegacyLogoPhysicalPath(string logoUrl)
+    {
+        const string legacyPrefix = "/uploads/branding/";
+        if (!logoUrl.StartsWith(legacyPrefix, StringComparison.Ordinal))
+            return null;
+
+        var fileName = logoUrl[legacyPrefix.Length..];
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            fileName.Contains('/') ||
+            fileName.Contains('\\') ||
+            fileName is "." or "..")
             return null;
 
         var webRoot = _environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-        var fullWebRoot = Path.GetFullPath(webRoot);
-        var relativePath = logoUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
-        var candidate = Path.GetFullPath(Path.Combine(fullWebRoot, relativePath));
-
-        if (!candidate.StartsWith(fullWebRoot, StringComparison.OrdinalIgnoreCase))
-            return null;
+        var brandingRoot = Path.GetFullPath(Path.Combine(webRoot, "uploads", "branding"));
+        var candidate = Path.GetFullPath(Path.Combine(brandingRoot, fileName));
 
         return System.IO.File.Exists(candidate) ? candidate : null;
+    }
+
+    private static bool IsCanonicalBrandingKey(string reference, long tenantId)
+    {
+        var prefix = $"companies/{tenantId}/branding/";
+        if (!reference.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+
+        var fileName = reference[prefix.Length..];
+        return fileName.Length > 0 &&
+               !fileName.Contains('/') &&
+               !fileName.Contains('\\') &&
+               fileName is not "." and not "..";
+    }
+
+    private static string? ResolveAppOrigin(string? origin)
+    {
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+            return null;
+
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            return null;
+
+        return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
     }
 }

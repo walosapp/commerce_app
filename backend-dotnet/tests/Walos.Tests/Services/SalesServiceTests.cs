@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Walos.Application.DTOs.Sales;
 using Walos.Application.Services;
+using Walos.Application.Storage;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
@@ -20,6 +21,7 @@ public class SalesServiceTests
     private readonly Mock<IUsersRepository> _usersRepoMock;
     private readonly Mock<IRefundRepository> _refundRepoMock;
     private readonly Mock<ICheckoutRepository> _checkoutRepoMock;
+    private readonly Mock<IFileStorage> _fileStorageMock;
     private readonly Mock<ILogger<SalesService>> _loggerMock;
     private readonly SalesService _service;
 
@@ -39,6 +41,7 @@ public class SalesServiceTests
         _usersRepoMock = new Mock<IUsersRepository>();
         _refundRepoMock = new Mock<IRefundRepository>();
         _checkoutRepoMock = new Mock<ICheckoutRepository>();
+        _fileStorageMock = new Mock<IFileStorage>();
         _loggerMock = new Mock<ILogger<SalesService>>();
         _service = new SalesService(
             _salesRepoMock.Object,
@@ -51,6 +54,7 @@ public class SalesServiceTests
             _usersRepoMock.Object,
             _refundRepoMock.Object,
             _checkoutRepoMock.Object,
+            _fileStorageMock.Object,
             _loggerMock.Object);
     }
 
@@ -72,6 +76,40 @@ public class SalesServiceTests
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
             _service.ResolveBranchAsync(CompanyId, null, 99, required: true));
+    }
+
+    [Fact]
+    public async Task GetReceipt_ResolvesManagedCompanyLogo_ToPublicUrl()
+    {
+        const long orderId = 50;
+        const long tableId = 70;
+        const string objectKey = "companies/1/branding/logo.png";
+        const string publicUrl = "https://storage.example/public/companies/1/branding/logo.png";
+        _salesRepoMock.Setup(r => r.GetOrderByIdAsync(orderId, CompanyId, BranchId))
+            .ReturnsAsync(new Order
+            {
+                Id = orderId,
+                CompanyId = CompanyId,
+                BranchId = BranchId,
+                TableId = tableId,
+                OrderNumber = "ORD-50"
+            });
+        _companyRepoMock.Setup(r => r.GetCompanySettingsAsync(CompanyId))
+            .ReturnsAsync(new CompanySettings { Id = CompanyId, Name = "Walos", LogoUrl = objectKey });
+        _salesRepoMock.Setup(r => r.GetOrderItemsAsync(orderId, CompanyId, BranchId))
+            .ReturnsAsync([]);
+        _orderPaymentRepoMock.Setup(r => r.GetByOrderAsync(orderId, CompanyId))
+            .ReturnsAsync([]);
+        _salesRepoMock.Setup(r => r.GetTableByIdAsync(tableId, CompanyId, BranchId))
+            .ReturnsAsync(new SalesTable { Id = tableId, CompanyId = CompanyId, BranchId = BranchId, TableNumber = 1 });
+        _creditRepoMock.Setup(r => r.GetCreditsAsync(CompanyId, BranchId, null, "ORD-50"))
+            .ReturnsAsync([]);
+        _fileStorageMock.Setup(s => s.IsManagedReference(objectKey)).Returns(true);
+        _fileStorageMock.Setup(s => s.GetPublicUrl(objectKey)).Returns(publicUrl);
+
+        var receipt = await _service.GetReceiptAsync(CompanyId, BranchId, orderId);
+
+        Assert.Equal(publicUrl, receipt.CompanyLogoUrl);
     }
 
     [Fact]

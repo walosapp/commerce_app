@@ -13,8 +13,7 @@ import useAuthStore from '../../../stores/authStore';
 import RecipeManager from './RecipeManager';
 import toast from 'react-hot-toast';
 import { formatCurrency } from '../../../utils/formatCurrency';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { resolveAssetUrl } from '../../../utils/assetUrl';
 
 const generateSuggestedSku = () => {
   const timestamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 12);
@@ -105,7 +104,7 @@ const ProductFormModal = ({ isOpen, onClose, onSave, product = null }) => {
         trackStock: product.trackStock ?? true,
         isForSale: product.isForSale ?? true,
       });
-      setImagePreview(product.imageUrl ? `${API_BASE}${product.imageUrl}` : null);
+      setImagePreview(resolveAssetUrl(product.imageUrl));
       setReferenceQuantity('');
       setReferenceTotalCost('');
     } else {

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Walos.Application.DTOs.Inventory;
+using Walos.Application.Storage;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
@@ -11,15 +12,18 @@ public class InventoryService : IInventoryService
 {
     private readonly IInventoryRepository _repository;
     private readonly IAiService _aiService;
+    private readonly IFileStorage _fileStorage;
     private readonly ILogger<InventoryService> _logger;
 
     public InventoryService(
         IInventoryRepository repository,
         IAiService aiService,
+        IFileStorage fileStorage,
         ILogger<InventoryService> logger)
     {
         _repository = repository;
         _aiService = aiService;
+        _fileStorage = fileStorage;
         _logger = logger;
     }
 
@@ -137,6 +141,70 @@ public class InventoryService : IInventoryService
             updated.Name, updated.Id, userId);
 
         return updated;
+    }
+
+    public async Task<StoredFile> UploadProductImageAsync(
+        long productId,
+        long companyId,
+        Stream content,
+        string? declaredFileName,
+        string? declaredContentType,
+        CancellationToken cancellationToken = default)
+    {
+        var product = await _repository.GetProductByIdAsync(productId, companyId);
+        if (product is null)
+            throw new NotFoundException("Producto");
+
+        var previousReference = product.ImageUrl;
+        var stored = await _fileStorage.UploadImageAsync(new ImageUploadRequest(
+            companyId,
+            ImageStorageScope.Product,
+            productId,
+            content,
+            declaredFileName,
+            declaredContentType), cancellationToken);
+
+        try
+        {
+            var updated = await _repository.TryUpdateProductImageAsync(
+                productId,
+                companyId,
+                previousReference,
+                stored.ObjectKey);
+
+            if (!updated)
+                throw new BusinessException(
+                    "La imagen del producto cambió durante la actualización. Intenta nuevamente.",
+                    "PRODUCT_IMAGE_CONFLICT");
+        }
+        catch
+        {
+            await DeleteBestEffortAsync(stored.ObjectKey, CancellationToken.None);
+            throw;
+        }
+
+        if (_fileStorage.IsManagedReference(previousReference))
+            await DeleteBestEffortAsync(previousReference!, CancellationToken.None);
+
+        _logger.LogInformation(
+            "Imagen de producto actualizada. CompanyId: {CompanyId}, ProductId: {ProductId}, ObjectKey: {ObjectKey}",
+            companyId,
+            productId,
+            stored.ObjectKey);
+
+        return stored;
+    }
+
+    private async Task DeleteBestEffortAsync(string reference, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _fileStorage.DeleteIfManagedAsync(reference, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No se pudo eliminar el objeto administrado {Reference}", reference);
+        }
     }
 
     public async Task<Stock> AddStockAsync(long companyId, long userId, long? tenantBranchId, AddStockRequest request)

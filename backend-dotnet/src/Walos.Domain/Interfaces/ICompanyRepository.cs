@@ -8,5 +8,9 @@ public interface ICompanyRepository
     Task<CompanyOperationsSettings?> GetCompanyOperationsSettingsAsync(long companyId);
     Task<CompanySettings> UpdateCompanySettingsAsync(CompanySettings settings);
     Task<CompanyOperationsSettings> UpdateCompanyOperationsSettingsAsync(CompanyOperationsSettings settings);
-    Task UpdateCompanyLogoAsync(long companyId, string logoUrl, long updatedBy);
+    Task<bool> CompareExchangeCompanyLogoAsync(
+        long companyId,
+        string? expectedLogoReference,
+        string? newLogoReference,
+        long updatedBy);
 }

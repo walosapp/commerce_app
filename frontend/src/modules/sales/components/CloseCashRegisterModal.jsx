@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { DoorClosed, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatCurrency';
+import { calculateExpectedCash } from '../../../utils/cashRegister';
 
 const CloseCashRegisterModal = ({ isOpen, onClose, onConfirm, register }) => {
   const [closingAmount, setClosingAmount] = useState('');
@@ -22,12 +23,7 @@ const CloseCashRegisterModal = ({ isOpen, onClose, onConfirm, register }) => {
 
   if (!isOpen || !register) return null;
 
-  const expectedCash =
-    register.openingAmount +
-    register.totalCashSales +
-    register.cashIn -
-    register.cashOut -
-    register.totalCredits;
+  const expectedCash = calculateExpectedCash(register);
 
   const closingNum = Number(closingAmount) || 0;
   const difference = closingNum - expectedCash;
@@ -116,8 +112,8 @@ const CloseCashRegisterModal = ({ isOpen, onClose, onConfirm, register }) => {
             )}
             {register.totalCredits > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-500">Créditos otorgados</span>
-                <span className="font-medium text-orange-600">-{formatCurrency(register.totalCredits)}</span>
+                <span className="text-gray-500">Créditos otorgados (informativo)</span>
+                <span className="font-medium text-gray-500">{formatCurrency(register.totalCredits)}</span>
               </div>
             )}
             {register.totalTips > 0 && (

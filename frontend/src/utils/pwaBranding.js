@@ -1,3 +1,5 @@
+import { buildApiUrl } from '../config/api';
+
 const DEFAULT_MANIFEST_HREF = '/manifest.webmanifest';
 const DEFAULT_APPLE_ICON_HREF = '/icons/icon-192x192.png';
 
@@ -29,7 +31,7 @@ export const buildTenantManifestUrl = ({ tenantId, logoUrl }) => {
     v: version,
   });
 
-  return `/api/v1/pwa/manifest.webmanifest?${params.toString()}`;
+  return `${buildApiUrl('pwa/manifest.webmanifest')}?${params.toString()}`;
 };
 
 export const buildTenantAppleIconUrl = ({ tenantId, logoUrl, size = 180 }) => {
@@ -37,7 +39,7 @@ export const buildTenantAppleIconUrl = ({ tenantId, logoUrl, size = 180 }) => {
 
   const version = normalizeVersion(logoUrl);
   const params = new URLSearchParams({ v: version });
-  return `/api/v1/pwa/icon/${tenantId}/${size}.png?${params.toString()}`;
+  return `${buildApiUrl(`pwa/icon/${tenantId}/${size}.png`)}?${params.toString()}`;
 };
 
 export const syncTenantPwaBranding = ({ tenantId, logoUrl }) => {

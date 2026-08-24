@@ -121,35 +121,20 @@ public class InventoryController : ControllerBase
         if (file is null || file.Length == 0)
             return BadRequest(ApiResponse.Fail("No se proporcionó archivo"));
 
-        var allowedTypes = new[] { "image/jpeg", "image/png", "image/webp" };
-        if (!allowedTypes.Contains(file.ContentType))
-            return BadRequest(ApiResponse.Fail("Formato no permitido. Use JPG, PNG o WebP"));
+        await using var stream = file.OpenReadStream();
+        var stored = await _service.UploadProductImageAsync(
+            id,
+            companyId,
+            stream,
+            file.FileName,
+            file.ContentType,
+            HttpContext.RequestAborted);
 
-        var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (!allowedExtensions.Contains(ext))
-            return BadRequest(ApiResponse.Fail("Extensión no permitida"));
+        _logger.LogInformation("Imagen subida para producto {ProductId}: {ObjectKey}", id, stored.ObjectKey);
 
-        var product = await _repository.GetProductByIdAsync(id, companyId);
-        if (product is null)
-            return NotFound(ApiResponse.Fail("Producto no encontrado"));
-
-        var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "products");
-        Directory.CreateDirectory(uploadsDir);
-        var fileName = $"{id}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}{ext}";
-        var filePath = Path.Combine(uploadsDir, fileName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
-
-        var imageUrl = $"/uploads/products/{fileName}";
-        await _repository.UpdateProductImageAsync(id, companyId, imageUrl);
-
-        _logger.LogInformation("Imagen subida para producto {ProductId}: {Url}", id, imageUrl);
-
-        return Ok(ApiResponse<object>.Ok(new { imageUrl }, "Imagen subida exitosamente"));
+        return Ok(ApiResponse<object>.Ok(
+            new { imageUrl = stored.ObjectKey },
+            "Imagen subida exitosamente"));
     }
 
     /// <summary>

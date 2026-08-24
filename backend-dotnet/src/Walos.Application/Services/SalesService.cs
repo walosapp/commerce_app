@@ -4,6 +4,7 @@ using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
 using Walos.Application.Services;
+using Walos.Application.Storage;
 
 namespace Walos.Application.Services;
 
@@ -19,6 +20,7 @@ public class SalesService : ISalesService
     private readonly IUsersRepository _usersRepo;
     private readonly IRefundRepository _refundRepo;
     private readonly ICheckoutRepository _checkoutRepo;
+    private readonly IFileStorage _fileStorage;
     private readonly ILogger<SalesService> _logger;
 
     public SalesService(
@@ -32,6 +34,7 @@ public class SalesService : ISalesService
         IUsersRepository usersRepo,
         IRefundRepository refundRepo,
         ICheckoutRepository checkoutRepo,
+        IFileStorage fileStorage,
         ILogger<SalesService> logger)
     {
         _salesRepo = salesRepo;
@@ -44,6 +47,7 @@ public class SalesService : ISalesService
         _usersRepo = usersRepo;
         _refundRepo = refundRepo;
         _checkoutRepo = checkoutRepo;
+        _fileStorage = fileStorage;
         _logger = logger;
     }
 
@@ -329,7 +333,7 @@ public class SalesService : ISalesService
             CompanyName: company?.Name ?? "Empresa",
             CompanyLegalName: company?.LegalName,
             CompanyPhone: company?.Phone,
-            CompanyLogoUrl: company?.LogoUrl,
+            CompanyLogoUrl: _fileStorage.ResolvePublicReference(company?.LogoUrl),
             OrderId: order.Id,
             OrderNumber: order.OrderNumber,
             TableName: table?.Name ?? $"Mesa {table?.TableNumber ?? 0}",

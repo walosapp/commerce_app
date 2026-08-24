@@ -6,8 +6,7 @@
 import { useState, useMemo } from 'react';
 import { Plus, Minus, Search, ImageIcon } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatCurrency';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { resolveAssetUrl } from '../../../utils/assetUrl';
 const CARD_WIDTH = 168;
 
 const ProductGrid = ({ products = [], selectedItems, onUpdateItem }) => {
@@ -173,9 +172,9 @@ const ProductGrid = ({ products = [], selectedItems, onUpdateItem }) => {
                     )}
 
                     <div className="flex aspect-square items-center justify-center overflow-hidden bg-gray-50">
-                      {product.imageUrl ? (
+                      {resolveAssetUrl(product.imageUrl) ? (
                         <img
-                          src={`${API_BASE}${product.imageUrl}`}
+                          src={resolveAssetUrl(product.imageUrl)}
                           alt={product.productName}
                           className="h-full w-full object-cover"
                           onError={e => { e.currentTarget.style.display = 'none'; }}

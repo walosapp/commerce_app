@@ -99,18 +99,26 @@ public class CompanyRepositoryIntegrationTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task UpdateCompanyLogoAsync_UpdatesLogoUrl()
+    public async Task CompareExchangeCompanyLogoAsync_UpdatesOnlyExpectedTenantReference()
     {
         // Arrange
         var companyId = await SeedCompanyAsync("Logo Co");
-        var logoUrl = "/uploads/test-logo.png";
+        var firstKey = $"companies/{companyId}/branding/first.png";
+        var secondKey = $"companies/{companyId}/branding/second.png";
 
-        // Act
-        await CompanyRepository.UpdateCompanyLogoAsync(companyId, logoUrl, 1);
+        // Act / Assert: NULL uses PostgreSQL null-safe comparison.
+        Assert.True(await CompanyRepository.CompareExchangeCompanyLogoAsync(
+            companyId, null, firstKey, 1));
 
-        // Assert
+        // A stale caller cannot replace the value written above.
+        Assert.False(await CompanyRepository.CompareExchangeCompanyLogoAsync(
+            companyId, null, secondKey, 1));
+
+        Assert.True(await CompanyRepository.CompareExchangeCompanyLogoAsync(
+            companyId, firstKey, secondKey, 1));
+
         var settings = await CompanyRepository.GetCompanySettingsAsync(companyId);
-        Assert.Equal(logoUrl, settings!.LogoUrl);
+        Assert.Equal(secondKey, settings!.LogoUrl);
     }
 
     [SkippableFact]

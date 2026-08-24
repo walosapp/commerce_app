@@ -25,13 +25,14 @@ import CashRegisterHistory from './components/CashRegisterHistory';
 import OrderHistoryTab from './components/OrderHistoryTab';
 
 import { formatCurrency } from '../../utils/formatCurrency';
+import { calculateExpectedCash } from '../../utils/cashRegister';
 
 const CashSummaryView = ({ register }) => {
   const elapsed = Math.floor((Date.now() - new Date(register.openedAt).getTime()) / 60000);
   const hours = Math.floor(elapsed / 60);
   const mins = elapsed % 60;
   const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-  const expectedCash = register.openingAmount + register.totalCashSales + register.cashIn - register.cashOut - register.totalCredits;
+  const expectedCash = calculateExpectedCash(register);
 
   const stats = [
     { label: 'Ventas totales', value: formatCurrency(register.totalSales), color: 'text-gray-900' },

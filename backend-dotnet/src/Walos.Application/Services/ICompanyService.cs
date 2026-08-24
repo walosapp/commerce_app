@@ -6,6 +6,7 @@ namespace Walos.Application.Services;
 public interface ICompanyService
 {
     Task<CompanySettings> GetSettingsAsync(long companyId);
+    Task<CompanySettings> GetSettingsWithRawLogoAsync(long companyId);
     Task<CompanySettings> UpdateSettingsAsync(long companyId, long userId, UpdateCompanySettingsRequest request);
     Task<CompanyOperationsSettings> GetOperationsSettingsAsync(long companyId);
     Task<CompanyOperationsSettings> UpdateOperationsSettingsAsync(long companyId, UpdateCompanyOperationsSettingsRequest request);

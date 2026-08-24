@@ -32,8 +32,7 @@ import inventoryService from '../../services/inventoryService';
 import useAuthStore from '../../stores/authStore';
 import useUiStore from '../../stores/uiStore';
 import { resetTenantPwaBranding, syncTenantPwaBranding } from '../../utils/pwaBranding';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { resolveAssetUrl } from '../../utils/assetUrl';
 
 const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -125,7 +124,7 @@ const Layout = ({ children }) => {
   ];
 
   const displayName = companyName || 'Walos';
-  const logoSrc = companyLogoUrl ? `${API_BASE}${companyLogoUrl}` : null;
+  const logoSrc = resolveAssetUrl(companyLogoUrl);
   const walosLogoSrc = '/walos-logo.png';
   const alertsCount = alertsData?.count || alertsData?.data?.length || 0;
   const userDisplayName = user?.first_name

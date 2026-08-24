@@ -157,7 +157,11 @@ public class CompanyRepository : ICompanyRepository
         }
     }
 
-    public async Task UpdateCompanyLogoAsync(long companyId, string logoUrl, long updatedBy)
+    public async Task<bool> CompareExchangeCompanyLogoAsync(
+        long companyId,
+        string? expectedLogoReference,
+        string? newLogoReference,
+        long updatedBy)
     {
         try
         {
@@ -166,12 +170,22 @@ public class CompanyRepository : ICompanyRepository
             const string sql = @"
                 UPDATE core.companies
                 SET
-                    logo_url = @LogoUrl,
+                    logo_url = @NewLogoReference,
                     updated_at = NOW(),
                     updated_by = @UpdatedBy
-                WHERE id = @CompanyId AND deleted_at IS NULL";
+                WHERE id = @CompanyId
+                  AND deleted_at IS NULL
+                  AND logo_url IS NOT DISTINCT FROM @ExpectedLogoReference";
 
-            await connection.ExecuteAsync(sql, new { CompanyId = companyId, LogoUrl = logoUrl, UpdatedBy = updatedBy });
+            var affected = await connection.ExecuteAsync(sql, new
+            {
+                CompanyId = companyId,
+                ExpectedLogoReference = expectedLogoReference,
+                NewLogoReference = newLogoReference,
+                UpdatedBy = updatedBy
+            });
+
+            return affected == 1;
         }
         catch (Exception ex)
         {

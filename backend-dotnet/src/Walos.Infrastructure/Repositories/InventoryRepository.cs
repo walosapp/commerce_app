@@ -43,6 +43,7 @@ public class InventoryRepository : IInventoryRepository
                     p.track_stock AS TrackStock,
                     p.is_for_sale AS IsForSale,
                     p.is_active AS IsActive,
+                    p.image_url AS ImageUrl,
                     c.name AS CategoryName,
                     u.abbreviation AS UnitAbbreviation,
                     p.created_at AS CreatedAt,
@@ -113,6 +114,7 @@ public class InventoryRepository : IInventoryRepository
                     p.track_stock AS TrackStock,
                     p.is_for_sale AS IsForSale,
                     p.is_active AS IsActive,
+                    p.image_url AS ImageUrl,
                     p.created_by AS CreatedBy,
                     p.created_at AS CreatedAt,
                     p.updated_at AS UpdatedAt,
@@ -913,7 +915,11 @@ public class InventoryRepository : IInventoryRepository
         }
     }
 
-    public async Task UpdateProductImageAsync(long productId, long companyId, string imageUrl)
+    public async Task<bool> TryUpdateProductImageAsync(
+        long productId,
+        long companyId,
+        string? expectedImageUrl,
+        string newImageUrl)
     {
         try
         {
@@ -921,10 +927,21 @@ public class InventoryRepository : IInventoryRepository
 
             const string sql = @"
                 UPDATE inventory.products
-                SET image_url = @ImageUrl, updated_at = NOW()
-                WHERE id = @ProductId AND company_id = @CompanyId AND deleted_at IS NULL";
+                SET image_url = @NewImageUrl, updated_at = NOW()
+                WHERE id = @ProductId
+                  AND company_id = @CompanyId
+                  AND deleted_at IS NULL
+                  AND image_url IS NOT DISTINCT FROM @ExpectedImageUrl";
 
-            await connection.ExecuteAsync(sql, new { ProductId = productId, CompanyId = companyId, ImageUrl = imageUrl });
+            var rows = await connection.ExecuteAsync(sql, new
+            {
+                ProductId = productId,
+                CompanyId = companyId,
+                ExpectedImageUrl = expectedImageUrl,
+                NewImageUrl = newImageUrl
+            });
+
+            return rows == 1;
         }
         catch (Exception ex)
         {

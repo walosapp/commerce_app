@@ -1,4 +1,5 @@
 using Walos.Application.DTOs.Inventory;
+using Walos.Application.Storage;
 using Walos.Domain.Entities;
 using Walos.Domain.Interfaces;
 
@@ -9,6 +10,13 @@ public interface IInventoryService
     Task<long?> ResolveBranchAsync(long companyId, long? tenantBranchId, long? requestedBranchId, bool required = false);
     Task<Product> CreateProductAsync(long companyId, long userId, long? branchId, CreateProductRequest request);
     Task<Product?> UpdateProductAsync(long id, long companyId, long userId, UpdateProductRequest request);
+    Task<StoredFile> UploadProductImageAsync(
+        long productId,
+        long companyId,
+        Stream content,
+        string? declaredFileName,
+        string? declaredContentType,
+        CancellationToken cancellationToken = default);
     Task<Stock> AddStockAsync(long companyId, long userId, long? tenantBranchId, AddStockRequest request);
     Task<AiProcessResult> ProcessAiInventoryInputAsync(string userInput, AiInputContext context);
     Task<AiConfirmResult> ConfirmAiActionAsync(long interactionId, long userId, long companyId);

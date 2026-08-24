@@ -3,6 +3,7 @@ using Walos.Application.DTOs.Company;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
+using Walos.Application.Storage;
 
 namespace Walos.Application.Services;
 
@@ -19,15 +20,28 @@ public class CompanyService : ICompanyService
     };
 
     private readonly ICompanyRepository _repository;
+    private readonly IFileStorage _fileStorage;
     private readonly ILogger<CompanyService> _logger;
 
-    public CompanyService(ICompanyRepository repository, ILogger<CompanyService> logger)
+    public CompanyService(
+        ICompanyRepository repository,
+        IFileStorage fileStorage,
+        ILogger<CompanyService> logger)
     {
         _repository = repository;
+        _fileStorage = fileStorage;
         _logger = logger;
     }
 
     public async Task<CompanySettings> GetSettingsAsync(long companyId)
+    {
+        var settings = await GetSettingsWithRawLogoAsync(companyId);
+        settings.LogoUrl = _fileStorage.ResolvePublicReference(settings.LogoUrl);
+
+        return settings;
+    }
+
+    public async Task<CompanySettings> GetSettingsWithRawLogoAsync(long companyId)
     {
         var settings = await _repository.GetCompanySettingsAsync(companyId)
             ?? throw new NotFoundException("Empresa no encontrada");
@@ -63,6 +77,7 @@ public class CompanyService : ICompanyService
             settings.BusinessCloseTime = closeTime;
 
         var updated = await _repository.UpdateCompanySettingsAsync(settings);
+        updated.LogoUrl = _fileStorage.ResolvePublicReference(updated.LogoUrl);
 
         _logger.LogInformation("Configuracion actualizada para empresa {CompanyId} por usuario {UserId}", companyId, userId);
 
@@ -109,24 +124,41 @@ public class CompanyService : ICompanyService
         var company = await _repository.GetCompanySettingsAsync(companyId)
             ?? throw new NotFoundException("Empresa no encontrada");
 
-        var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "branding");
-        Directory.CreateDirectory(uploadsDir);
+        var expectedReference = company.LogoUrl;
+        var stored = await _fileStorage.UploadImageAsync(new ImageUploadRequest(
+            CompanyId: companyId,
+            Scope: ImageStorageScope.Branding,
+            ProductId: null,
+            Content: fileStream,
+            DeclaredFileName: fileName,
+            DeclaredContentType: contentType));
 
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        var newFileName = $"company_{companyId}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}{ext}";
-        var filePath = Path.Combine(uploadsDir, newFileName);
-
-        await using (var stream = new FileStream(filePath, FileMode.Create))
+        bool updated;
+        try
         {
-            await fileStream.CopyToAsync(stream);
+            updated = await _repository.CompareExchangeCompanyLogoAsync(
+                companyId,
+                expectedReference,
+                stored.ObjectKey,
+                userId);
+        }
+        catch
+        {
+            await DeleteManagedBestEffortAsync(stored.ObjectKey, companyId, "compensar carga fallida");
+            throw;
         }
 
-        var logoUrl = $"/uploads/branding/{newFileName}";
-        await _repository.UpdateCompanyLogoAsync(companyId, logoUrl, userId);
+        if (!updated)
+        {
+            await DeleteManagedBestEffortAsync(stored.ObjectKey, companyId, "compensar conflicto de concurrencia");
+            throw new BusinessException("El logo fue modificado por otra operacion. Recarga e intenta nuevamente");
+        }
+
+        await DeleteManagedBestEffortAsync(expectedReference, companyId, "eliminar logo reemplazado");
 
         _logger.LogInformation("Logo actualizado para empresa {CompanyId}", companyId);
 
-        return logoUrl;
+        return stored.PublicUrl;
     }
 
     public async Task RemoveLogoAsync(long companyId, long userId)
@@ -134,7 +166,35 @@ public class CompanyService : ICompanyService
         var company = await _repository.GetCompanySettingsAsync(companyId)
             ?? throw new NotFoundException("Empresa no encontrada");
 
-        await _repository.UpdateCompanyLogoAsync(companyId, null, userId);
+        var expectedReference = company.LogoUrl;
+        var removed = await _repository.CompareExchangeCompanyLogoAsync(
+            companyId,
+            expectedReference,
+            newLogoReference: null,
+            updatedBy: userId);
+
+        if (!removed)
+            throw new BusinessException("El logo fue modificado por otra operacion. Recarga e intenta nuevamente");
+
+        await DeleteManagedBestEffortAsync(expectedReference, companyId, "eliminar logo removido");
         _logger.LogInformation("Logo eliminado para empresa {CompanyId}", companyId);
+    }
+
+    private async Task DeleteManagedBestEffortAsync(string? reference, long companyId, string operation)
+    {
+        if (string.IsNullOrWhiteSpace(reference) || !_fileStorage.IsManagedReference(reference))
+            return;
+
+        try
+        {
+            await _fileStorage.DeleteIfManagedAsync(reference);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "No se pudo {Operation} para empresa {CompanyId}; se requiere limpieza posterior",
+                operation,
+                companyId);
+        }
     }
 }

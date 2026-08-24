@@ -22,8 +22,7 @@ import AiSettings from './components/AiSettings';
 import PaymentSettings from './components/PaymentSettings';
 import DevicesSettings from './components/DevicesSettings';
 import SettingsSectionNav from './components/SettingsSectionNav';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { resolveAssetUrl } from '../../utils/assetUrl';
 
 const getSectionFromPath = (pathname) => {
   if (pathname.includes('/settings/themes')) return 'themes';
@@ -101,7 +100,7 @@ const SettingsPage = () => {
       businessOpenTime: settings.businessOpenTime?.slice(0, 5) ?? '00:00',
       businessCloseTime: settings.businessCloseTime?.slice(0, 5) ?? '23:59',
     });
-    setLogoPreview(settings.logoUrl ? `${API_BASE}${settings.logoUrl}` : null);
+    setLogoPreview(resolveAssetUrl(settings.logoUrl));
     setLogoRemoved(false);
     setTheme(settings.themePreference || 'light');
     setBranding({

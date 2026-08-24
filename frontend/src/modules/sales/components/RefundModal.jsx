@@ -43,12 +43,6 @@ const RefundModal = ({ isOpen, onClose, onConfirm, order }) => {
     setSelectedItems(prev => ({ ...prev, [itemId]: clamped }));
   };
 
-  const partialAmount = Object.entries(selectedItems).reduce((sum, [itemId, qty]) => {
-    const item = items.find(i => i.id === Number(itemId));
-    return item ? sum + qty * item.unitPrice : sum;
-  }, 0);
-
-  const refundAmount = refundType === 'full' ? order.finalTotalPaid : partialAmount;
   const reasonValid = reason.trim().length >= 10;
   const partialValid = refundType === 'partial' ? Object.keys(selectedItems).length > 0 : true;
   const canSubmit = reasonValid && partialValid;
@@ -205,10 +199,22 @@ const RefundModal = ({ isOpen, onClose, onConfirm, order }) => {
               <AlertTriangle className="h-4 w-4 text-red-500" />
               <span className="text-sm font-medium text-red-700">Resumen de devolucion</span>
             </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-red-600">Monto a devolver</span>
-              <span className="text-lg font-bold text-red-700">{formatCurrency(refundAmount)}</span>
-            </div>
+            <p className="text-sm text-red-700">
+              El valor neto sera calculado por el backend con los datos de la venta.
+            </p>
+            {Number(order.discountAmount) > 0 && (
+              <p className="text-xs text-red-600 mt-2">
+                Descuento registrado: {formatCurrency(order.discountAmount)}. Se distribuira entre los items de forma deterministica.
+              </p>
+            )}
+            {order.hasCredit && (
+              <p className="text-xs text-red-600 mt-2">
+                El valor se aplicara primero al credito pendiente. Solo el excedente se devolvera al cliente.
+              </p>
+            )}
+            <p className="text-xs text-red-600 mt-2">
+              La reduccion de deuda y el dinero realmente devuelto se confirmaran al procesar la operacion.
+            </p>
             {refundType === 'partial' && Object.keys(selectedItems).length > 0 && (
               <p className="text-xs text-red-500 mt-1">
                 {Object.keys(selectedItems).length} item{Object.keys(selectedItems).length > 1 ? 's' : ''} seleccionado{Object.keys(selectedItems).length > 1 ? 's' : ''}

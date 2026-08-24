@@ -7,8 +7,7 @@
 import { useState, useMemo } from 'react';
 import { Search, ArrowUpDown, Package, Pencil, Trash2, Plus, ImageIcon } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatCurrency';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { resolveAssetUrl } from '../../../utils/assetUrl';
 
 const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStock }) => {
   const [search, setSearch] = useState('');
@@ -169,9 +168,9 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
                 <tr key={item.productId || item.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      {item.imageUrl ? (
+                      {resolveAssetUrl(item.imageUrl) ? (
                         <img
-                          src={`${API_BASE}${item.imageUrl}`}
+                          src={resolveAssetUrl(item.imageUrl)}
                           alt={item.productName}
                           className="h-9 w-9 rounded-lg object-cover border border-gray-200 flex-shrink-0"
                           onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling?.remove?.(); }}

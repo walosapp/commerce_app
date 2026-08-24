@@ -127,6 +127,32 @@ public class InventoryRepositoryIntegrationTests : IntegrationTestBase
         Assert.Equal(unitA, persisted.UnitId);
     }
 
+    [SkippableFact]
+    public async Task TryUpdateProductImageAsync_Should_RequireTenantAndExpectedReference()
+    {
+        var companyA = await SeedCompanyAsync("Product Image A");
+        var companyB = await SeedCompanyAsync("Product Image B");
+        var categoryA = await SeedInventoryCategoryAsync(companyA, "Image Cat A");
+        var unitA = await SeedInventoryUnitAsync(companyA, "Image Unit A", "iua");
+        var productA = await SeedProductAsync(
+            companyA, categoryA, unitA, "Image Product A", $"IMG-{Guid.NewGuid():N}", 0, 0);
+        var firstKey = $"companies/{companyA}/products/{productA}/first.webp";
+        var staleKey = $"companies/{companyA}/products/{productA}/stale.webp";
+
+        var firstUpdate = await InventoryRepository.TryUpdateProductImageAsync(
+            productA, companyA, null, firstKey);
+        var staleUpdate = await InventoryRepository.TryUpdateProductImageAsync(
+            productA, companyA, null, staleKey);
+        var foreignUpdate = await InventoryRepository.TryUpdateProductImageAsync(
+            productA, companyB, firstKey, staleKey);
+
+        Assert.True(firstUpdate);
+        Assert.False(staleUpdate);
+        Assert.False(foreignUpdate);
+        var persisted = await InventoryRepository.GetProductByIdAsync(productA, companyA);
+        Assert.Equal(firstKey, persisted?.ImageUrl);
+    }
+
     private async Task<long> SeedInventoryCategoryAsync(long companyId, string name)
     {
         using var conn = await ConnectionFactory.CreateConnectionAsync();

@@ -3,6 +3,7 @@ using Moq;
 using Npgsql;
 using Walos.Application.DTOs.Sales;
 using Walos.Application.Services;
+using Walos.Application.Storage;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
@@ -216,6 +217,7 @@ public class SalesServiceIntegrationTests : IntegrationTestBase
             Mock.Of<IUsersRepository>(),
             Mock.Of<IRefundRepository>(),
             CheckoutRepository,
+            Mock.Of<IFileStorage>(),
             NullLogger<SalesService>.Instance);
 
     private async Task<long> SeedProductAsync(

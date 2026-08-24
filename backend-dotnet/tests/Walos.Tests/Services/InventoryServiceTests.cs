@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Walos.Application.DTOs.Inventory;
 using Walos.Application.Services;
+using Walos.Application.Storage;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
@@ -12,6 +13,7 @@ public class InventoryServiceTests
 {
     private readonly Mock<IInventoryRepository> _repoMock;
     private readonly Mock<IAiService> _aiMock;
+    private readonly Mock<IFileStorage> _fileStorageMock;
     private readonly Mock<ILogger<InventoryService>> _loggerMock;
     private readonly InventoryService _service;
 
@@ -19,8 +21,95 @@ public class InventoryServiceTests
     {
         _repoMock = new Mock<IInventoryRepository>();
         _aiMock = new Mock<IAiService>();
+        _fileStorageMock = new Mock<IFileStorage>();
         _loggerMock = new Mock<ILogger<InventoryService>>();
-        _service = new InventoryService(_repoMock.Object, _aiMock.Object, _loggerMock.Object);
+        _service = new InventoryService(
+            _repoMock.Object,
+            _aiMock.Object,
+            _fileStorageMock.Object,
+            _loggerMock.Object);
+    }
+
+    [Fact]
+    public async Task UploadProductImage_UsesTenantCas_AndDeletesPreviousManagedObject()
+    {
+        const string previous = "companies/7/products/11/old.webp";
+        const string current = "companies/7/products/11/new.webp";
+        _repoMock.Setup(repository => repository.GetProductByIdAsync(11, 7))
+            .ReturnsAsync(new Product { Id = 11, CompanyId = 7, ImageUrl = previous });
+        _fileStorageMock.Setup(storage => storage.UploadImageAsync(
+                It.Is<ImageUploadRequest>(request =>
+                    request.CompanyId == 7 &&
+                    request.Scope == ImageStorageScope.Product &&
+                    request.ProductId == 11),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StoredFile(current, "https://storage.test/new.webp", "image/webp", 10, 1, 1));
+        _repoMock.Setup(repository => repository.TryUpdateProductImageAsync(11, 7, previous, current))
+            .ReturnsAsync(true);
+        _fileStorageMock.Setup(storage => storage.IsManagedReference(previous)).Returns(true);
+        _fileStorageMock.Setup(storage => storage.DeleteIfManagedAsync(previous, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await _service.UploadProductImageAsync(
+            11, 7, new MemoryStream([1]), "new.webp", "image/webp");
+
+        Assert.Equal(current, result.ObjectKey);
+        _repoMock.Verify(
+            repository => repository.TryUpdateProductImageAsync(11, 7, previous, current),
+            Times.Once);
+        _fileStorageMock.Verify(
+            storage => storage.DeleteIfManagedAsync(previous, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _fileStorageMock.Verify(
+            storage => storage.DeleteIfManagedAsync(current, It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task UploadProductImage_CompensatesNewObject_WhenCasLosesRace()
+    {
+        const string current = "companies/7/products/11/new.webp";
+        _repoMock.Setup(repository => repository.GetProductByIdAsync(11, 7))
+            .ReturnsAsync(new Product { Id = 11, CompanyId = 7, ImageUrl = null });
+        _fileStorageMock.Setup(storage => storage.UploadImageAsync(
+                It.IsAny<ImageUploadRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StoredFile(current, "https://storage.test/new.webp", "image/webp", 10, 1, 1));
+        _repoMock.Setup(repository => repository.TryUpdateProductImageAsync(11, 7, null, current))
+            .ReturnsAsync(false);
+        _fileStorageMock.Setup(storage => storage.DeleteIfManagedAsync(current, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var exception = await Assert.ThrowsAsync<BusinessException>(() =>
+            _service.UploadProductImageAsync(
+                11, 7, new MemoryStream([1]), "new.webp", "image/webp"));
+
+        Assert.Equal("PRODUCT_IMAGE_CONFLICT", exception.Code);
+        _fileStorageMock.Verify(
+            storage => storage.DeleteIfManagedAsync(current, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UploadProductImage_CompensatesNewObject_WhenDatabaseUpdateFails()
+    {
+        const string current = "companies/7/products/11/new.webp";
+        _repoMock.Setup(repository => repository.GetProductByIdAsync(11, 7))
+            .ReturnsAsync(new Product { Id = 11, CompanyId = 7 });
+        _fileStorageMock.Setup(storage => storage.UploadImageAsync(
+                It.IsAny<ImageUploadRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StoredFile(current, "https://storage.test/new.webp", "image/webp", 10, 1, 1));
+        _repoMock.Setup(repository => repository.TryUpdateProductImageAsync(11, 7, null, current))
+            .ThrowsAsync(new InvalidOperationException("database unavailable"));
+        _fileStorageMock.Setup(storage => storage.DeleteIfManagedAsync(current, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _service.UploadProductImageAsync(
+                11, 7, new MemoryStream([1]), "new.webp", "image/webp"));
+
+        _fileStorageMock.Verify(
+            storage => storage.DeleteIfManagedAsync(current, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

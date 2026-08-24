@@ -65,6 +65,12 @@ try
         builder.Configuration["Port"] = Environment.GetEnvironmentVariable("PORT");
     if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AI_KEY_ENCRYPTION_SECRET")))
         builder.Configuration["Security:AiKeyEncryptionSecret"] = Environment.GetEnvironmentVariable("AI_KEY_ENCRYPTION_SECRET");
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SUPABASE_URL")))
+        builder.Configuration["SupabaseStorage:Url"] = Environment.GetEnvironmentVariable("SUPABASE_URL");
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY")))
+        builder.Configuration["SupabaseStorage:ServiceRoleKey"] = Environment.GetEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY");
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SUPABASE_STORAGE_BUCKET")))
+        builder.Configuration["SupabaseStorage:Bucket"] = Environment.GetEnvironmentVariable("SUPABASE_STORAGE_BUCKET");
 
     // Serilog
     builder.Host.UseSerilog((context, services, configuration) => configuration

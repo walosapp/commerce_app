@@ -26,7 +26,11 @@ public interface IInventoryRepository
     Task UpdateProductCostAndPriceAsync(long productId, long companyId, decimal newCostPrice, decimal? newSalePrice = null);
     Task<Stock?> GetStockByProductAsync(long branchId, long productId, long companyId);
     Task<Product> UpdateProductAsync(Product product);
-    Task UpdateProductImageAsync(long productId, long companyId, string imageUrl);
+    Task<bool> TryUpdateProductImageAsync(
+        long productId,
+        long companyId,
+        string? expectedImageUrl,
+        string newImageUrl);
     Task SoftDeleteProductAsync(long productId, long companyId, long userId);
 }
 
