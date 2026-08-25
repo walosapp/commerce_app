@@ -23,10 +23,12 @@ public class TenantIsolationSqlTests
     [Fact]
     public void InventoryRepository_Should_Join_SalesTables_And_OrderItems_By_CompanyId()
     {
-        var source = ReadRepositoryFile("InventoryRepository.cs");
+        var source = ReadRepositoryFile(Path.Combine("..", "Inventory", "CommittedInventorySql.cs"));
 
-        Assert.Contains("INNER JOIN sales.tables t ON o.table_id = t.id AND t.company_id = o.company_id", source);
-        Assert.Contains("INNER JOIN sales.order_items oi ON oi.order_id = o.id AND oi.company_id = o.company_id", source);
+        Assert.Contains("JOIN sales.tables t", source);
+        Assert.Contains("t.id = o.table_id AND t.company_id = o.company_id", source);
+        Assert.Contains("JOIN sales.order_items oi", source);
+        Assert.Contains("oi.order_id = o.id AND oi.company_id = o.company_id", source);
     }
 
     [Fact]

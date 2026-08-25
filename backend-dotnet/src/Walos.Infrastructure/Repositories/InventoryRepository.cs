@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
+using Walos.Infrastructure.Inventory;
 
 namespace Walos.Infrastructure.Repositories;
 
@@ -252,22 +253,8 @@ public class InventoryRepository : IInventoryRepository
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
 
-            const string sql = @"
-                WITH committed AS (
-                    SELECT
-                        o.branch_id,
-                        oi.product_id,
-                        SUM(oi.quantity) AS committed_quantity
-                    FROM sales.orders o
-                    INNER JOIN sales.tables t ON o.table_id = t.id AND t.company_id = o.company_id
-                    INNER JOIN sales.order_items oi ON oi.order_id = o.id AND oi.company_id = o.company_id
-                    WHERE o.company_id = @CompanyId
-                      AND o.branch_id = @BranchId
-                      AND o.status = 'pending'
-                      AND t.status = 'open'
-                      AND t.deleted_at IS NULL
-                    GROUP BY o.branch_id, oi.product_id
-                )
+            var sql = $@"
+                WITH {CommittedInventorySql.Cte}
                 SELECT 
                     s.id AS Id,
                     p.company_id AS CompanyId,
@@ -309,7 +296,12 @@ public class InventoryRepository : IInventoryRepository
                   AND p.is_active = TRUE
                 ORDER BY p.name";
 
-            return await connection.QueryAsync<Stock>(sql, new { BranchId = branchId, CompanyId = companyId });
+            return await connection.QueryAsync<Stock>(sql, new
+            {
+                BranchId = branchId,
+                CompanyId = companyId,
+                ExcludedOrderId = -1L
+            });
         }
         catch (Exception ex)
         {
@@ -778,22 +770,8 @@ public class InventoryRepository : IInventoryRepository
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
 
-            const string sql = @"
-                WITH committed AS (
-                    SELECT
-                        o.branch_id,
-                        oi.product_id,
-                        SUM(oi.quantity) AS committed_quantity
-                    FROM sales.orders o
-                    INNER JOIN sales.tables t ON o.table_id = t.id AND t.company_id = o.company_id
-                    INNER JOIN sales.order_items oi ON oi.order_id = o.id AND oi.company_id = o.company_id
-                    WHERE o.company_id = @CompanyId
-                      AND o.branch_id = @BranchId
-                      AND o.status = 'pending'
-                      AND t.status = 'open'
-                      AND t.deleted_at IS NULL
-                    GROUP BY o.branch_id, oi.product_id
-                )
+            var sql = $@"
+                WITH {CommittedInventorySql.Cte}
                 SELECT s.id AS Id, s.company_id AS CompanyId, s.branch_id AS BranchId,
                        s.product_id AS ProductId, s.quantity AS Quantity,
                        p.name AS ProductName,
@@ -811,7 +789,8 @@ public class InventoryRepository : IInventoryRepository
             {
                 BranchId = branchId,
                 ProductId = productId,
-                CompanyId = companyId
+                CompanyId = companyId,
+                ExcludedOrderId = -1L
             });
         }
         catch (Exception ex)

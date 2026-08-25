@@ -6,6 +6,7 @@ using Walos.Application.DTOs.PosDeli;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
 using Walos.Domain.Policies;
+using Walos.Infrastructure.Inventory;
 
 namespace Walos.API.Controllers;
 
@@ -17,15 +18,21 @@ public class PosDeliController : ControllerBase
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ITenantContext _tenantContext;
     private readonly ILogger<PosDeliController> _logger;
+    private readonly SaleInventoryPlanBuilder _inventoryPlanBuilder;
+    private readonly InventoryTransactionWriter _inventoryWriter;
 
     public PosDeliController(
         IDbConnectionFactory connectionFactory,
         ITenantContext tenantContext,
-        ILogger<PosDeliController> logger)
+        ILogger<PosDeliController> logger,
+        SaleInventoryPlanBuilder inventoryPlanBuilder,
+        InventoryTransactionWriter inventoryWriter)
     {
         _connectionFactory = connectionFactory;
         _tenantContext = tenantContext;
         _logger = logger;
+        _inventoryPlanBuilder = inventoryPlanBuilder;
+        _inventoryWriter = inventoryWriter;
     }
 
     [HttpGet("products")]
@@ -216,9 +223,10 @@ public class PosDeliController : ControllerBase
                     p.sale_price AS SalePrice,
                     p.cost_price AS CostPrice,
                     p.track_stock AS TrackStock,
-                    COALESCE(s.quantity, 0) AS AvailableQuantity
+                    p.product_type AS ProductType,
+                    p.is_active AS IsActive,
+                    p.is_for_sale AS IsForSale
                 FROM inventory.products p
-                LEFT JOIN inventory.stock s ON s.company_id = p.company_id AND s.product_id = p.id AND s.branch_id = @BranchId
                 WHERE p.company_id = @CompanyId
                   AND p.id = ANY(@ProductIds)
                   AND p.deleted_at IS NULL";
@@ -235,9 +243,6 @@ public class PosDeliController : ControllerBase
                 if (!products.ContainsKey(item.ProductId))
                     throw new ValidationException($"Producto no encontrado: {item.ProductId}");
 
-                var product = products[item.ProductId];
-                if ((bool)product.trackstock && (decimal)product.availablequantity < item.Quantity)
-                    throw new BusinessException($"Stock insuficiente para {product.name}");
             }
 
             var normalizedItems = request.Items.Select(item =>
@@ -257,7 +262,10 @@ public class PosDeliController : ControllerBase
                     snapshot.UnitPrice,
                     snapshot.Subtotal,
                     TrackStock = (bool)product.trackstock,
-                    CostPrice = (decimal)product.costprice
+                    CostPrice = (decimal)product.costprice,
+                    ProductType = (string)product.producttype,
+                    IsActive = (bool)product.isactive,
+                    IsForSale = (bool)product.isforsale
                 };
             }).ToList();
 
@@ -387,45 +395,34 @@ public class PosDeliController : ControllerBase
                     throw new BusinessException("La caja dejó de estar disponible durante la venta");
             }
 
-            const string stockSql = @"
-                UPDATE inventory.stock
-                SET quantity = quantity - @Quantity,
-                    updated_at = NOW()
-                WHERE company_id = @CompanyId
-                  AND branch_id = @BranchId
-                  AND product_id = @ProductId";
-
-            const string movementSql = @"
-                INSERT INTO inventory.movements (
-                    company_id, branch_id, product_id, movement_type, quantity, unit_cost, notes, created_by, created_at
-                ) VALUES (
-                    @CompanyId, @BranchId, @ProductId, 'sale', @Quantity, @UnitCost, @Notes, @CreatedBy, NOW()
-                )";
-
-            foreach (var item in normalizedItems)
-            {
-                if (item.TrackStock)
-                {
-                    await connection.ExecuteAsync(stockSql, new
-                    {
-                        CompanyId = _tenantContext.CompanyId,
-                        BranchId = branchId.Value,
-                        item.ProductId,
-                        item.Quantity
-                    }, transaction);
-                }
-
-                await connection.ExecuteAsync(movementSql, new
-                {
-                    CompanyId = _tenantContext.CompanyId,
-                    BranchId = branchId.Value,
+            var inventoryPlans = await _inventoryPlanBuilder.BuildAsync(
+                connection,
+                transaction,
+                new SaleInventoryPlanContext(
+                    _tenantContext.CompanyId,
+                    ReferenceType: "order",
+                    ReferenceId: orderId,
+                    SaleNotes: $"Venta POS Deli - {orderNumber}",
+                    RecipeNotes: $"Consumo receta - Venta POS Deli - {orderNumber}"),
+                normalizedItems.Select(item => new SaleInventoryLine(
                     item.ProductId,
-                    Quantity = item.Quantity,
-                    UnitCost = item.CostPrice,
-                    Notes = $"Venta POS Deli - {orderNumber}",
-                    CreatedBy = _tenantContext.UserId
-                }, transaction);
-            }
+                    item.ProductName,
+                    item.ProductType,
+                    item.Quantity,
+                    item.CostPrice,
+                    item.TrackStock,
+                    ProductExists: true,
+                    item.IsActive,
+                    item.IsForSale)).ToList());
+
+            await _inventoryWriter.ApplyAsync(
+                connection,
+                transaction,
+                new InventoryTransactionContext(
+                    _tenantContext.CompanyId,
+                    branchId.Value,
+                    _tenantContext.UserId),
+                inventoryPlans);
 
             transaction.Commit();
 

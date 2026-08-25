@@ -8,6 +8,7 @@ using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.PosDeli;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
+using Walos.Infrastructure.Inventory;
 
 namespace Walos.Tests.Integration;
 
@@ -28,6 +29,7 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
 
     private sealed class PersistedMovement
     {
+        public decimal Quantity { get; init; }
         public decimal UnitCost { get; init; }
         public string? ReferenceType { get; init; }
         public long? ReferenceId { get; init; }
@@ -189,33 +191,33 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task CreateSale_CurrentBehavior_Allows_Inactive_Product_Pending_Block_12()
+    public async Task CreateSale_Inactive_Product_Is_Rejected_Without_Writes()
     {
         var context = await SeedPosContextAsync("POS inactive");
         await DisableCashRegisterRequirementAsync(context.Company);
         var productId = await SeedProductAsync(context.Company, "Producto inactivo", 100m);
         await ExecuteAsync("UPDATE inventory.products SET is_active = FALSE WHERE id = @Id", new { Id = productId });
 
-        var result = await CreateController(context.Company, context.Branch, context.User)
-            .CreateSale(SaleRequest(productId, 1m, 100m));
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(SaleRequest(productId, 1m, 100m)));
 
-        Assert.IsType<OkObjectResult>(result);
-        Assert.Equal(1, await CountOrdersAsync(context.Company));
+        Assert.Equal(0, await CountOrdersAsync(context.Company));
     }
 
     [SkippableFact]
-    public async Task CreateSale_CurrentBehavior_Allows_NotForSale_Product_Pending_Block_12()
+    public async Task CreateSale_NotForSale_Product_Is_Rejected_Without_Writes()
     {
         var context = await SeedPosContextAsync("POS not for sale");
         await DisableCashRegisterRequirementAsync(context.Company);
         var productId = await SeedProductAsync(context.Company, "Producto no vendible", 100m);
         await ExecuteAsync("UPDATE inventory.products SET is_for_sale = FALSE WHERE id = @Id", new { Id = productId });
 
-        var result = await CreateController(context.Company, context.Branch, context.User)
-            .CreateSale(SaleRequest(productId, 1m, 100m));
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(SaleRequest(productId, 1m, 100m)));
 
-        Assert.IsType<OkObjectResult>(result);
-        Assert.Equal(1, await CountOrdersAsync(context.Company));
+        Assert.Equal(0, await CountOrdersAsync(context.Company));
     }
 
     [SkippableFact]
@@ -326,7 +328,7 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task CreateSale_CurrentBehavior_Does_Not_Consume_Prepared_Recipe_Pending_Block_12()
+    public async Task CreateSale_Prepared_Product_Consumes_Recipe_Ingredient()
     {
         var context = await SeedPosContextAsync("POS recipe");
         await DisableCashRegisterRequirementAsync(context.Company);
@@ -339,31 +341,99 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
         var result = await CreateController(context.Company, context.Branch, context.User)
             .CreateSale(SaleRequest(prepared, 1m, 50m));
 
-        Assert.IsType<OkObjectResult>(result);
-        Assert.Equal(10m, await StockAsync(context, ingredient));
-        Assert.Equal(0L, await ScalarAsync<long>(@"
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<ApiResponse<PosDeliSaleResponse>>(ok.Value);
+        Assert.Equal(8m, await StockAsync(context, ingredient));
+        Assert.Equal(1L, await ScalarAsync<long>(@"
             SELECT COUNT(*) FROM inventory.movements
             WHERE company_id = @CompanyId AND product_id = @ProductId AND movement_type = 'recipe_consumption'",
             new { CompanyId = context.Company, ProductId = ingredient }));
+        var movement = await QuerySingleAsync<PersistedMovement>(@"
+            SELECT unit_cost AS UnitCost, reference_type AS ReferenceType,
+                   reference_id AS ReferenceId, stock_after AS StockAfter
+            FROM inventory.movements
+            WHERE company_id = @CompanyId AND product_id = @ProductId",
+            new { CompanyId = context.Company, ProductId = ingredient });
+        Assert.Equal(10m, movement.UnitCost);
+        Assert.Equal("order", movement.ReferenceType);
+        Assert.Equal(response.Data!.SaleId, movement.ReferenceId);
+        Assert.Equal(8m, movement.StockAfter);
     }
 
     [SkippableFact]
-    public async Task CreateSale_CurrentBehavior_Allows_Prepared_Without_Recipe_Pending_Block_12()
+    public async Task CreateSale_Prepared_Without_Recipe_Is_Rejected_Without_Writes()
     {
         var context = await SeedPosContextAsync("POS no recipe");
         await DisableCashRegisterRequirementAsync(context.Company);
         var prepared = await SeedProductAsync(
             context.Company, "Preparado sin receta", 50m, productType: "prepared", trackStock: false);
 
-        var result = await CreateController(context.Company, context.Branch, context.User)
-            .CreateSale(SaleRequest(prepared, 1m, 50m));
+        await Assert.ThrowsAsync<BusinessException>(() =>
+            CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(SaleRequest(prepared, 1m, 50m)));
 
-        Assert.IsType<OkObjectResult>(result);
-        Assert.Equal(1, await CountOrdersAsync(context.Company));
+        Assert.Equal(0, await CountOrdersAsync(context.Company));
     }
 
     [SkippableFact]
-    public async Task CreateSale_Movement_Uses_Real_Cost_But_Traceability_Remains_Pending_Block_12()
+    public async Task CreateSale_Prepared_With_Inactive_Ingredient_Is_Rejected_Without_Writes()
+    {
+        var context = await SeedPosContextAsync("POS inactive ingredient");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var ingredient = await SeedProductAsync(context.Company, "Ingrediente inactivo", 5m, trackStock: true);
+        var prepared = await SeedProductAsync(
+            context.Company, "Preparado invalido", 50m, productType: "prepared", trackStock: false);
+        await SeedStockAsync(context.Company, context.Branch, ingredient, 10m);
+        await SeedRecipeAsync(context.Company, prepared, ingredient, 2m);
+        await ExecuteAsync(
+            "UPDATE inventory.products SET is_active = FALSE WHERE id = @ProductId",
+            new { ProductId = ingredient });
+
+        await Assert.ThrowsAsync<BusinessException>(() =>
+            CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(SaleRequest(prepared, 1m, 50m)));
+
+        Assert.Equal(10m, await StockAsync(context, ingredient));
+        Assert.Equal(0, await CountOrdersAsync(context.Company));
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Prepared_Products_Group_Repeated_Ingredient()
+    {
+        var context = await SeedPosContextAsync("POS grouped recipe");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var ingredient = await SeedProductAsync(context.Company, "Ingrediente compartido", 5m, trackStock: true);
+        var preparedA = await SeedProductAsync(
+            context.Company, "Preparado agrupado A", 50m, productType: "prepared", trackStock: false);
+        var preparedB = await SeedProductAsync(
+            context.Company, "Preparado agrupado B", 60m, productType: "prepared", trackStock: false);
+        await SeedStockAsync(context.Company, context.Branch, ingredient, 10m);
+        await SeedRecipeAsync(context.Company, preparedA, ingredient, 2m);
+        await SeedRecipeAsync(context.Company, preparedB, ingredient, 3m);
+
+        var result = await CreateController(context.Company, context.Branch, context.User).CreateSale(new PosDeliSaleRequest
+        {
+            Items =
+            [
+                new PosDeliSaleItem { ProductId = preparedA, Quantity = 1m },
+                new PosDeliSaleItem { ProductId = preparedB, Quantity = 1m }
+            ],
+            Payments = [new PosDeliPayment { Method = "cash", Amount = 110m }]
+        });
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(5m, await StockAsync(context, ingredient));
+        var movement = await QuerySingleAsync<PersistedMovement>(@"
+            SELECT quantity AS Quantity, stock_after AS StockAfter
+            FROM inventory.movements
+            WHERE company_id = @CompanyId AND product_id = @ProductId",
+            new { CompanyId = context.Company, ProductId = ingredient });
+        Assert.Equal(5m, movement.Quantity);
+        Assert.Equal(5m, movement.StockAfter);
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Movement_Contains_Real_Cost_Reference_And_StockAfter()
     {
         var context = await SeedPosContextAsync("POS movement");
         await DisableCashRegisterRequirementAsync(context.Company);
@@ -373,7 +443,8 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
         var result = await CreateController(context.Company, context.Branch, context.User)
             .CreateSale(SaleRequest(productId, 1m, 100m));
 
-        Assert.IsType<OkObjectResult>(result);
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<ApiResponse<PosDeliSaleResponse>>(ok.Value);
         var movement = await QuerySingleAsync<PersistedMovement>(@"
             SELECT unit_cost AS UnitCost, reference_type AS ReferenceType,
                    reference_id AS ReferenceId, stock_after AS StockAfter
@@ -381,9 +452,9 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
             WHERE company_id = @CompanyId AND product_id = @ProductId",
             new { CompanyId = context.Company, ProductId = productId });
         Assert.Equal(10m, movement.UnitCost);
-        Assert.Null(movement.ReferenceType);
-        Assert.Null(movement.ReferenceId);
-        Assert.Null(movement.StockAfter);
+        Assert.Equal("order", movement.ReferenceType);
+        Assert.Equal(response.Data!.SaleId, movement.ReferenceId);
+        Assert.Equal(4m, movement.StockAfter);
     }
 
     [SkippableFact]
@@ -426,47 +497,131 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
         await DisableCashRegisterRequirementAsync(context.Company);
         var productId = await SeedProductAsync(context.Company, "Producto concurrent", 20m, trackStock: true);
         await SeedStockAsync(context.Company, context.Branch, productId, 1m);
-        var triggerSuffix = Guid.NewGuid().ToString("N");
-        var functionName = $"delay_pos_payment_{triggerSuffix}";
-        var triggerName = $"delay_pos_payment_trigger_{triggerSuffix}";
+        var outcomes = await RunBehindPaymentGateAsync(context.Company,
+            () => CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(SaleRequest(productId, 1m, 20m)),
+            () => CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(SaleRequest(productId, 1m, 20m)));
 
+        Assert.Single(outcomes, outcome => outcome is null);
+        Assert.Single(outcomes, outcome => outcome is BusinessException);
+        Assert.Equal(1, await CountOrdersAsync(context.Company));
+        Assert.Equal(0m, await StockAsync(context, productId));
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Two_Concurrent_Pos_Sales_Consume_Exact_Stock()
+    {
+        var context = await SeedPosContextAsync("POS concurrent exact");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var productId = await SeedProductAsync(context.Company, "Producto exacto", 20m, trackStock: true);
+        await SeedStockAsync(context.Company, context.Branch, productId, 2m);
+
+        var outcomes = await RunBehindPaymentGateAsync(context.Company,
+            () => CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(SaleRequest(productId, 1m, 20m)),
+            () => CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(SaleRequest(productId, 1m, 20m)));
+
+        Assert.All(outcomes, outcome => Assert.Null(outcome));
+        Assert.Equal(2, await CountOrdersAsync(context.Company));
+        Assert.Equal(0m, await StockAsync(context, productId));
+        Assert.Equal(2L, await ScalarAsync<long>(
+            "SELECT COUNT(*) FROM inventory.movements WHERE company_id = @CompanyId",
+            new { CompanyId = context.Company }));
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Two_Prepared_Products_Serialize_Shared_Ingredient()
+    {
+        var context = await SeedPosContextAsync("POS prepared concurrent");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var ingredient = await SeedProductAsync(context.Company, "Ingrediente escaso", 5m, trackStock: true);
+        var preparedA = await SeedProductAsync(
+            context.Company, "Preparado A", 50m, productType: "prepared", trackStock: false);
+        var preparedB = await SeedProductAsync(
+            context.Company, "Preparado B", 60m, productType: "prepared", trackStock: false);
+        await SeedStockAsync(context.Company, context.Branch, ingredient, 3m);
+        await SeedRecipeAsync(context.Company, preparedA, ingredient, 2m);
+        await SeedRecipeAsync(context.Company, preparedB, ingredient, 2m);
+
+        var outcomes = await RunBehindPaymentGateAsync(context.Company,
+            () => CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(SaleRequest(preparedA, 1m, 50m)),
+            () => CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(SaleRequest(preparedB, 1m, 60m)));
+
+        Assert.Single(outcomes, outcome => outcome is null);
+        Assert.Single(outcomes, outcome => outcome is BusinessException);
+        Assert.Equal(1m, await StockAsync(context, ingredient));
+        Assert.Equal(1L, await ScalarAsync<long>(@"
+            SELECT COUNT(*) FROM inventory.movements
+            WHERE company_id = @CompanyId AND product_id = @ProductId",
+            new { CompanyId = context.Company, ProductId = ingredient }));
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Deterministic_Product_Locks_Avoid_Deadlock()
+    {
+        var context = await SeedPosContextAsync("POS deterministic locks");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var first = await SeedProductAsync(context.Company, "Producto lock A", 10m, trackStock: true);
+        var second = await SeedProductAsync(context.Company, "Producto lock B", 20m, trackStock: true);
+        await SeedStockAsync(context.Company, context.Branch, first, 2m);
+        await SeedStockAsync(context.Company, context.Branch, second, 2m);
+
+        PosDeliSaleRequest Request(long left, long right) => new()
+        {
+            Items =
+            [
+                new PosDeliSaleItem { ProductId = left, Quantity = 1m },
+                new PosDeliSaleItem { ProductId = right, Quantity = 1m }
+            ],
+            Payments = [new PosDeliPayment { Method = "cash", Amount = 30m }]
+        };
+
+        var outcomes = await RunBehindPaymentGateAsync(context.Company,
+            () => CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(Request(first, second)),
+            () => CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(Request(second, first)));
+
+        Assert.All(outcomes, outcome => Assert.Null(outcome));
+        Assert.Equal(0m, await StockAsync(context, first));
+        Assert.Equal(0m, await StockAsync(context, second));
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Movement_Insert_Failure_Rolls_Back_Stock_And_Sale()
+    {
+        var context = await SeedPosContextAsync("POS movement rollback");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var productId = await SeedProductAsync(context.Company, "Producto rollback movement", 20m, trackStock: true);
+        await SeedStockAsync(context.Company, context.Branch, productId, 2m);
+        var suffix = Guid.NewGuid().ToString("N");
+        var functionName = $"fail_pos_movement_{suffix}";
+        var triggerName = $"trg_fail_pos_movement_{suffix}";
         await ExecuteAsync($@"
             CREATE FUNCTION {functionName}() RETURNS trigger LANGUAGE plpgsql AS $$
             BEGIN
-                IF NEW.company_id = {context.Company} THEN PERFORM pg_sleep(0.5); END IF;
+                IF NEW.company_id = {context.Company} THEN RAISE EXCEPTION 'forced movement failure'; END IF;
                 RETURN NEW;
             END $$;
-            CREATE TRIGGER {triggerName}
-            BEFORE INSERT ON sales.order_payments
+            CREATE TRIGGER {triggerName} BEFORE INSERT ON inventory.movements
             FOR EACH ROW EXECUTE FUNCTION {functionName}();");
 
         try
         {
-            async Task<Exception?> ExecuteSaleAsync()
-            {
-                try
-                {
-                    await CreateController(context.Company, context.Branch, context.User)
-                        .CreateSale(SaleRequest(productId, 1m, 20m));
-                    return null;
-                }
-                catch (Exception ex)
-                {
-                    return ex;
-                }
-            }
-
-            var outcomes = await Task.WhenAll(ExecuteSaleAsync(), ExecuteSaleAsync());
-
-            Assert.Single(outcomes, outcome => outcome is null);
-            Assert.Single(outcomes, outcome => outcome is PostgresException or BusinessException);
-            Assert.Equal(1, await CountOrdersAsync(context.Company));
-            Assert.Equal(0m, await StockAsync(context, productId));
+            await Assert.ThrowsAsync<PostgresException>(() =>
+                CreateController(context.Company, context.Branch, context.User)
+                    .CreateSale(SaleRequest(productId, 1m, 20m)));
+            Assert.Equal(2m, await StockAsync(context, productId));
+            Assert.Equal(0, await CountOrdersAsync(context.Company));
         }
         finally
         {
             await ExecuteAsync($@"
-                DROP TRIGGER IF EXISTS {triggerName} ON sales.order_payments;
+                DROP TRIGGER IF EXISTS {triggerName} ON inventory.movements;
                 DROP FUNCTION IF EXISTS {functionName}();");
         }
     }
@@ -491,7 +646,7 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task CreateSale_CurrentBehavior_Ignores_Stock_Committed_By_Open_Table_Pending_Block_12()
+    public async Task CreateSale_Respects_Stock_Committed_By_Open_Table()
     {
         var context = await SeedPosContextAsync("POS committed");
         await DisableCashRegisterRequirementAsync(context.Company);
@@ -499,15 +654,63 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
         await SeedStockAsync(context.Company, context.Branch, productId, 1m);
         await SeedPendingRestaurantOrderAsync(context, productId, 1m, 20m);
 
-        var result = await CreateController(context.Company, context.Branch, context.User)
-            .CreateSale(SaleRequest(productId, 1m, 20m));
+        await Assert.ThrowsAsync<BusinessException>(() =>
+            CreateController(context.Company, context.Branch, context.User)
+                .CreateSale(SaleRequest(productId, 1m, 20m)));
 
-        Assert.IsType<OkObjectResult>(result);
-        Assert.Equal(0m, await StockAsync(context, productId));
+        Assert.Equal(1m, await StockAsync(context, productId));
+        Assert.Equal(0L, await ScalarAsync<long>(@"
+            SELECT COUNT(*) FROM sales.orders
+            WHERE company_id = @CompanyId AND status = 'completed'",
+            new { CompanyId = context.Company }));
         Assert.Equal(1L, await ScalarAsync<long>(@"
             SELECT COUNT(*) FROM sales.orders
             WHERE company_id = @CompanyId AND status = 'pending'",
             new { CompanyId = context.Company }));
+    }
+
+    [SkippableFact]
+    public async Task Restaurant_And_Pos_Competing_For_Reserved_Stock_Preserve_Restaurant_Order()
+    {
+        var context = await SeedPosContextAsync("Restaurant POS competition");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var productId = await SeedProductAsync(context.Company, "Producto compartido", 20m, trackStock: true);
+        await SeedStockAsync(context.Company, context.Branch, productId, 1m);
+        var restaurant = await SeedPendingRestaurantOrderAsync(context, productId, 1m, 20m);
+
+        async Task<Exception?> Capture(Func<Task> action)
+        {
+            try
+            {
+                await action();
+                return null;
+            }
+            catch (Exception exception)
+            {
+                return exception;
+            }
+        }
+
+        var checkout = Capture(async () => await CheckoutRepository.ProcessAsync(new CheckoutCommand
+        {
+            CompanyId = context.Company,
+            BranchId = context.Branch,
+            UserId = context.User,
+            TableId = restaurant.TableId,
+            Payments = [new CheckoutPayment("cash", 20m, null)]
+        }));
+        var pos = Capture(async () => await CreateController(context.Company, context.Branch, context.User)
+            .CreateSale(SaleRequest(productId, 1m, 20m)));
+
+        var outcomes = await Task.WhenAll(checkout, pos);
+
+        Assert.Null(outcomes[0]);
+        Assert.IsType<BusinessException>(outcomes[1]);
+        Assert.Equal(0m, await StockAsync(context, productId));
+        Assert.Equal("completed", await ScalarAsync<string>(
+            "SELECT status FROM sales.orders WHERE id = @OrderId",
+            new { restaurant.OrderId }));
+        Assert.Equal(1, await CountOrdersAsync(context.Company));
     }
 
     [SkippableFact]
@@ -626,7 +829,7 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
         });
     }
 
-    private async Task SeedPendingRestaurantOrderAsync(
+    private async Task<(long TableId, long OrderId)> SeedPendingRestaurantOrderAsync(
         (long Company, long Branch, long User) context,
         long productId,
         decimal quantity,
@@ -668,6 +871,86 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
             Quantity = quantity,
             UnitPrice = unitPrice
         });
+
+        return (tableId, orderId);
+    }
+
+    private async Task<Exception?[]> RunBehindPaymentGateAsync(
+        long companyId,
+        params Func<Task<IActionResult>>[] actions)
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var functionName = $"gate_pos_payment_{suffix}";
+        var triggerName = $"gate_pos_payment_trigger_{suffix}";
+        var gateKey = Random.Shared.NextInt64(1_000_000_000L, long.MaxValue);
+        await ExecuteAsync($@"
+            CREATE FUNCTION {functionName}() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                IF NEW.company_id = {companyId} THEN PERFORM pg_advisory_xact_lock({gateKey}); END IF;
+                RETURN NEW;
+            END $$;
+            CREATE TRIGGER {triggerName}
+            BEFORE INSERT ON sales.order_payments
+            FOR EACH ROW EXECUTE FUNCTION {functionName}();");
+
+        Task<Exception?> Capture(Func<Task<IActionResult>> action) => Task.Run(async () =>
+        {
+            try
+            {
+                await action();
+                return null;
+            }
+            catch (Exception exception)
+            {
+                return exception;
+            }
+        });
+
+        var tasks = Array.Empty<Task<Exception?>>();
+        await using var gateConnection = (NpgsqlConnection)await ConnectionFactory.CreateConnectionAsync();
+        await using var gateTransaction = await gateConnection.BeginTransactionAsync();
+        await new NpgsqlCommand($"SELECT pg_advisory_xact_lock({gateKey})", gateConnection, gateTransaction)
+            .ExecuteNonQueryAsync();
+        var gateReleased = false;
+
+        try
+        {
+            tasks = actions.Select(Capture).ToArray();
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (DateTime.UtcNow < deadline)
+            {
+                var waiters = await ScalarAsync<int>(@"
+                    SELECT COUNT(*)::INT
+                    FROM pg_stat_activity
+                    WHERE datname = current_database()
+                      AND wait_event = 'advisory'");
+                if (waiters >= actions.Length)
+                    break;
+
+                await Task.Delay(20);
+            }
+
+            var blocked = await ScalarAsync<int>(@"
+                SELECT COUNT(*)::INT
+                FROM pg_stat_activity
+                WHERE datname = current_database()
+                  AND wait_event = 'advisory'");
+            Assert.True(blocked >= actions.Length, "Las ventas no alcanzaron la barrera transaccional");
+
+            await gateTransaction.CommitAsync();
+            gateReleased = true;
+            return await Task.WhenAll(tasks);
+        }
+        finally
+        {
+            if (!gateReleased)
+                await gateTransaction.RollbackAsync();
+            if (tasks.Length > 0)
+                await Task.WhenAll(tasks);
+            await ExecuteAsync($@"
+                DROP TRIGGER IF EXISTS {triggerName} ON sales.order_payments;
+                DROP FUNCTION IF EXISTS {functionName}();");
+        }
     }
 
     private async Task ExecuteAsync(string sql, object? parameters = null)
@@ -697,7 +980,9 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
             UserId = userId,
             IsAuthenticated = true
         },
-        NullLogger<PosDeliController>.Instance);
+        NullLogger<PosDeliController>.Instance,
+        new SaleInventoryPlanBuilder(),
+        new InventoryTransactionWriter());
 
     private async Task<(long Company, long Branch, long User)> SeedPosContextAsync(string prefix)
     {

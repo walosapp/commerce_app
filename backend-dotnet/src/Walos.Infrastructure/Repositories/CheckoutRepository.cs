@@ -5,6 +5,7 @@ using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
 using Walos.Domain.Policies;
+using Walos.Infrastructure.Inventory;
 
 namespace Walos.Infrastructure.Repositories;
 
@@ -12,11 +13,19 @@ public sealed class CheckoutRepository : ICheckoutRepository
 {
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<CheckoutRepository> _logger;
+    private readonly SaleInventoryPlanBuilder _inventoryPlanBuilder;
+    private readonly InventoryTransactionWriter _inventoryWriter;
 
-    public CheckoutRepository(IDbConnectionFactory connectionFactory, ILogger<CheckoutRepository> logger)
+    public CheckoutRepository(
+        IDbConnectionFactory connectionFactory,
+        ILogger<CheckoutRepository> logger,
+        SaleInventoryPlanBuilder inventoryPlanBuilder,
+        InventoryTransactionWriter inventoryWriter)
     {
         _connectionFactory = connectionFactory;
         _logger = logger;
+        _inventoryPlanBuilder = inventoryPlanBuilder;
+        _inventoryWriter = inventoryWriter;
     }
 
     public async Task<CheckoutResult> ProcessAsync(CheckoutCommand command)
@@ -57,7 +66,15 @@ public sealed class CheckoutRepository : ICheckoutRepository
                 throw new BusinessException("Debes abrir una caja antes de facturar");
 
             var movements = await BuildInventoryMovementsAsync(connection, transaction, command, order, table, items);
-            await ApplyInventoryAsync(connection, transaction, command, order.Id, movements);
+            await _inventoryWriter.ApplyAsync(
+                connection,
+                transaction,
+                new InventoryTransactionContext(
+                    command.CompanyId,
+                    command.BranchId,
+                    command.UserId,
+                    ExcludedCommittedOrderId: order.Id),
+                movements);
             await InsertPaymentsAsync(connection, transaction, command, order.Id, calculation.Payments);
 
             if (cashRegisterId.HasValue)
@@ -291,6 +308,7 @@ public sealed class CheckoutRepository : ICheckoutRepository
                    oi.unit_price AS UnitPrice, oi.subtotal AS Subtotal,
                    (p.id IS NOT NULL) AS ProductExists,
                    p.product_type AS ProductType, p.track_stock AS TrackStock,
+                   p.cost_price AS CostPrice,
                    p.is_active AS IsActive, p.is_for_sale AS IsForSale
             FROM sales.order_items oi
             LEFT JOIN inventory.products p
@@ -428,7 +446,7 @@ public sealed class CheckoutRepository : ICheckoutRepository
             LIMIT 1
             FOR UPDATE", new { command.CompanyId, command.BranchId, command.UserId }, transaction);
 
-    private static async Task<List<InventoryMovementPlan>> BuildInventoryMovementsAsync(
+    private Task<IReadOnlyList<InventoryMovementPlan>> BuildInventoryMovementsAsync(
         IDbConnection connection,
         IDbTransaction transaction,
         CheckoutCommand command,
@@ -436,151 +454,27 @@ public sealed class CheckoutRepository : ICheckoutRepository
         CheckoutTableRow table,
         List<CheckoutItemRow> items)
     {
-        foreach (var item in items)
-        {
-            if (!SaleItemPolicy.IsQuantitySupported(item.Quantity) || item.UnitPrice < 0)
-                throw new ValidationException($"El item {item.Id} tiene cantidad o precio invalido");
-            if (!item.ProductExists)
-                throw new ValidationException($"El producto {item.ProductId} no existe en el comercio");
-            if (!item.IsActive || !item.IsForSale)
-                throw new ValidationException($"El producto {item.ProductName} ya no esta disponible para venta");
-        }
+        var lines = items.Select(item => new SaleInventoryLine(
+            item.ProductId,
+            item.ProductName,
+            item.ProductType,
+            item.Quantity,
+            item.CostPrice,
+            item.TrackStock,
+            item.ProductExists,
+            item.IsActive,
+            item.IsForSale)).ToList();
 
-        var movements = items
-            .Where(item => item.ProductType != "prepared")
-            .GroupBy(item => new { item.ProductId, item.TrackStock, item.UnitPrice })
-            .Select(group => new InventoryMovementPlan
-            {
-                ProductId = group.Key.ProductId,
-                Quantity = Math.Round(group.Sum(item => item.Quantity), 3, MidpointRounding.AwayFromZero),
-                UnitCost = group.Key.UnitPrice,
-                MovementType = "sale",
-                RequiresStock = group.Key.TrackStock,
-                Notes = $"Venta Mesa {table.TableNumber} - {order.OrderNumber}"
-            }).ToList();
-
-        var preparedIds = items
-            .Where(item => item.ProductType == "prepared")
-            .Select(item => item.ProductId)
-            .Distinct()
-            .ToArray();
-
-        if (preparedIds.Length > 0)
-        {
-            var recipeRows = await connection.QueryAsync<CheckoutRecipeRow>(@"
-                SELECT r.product_id AS ProductId, r.ingredient_id AS IngredientId,
-                       r.quantity AS Quantity, ingredient.track_stock AS TrackStock,
-                       ingredient.cost_price AS UnitCost
-                FROM inventory.recipes r
-                JOIN inventory.products prepared
-                  ON prepared.id = r.product_id AND prepared.company_id = r.company_id
-                JOIN inventory.products ingredient
-                  ON ingredient.id = r.ingredient_id AND ingredient.company_id = r.company_id
-                WHERE r.company_id = @CompanyId
-                  AND r.product_id = ANY(@PreparedIds)
-                  AND prepared.product_type = 'prepared'
-                  AND ingredient.deleted_at IS NULL",
-                new { command.CompanyId, PreparedIds = preparedIds }, transaction);
-
-            var soldByProduct = items
-                .Where(item => item.ProductType == "prepared")
-                .GroupBy(item => item.ProductId)
-                .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity));
-
-            movements.AddRange(recipeRows
-                .GroupBy(row => new { row.IngredientId, row.TrackStock, row.UnitCost })
-                .Select(group => new InventoryMovementPlan
-                {
-                    ProductId = group.Key.IngredientId,
-                    Quantity = Math.Round(
-                        group.Sum(row => row.Quantity * soldByProduct[row.ProductId]),
-                        3,
-                        MidpointRounding.AwayFromZero),
-                    UnitCost = group.Key.UnitCost,
-                    MovementType = "recipe_consumption",
-                    RequiresStock = group.Key.TrackStock,
-                    Notes = $"Consumo receta - Venta Mesa {table.TableNumber} - {order.OrderNumber}"
-                }));
-        }
-
-        return movements.Where(movement => movement.Quantity > 0).ToList();
-    }
-
-    private static async Task ApplyInventoryAsync(
-        IDbConnection connection,
-        IDbTransaction transaction,
-        CheckoutCommand command,
-        long orderId,
-        List<InventoryMovementPlan> movements)
-    {
-        var required = movements
-            .Where(movement => movement.RequiresStock)
-            .GroupBy(movement => movement.ProductId)
-            .ToDictionary(group => group.Key, group => group.Sum(movement => movement.Quantity));
-
-        if (required.Count > 0)
-        {
-            var locked = (await connection.QueryAsync<CheckoutStockRow>(@"
-                SELECT product_id AS ProductId, quantity AS Quantity
-                FROM inventory.stock
-                WHERE company_id = @CompanyId
-                  AND branch_id = @BranchId
-                  AND product_id = ANY(@ProductIds)
-                ORDER BY product_id
-                FOR UPDATE",
-                new { command.CompanyId, command.BranchId, ProductIds = required.Keys.OrderBy(id => id).ToArray() },
-                transaction)).ToDictionary(row => row.ProductId);
-
-            foreach (var requirement in required.OrderBy(entry => entry.Key))
-            {
-                if (!locked.TryGetValue(requirement.Key, out var stock) || stock.Quantity < requirement.Value)
-                    throw new BusinessException($"Stock insuficiente para el producto {requirement.Key}");
-            }
-        }
-
-        foreach (var movement in movements.OrderBy(movement => movement.ProductId).ThenBy(movement => movement.MovementType))
-        {
-            decimal? stockAfter = null;
-            if (movement.RequiresStock)
-            {
-                stockAfter = await connection.QuerySingleOrDefaultAsync<decimal?>(@"
-                    UPDATE inventory.stock
-                    SET quantity = quantity - @Quantity, updated_at = NOW()
-                    WHERE company_id = @CompanyId
-                      AND branch_id = @BranchId
-                      AND product_id = @ProductId
-                      AND quantity >= @Quantity
-                    RETURNING quantity",
-                    new { command.CompanyId, command.BranchId, movement.ProductId, movement.Quantity }, transaction);
-
-                if (stockAfter is null)
-                    throw new BusinessException($"Stock insuficiente para el producto {movement.ProductId}");
-            }
-
-            await connection.ExecuteAsync(@"
-                INSERT INTO inventory.movements (
-                    company_id, branch_id, product_id, movement_type,
-                    quantity, unit_cost, reference_type, reference_id,
-                    notes, stock_after, created_by, created_at
-                ) VALUES (
-                    @CompanyId, @BranchId, @ProductId, @MovementType,
-                    @Quantity, @UnitCost, 'order', @OrderId,
-                    @Notes, @StockAfter, @UserId, NOW()
-                )",
-                new
-                {
-                    command.CompanyId,
-                    command.BranchId,
-                    movement.ProductId,
-                    movement.MovementType,
-                    movement.Quantity,
-                    movement.UnitCost,
-                    OrderId = orderId,
-                    movement.Notes,
-                    StockAfter = stockAfter,
-                    command.UserId
-                }, transaction);
-        }
+        return _inventoryPlanBuilder.BuildAsync(
+            connection,
+            transaction,
+            new SaleInventoryPlanContext(
+                command.CompanyId,
+                ReferenceType: "order",
+                ReferenceId: order.Id,
+                SaleNotes: $"Venta Mesa {table.TableNumber} - {order.OrderNumber}",
+                RecipeNotes: $"Consumo receta - Venta Mesa {table.TableNumber} - {order.OrderNumber}"),
+            lines);
     }
 
     private static async Task InsertPaymentsAsync(
@@ -942,6 +836,7 @@ public sealed class CheckoutRepository : ICheckoutRepository
         public bool ProductExists { get; init; }
         public string ProductType { get; init; } = "simple";
         public bool TrackStock { get; init; }
+        public decimal CostPrice { get; init; }
         public bool IsActive { get; init; }
         public bool IsForSale { get; init; }
     }
@@ -954,31 +849,6 @@ public sealed class CheckoutRepository : ICheckoutRepository
         public bool DiscountRequiresOverride { get; init; }
         public decimal DiscountOverrideThresholdPercent { get; init; }
         public bool RequireCashRegister { get; init; }
-    }
-
-    private sealed class CheckoutRecipeRow
-    {
-        public long ProductId { get; init; }
-        public long IngredientId { get; init; }
-        public decimal Quantity { get; init; }
-        public bool TrackStock { get; init; }
-        public decimal UnitCost { get; init; }
-    }
-
-    private sealed class CheckoutStockRow
-    {
-        public long ProductId { get; init; }
-        public decimal Quantity { get; init; }
-    }
-
-    private sealed class InventoryMovementPlan
-    {
-        public long ProductId { get; init; }
-        public decimal Quantity { get; init; }
-        public decimal UnitCost { get; init; }
-        public string MovementType { get; init; } = string.Empty;
-        public bool RequiresStock { get; init; }
-        public string Notes { get; init; } = string.Empty;
     }
 
     private sealed class CheckoutCalculation

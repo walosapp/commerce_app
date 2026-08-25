@@ -52,6 +52,54 @@ public class InventoryRepositoryIntegrationTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task GetStockByBranchAsync_Expands_Open_Prepared_Order_Into_Ingredient_Commitment()
+    {
+        var company = await SeedCompanyAsync("Prepared commitment company");
+        var branch = await SeedBranchAsync(company, "Prepared commitment branch");
+        var user = await SeedUserAsync(company, branch, $"prepared-{Guid.NewGuid():N}@test.com");
+        var category = await SeedInventoryCategoryAsync(company, "Prepared commitment category");
+        var unit = await SeedInventoryUnitAsync(company, "Prepared unit", "pru");
+        var ingredient = await SeedProductAsync(company, category, unit, "Ingredient", "ING-COMMIT", 0, 0);
+        var prepared = await SeedProductAsync(company, category, unit, "Prepared", "PREP-COMMIT", 0, 0);
+        await SeedStockAsync(company, branch, ingredient, 10m);
+
+        using (var conn = (NpgsqlConnection)await ConnectionFactory.CreateConnectionAsync())
+        using (var cmd = new NpgsqlCommand(@"
+            UPDATE inventory.products
+            SET product_type='prepared', track_stock=FALSE
+            WHERE id=@prepared AND company_id=@company;
+            INSERT INTO inventory.recipes (company_id,product_id,ingredient_id,quantity,unit_id)
+            VALUES (@company,@prepared,@ingredient,2,@unit);
+            WITH inserted_table AS (
+                INSERT INTO sales.tables (company_id,branch_id,table_number,name,status,created_by)
+                VALUES (@company,@branch,99,'Prepared commitment','open',@user)
+                RETURNING id
+            ), inserted_order AS (
+                INSERT INTO sales.orders (company_id,branch_id,table_id,order_number,status,subtotal,total,created_by)
+                SELECT @company,@branch,id,'PREP-COMMIT','pending',100,100,@user FROM inserted_table
+                RETURNING id
+            )
+            INSERT INTO sales.order_items (company_id,order_id,product_id,product_name,quantity,unit_price)
+            SELECT @company,id,@prepared,'Prepared',1,100 FROM inserted_order;", conn))
+        {
+            cmd.Parameters.AddWithValue("@company", company);
+            cmd.Parameters.AddWithValue("@branch", branch);
+            cmd.Parameters.AddWithValue("@user", user);
+            cmd.Parameters.AddWithValue("@unit", unit);
+            cmd.Parameters.AddWithValue("@ingredient", ingredient);
+            cmd.Parameters.AddWithValue("@prepared", prepared);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        var stock = Assert.Single(
+            await InventoryRepository.GetStockByBranchAsync(branch, company),
+            item => item.ProductId == ingredient);
+        Assert.Equal(10m, stock.Quantity);
+        Assert.Equal(2m, stock.ReservedQuantity);
+        Assert.Equal(8m, stock.AvailableQuantity);
+    }
+
+    [SkippableFact]
     public async Task GetActiveAlertsAsync_Should_Respect_Branch_Filter_Within_Same_Company()
     {
         var companyId = await SeedCompanyAsync("Alerts Co");

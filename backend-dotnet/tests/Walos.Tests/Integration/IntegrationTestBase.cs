@@ -4,6 +4,7 @@ using Npgsql;
 using Walos.Application.Services;
 using Walos.Domain.Interfaces;
 using Walos.Infrastructure.Data;
+using Walos.Infrastructure.Inventory;
 using Walos.Infrastructure.Repositories;
 
 namespace Walos.Tests.Integration;
@@ -61,7 +62,11 @@ public abstract class IntegrationTestBase : IDisposable
         RefundRepository = new RefundRepository(ConnectionFactory, NullLogger<RefundRepository>.Instance);
         CashRegisterRepository = new CashRegisterRepository(ConnectionFactory, NullLogger<CashRegisterRepository>.Instance);
         OrderPaymentRepository = new OrderPaymentRepository(ConnectionFactory, NullLogger<OrderPaymentRepository>.Instance);
-        CheckoutRepository = new CheckoutRepository(ConnectionFactory, NullLogger<CheckoutRepository>.Instance);
+        CheckoutRepository = new CheckoutRepository(
+            ConnectionFactory,
+            NullLogger<CheckoutRepository>.Instance,
+            new SaleInventoryPlanBuilder(),
+            new InventoryTransactionWriter());
         CatalogRepository = new CatalogRepository(ConnectionFactory);
         RecipeRepository = new RecipeRepository(ConnectionFactory);
     }

@@ -22,6 +22,8 @@ public sealed record InventoryMovementPlan(
 
 public static class InventoryMovementPlanner
 {
+    public const int InventoryQuantityDecimals = 3;
+
     public static InventoryMovementPlan Create(
         InventoryMovementDirection direction,
         long productId,
@@ -35,7 +37,8 @@ public static class InventoryMovementPlanner
     {
         if (productId <= 0)
             throw new ValidationException("Producto requerido para el movimiento");
-        if (quantity <= 0)
+        var normalizedQuantity = NormalizeQuantity(quantity);
+        if (normalizedQuantity <= 0)
             throw new ValidationException("La cantidad del movimiento debe ser mayor que cero");
         if (unitCost < 0)
             throw new ValidationException("El costo del movimiento no puede ser negativo");
@@ -48,7 +51,7 @@ public static class InventoryMovementPlanner
             direction,
             productId,
             movementType.Trim(),
-            quantity,
+            normalizedQuantity,
             PaymentPolicy.RoundMoney(unitCost),
             referenceType.Trim(),
             referenceId,
@@ -59,4 +62,7 @@ public static class InventoryMovementPlanner
 
     public static InventoryMovementPlan WithStockAfter(InventoryMovementPlan plan, decimal stockAfter) =>
         plan with { StockAfter = stockAfter };
+
+    public static decimal NormalizeQuantity(decimal quantity) =>
+        Math.Round(quantity, InventoryQuantityDecimals, MidpointRounding.AwayFromZero);
 }

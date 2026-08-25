@@ -15,6 +15,10 @@ public class CheckoutRepositoryIntegrationTests : IntegrationTestBase
         Assert.False(result.IsReplay);
         Assert.Equal(9m, await StockAsync(ctx.Branch, ctx.Product));
         Assert.Equal(1, await CountAsync("inventory.movements", "reference_id", ctx.Order));
+        Assert.Equal(20m, await ScalarAsync<decimal>(
+            "SELECT unit_cost FROM inventory.movements WHERE reference_id=@id", ctx.Order));
+        Assert.Equal(9m, await ScalarAsync<decimal>(
+            "SELECT stock_after FROM inventory.movements WHERE reference_id=@id", ctx.Order));
         Assert.Equal(1, await CountAsync("sales.order_payments", "order_id", ctx.Order));
         Assert.Equal("completed", await ScalarAsync<string>("SELECT status FROM sales.orders WHERE id=@id", ctx.Order));
         Assert.Equal("invoiced", await ScalarAsync<string>("SELECT status FROM sales.tables WHERE id=@id", ctx.Table));
@@ -61,6 +65,61 @@ public class CheckoutRepositoryIntegrationTests : IntegrationTestBase
         Assert.Equal(3m, await StockAsync(ctx.Branch, ctx.Ingredient!.Value));
         Assert.Equal("recipe_consumption", await ScalarAsync<string>(
             "SELECT movement_type FROM inventory.movements WHERE reference_id=@id", ctx.Order));
+        Assert.Equal(20m, await ScalarAsync<decimal>(
+            "SELECT unit_cost FROM inventory.movements WHERE reference_id=@id", ctx.Order));
+    }
+
+    [SkippableFact]
+    public async Task Prepared_Product_Without_Recipe_Is_Rejected_And_Rolled_Back()
+    {
+        var ctx = await SeedCheckoutAsync("MissingRecipe", prepared: true);
+        await ExecuteAsync(
+            "DELETE FROM inventory.recipes WHERE company_id=@company AND product_id=@product",
+            new { company = ctx.Company, product = ctx.Product });
+
+        await Assert.ThrowsAsync<BusinessException>(() =>
+            CheckoutRepository.ProcessAsync(Command(ctx, [new("cash", 100m, null)])));
+
+        await AssertOpenAndUntouchedAsync(ctx);
+        Assert.Equal(0, await CountAsync("inventory.movements", "reference_id", ctx.Order));
+    }
+
+    [SkippableFact]
+    public async Task Checkout_Excludes_Its_Own_Commitment_From_Availability()
+    {
+        var ctx = await SeedCheckoutAsync("OwnCommitment", stock: 1m);
+
+        await CheckoutRepository.ProcessAsync(Command(ctx, [new("cash", 100m, null)]));
+
+        Assert.Equal(0m, await StockAsync(ctx.Branch, ctx.Product));
+        Assert.Equal("completed", await ScalarAsync<string>("SELECT status FROM sales.orders WHERE id=@id", ctx.Order));
+    }
+
+    [SkippableFact]
+    public async Task Checkout_Respects_Other_Open_Order_Commitment()
+    {
+        var ctx = await SeedCheckoutAsync("OtherCommitment", stock: 1m);
+        var otherTable = await ScalarAsync<long>(@"
+            INSERT INTO sales.tables (company_id,branch_id,table_number,name,status,created_by)
+            VALUES (@company,@branch,2,'Otra mesa','open',@user) RETURNING id", ctx.Company,
+            new NpgsqlParameter("@company", ctx.Company), new NpgsqlParameter("@branch", ctx.Branch),
+            new NpgsqlParameter("@user", ctx.User));
+        var otherOrder = await ScalarAsync<long>(@"
+            INSERT INTO sales.orders (company_id,branch_id,table_id,order_number,status,subtotal,total,created_by)
+            VALUES (@company,@branch,@table,@number,'pending',100,100,@user) RETURNING id", ctx.Company,
+            new NpgsqlParameter("@company", ctx.Company), new NpgsqlParameter("@branch", ctx.Branch),
+            new NpgsqlParameter("@table", otherTable), new NpgsqlParameter("@number", $"OTHER-{Guid.NewGuid():N}"[..30]),
+            new NpgsqlParameter("@user", ctx.User));
+        await ExecuteAsync(@"
+            INSERT INTO sales.order_items (company_id,order_id,product_id,product_name,quantity,unit_price)
+            VALUES (@company,@order,@product,'Reservado',1,100)",
+            new { company = ctx.Company, order = otherOrder, product = ctx.Product });
+
+        await Assert.ThrowsAsync<BusinessException>(() =>
+            CheckoutRepository.ProcessAsync(Command(ctx, [new("cash", 100m, null)])));
+
+        Assert.Equal(1m, await StockAsync(ctx.Branch, ctx.Product));
+        await AssertOpenAndUntouchedAsync(ctx);
     }
 
     [SkippableFact]

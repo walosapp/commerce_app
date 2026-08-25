@@ -4,6 +4,7 @@ using Walos.Application.Services;
 using Walos.Application.Storage;
 using Walos.Domain.Interfaces;
 using Walos.Infrastructure.Data;
+using Walos.Infrastructure.Inventory;
 using Walos.Infrastructure.Repositories;
 using Walos.Infrastructure.Services;
 using Walos.Infrastructure.Storage;
@@ -42,6 +43,8 @@ public static class DependencyInjection
         services.AddScoped<ISuppliersRepository, SuppliersRepository>();
         services.AddScoped<IUsersRepository, UsersRepository>();
         services.AddScoped<IRecipeRepository, RecipeRepository>();
+        services.AddScoped<SaleInventoryPlanBuilder>();
+        services.AddScoped<InventoryTransactionWriter>();
         services.AddScoped<ICatalogRepository, CatalogRepository>();
         services.AddSingleton<ProductExcelService>();
         services.AddScoped<IPurchaseOrderRepository, PurchaseOrderRepository>();
