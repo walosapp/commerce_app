@@ -4,14 +4,12 @@ using Microsoft.Extensions.Logging;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
+using Walos.Domain.Policies;
 
 namespace Walos.Infrastructure.Repositories;
 
 public sealed class CheckoutRepository : ICheckoutRepository
 {
-    private static readonly HashSet<string> AllowedPaymentMethods =
-        new(StringComparer.Ordinal) { "cash", "card", "transfer", "nequi", "other" };
-
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<CheckoutRepository> _logger;
 
@@ -87,8 +85,10 @@ public sealed class CheckoutRepository : ICheckoutRepository
 
     public async Task AddItemsAsync(AddOrderItemsCommand command)
     {
-        if (command.Items.Count == 0 || command.Items.Any(item => item.ProductId <= 0 || item.Quantity <= 0))
+        if (command.Items.Count == 0 || command.Items.Any(item => item.ProductId <= 0))
             throw new ValidationException("Todos los items deben tener producto y cantidad validos");
+        foreach (var item in command.Items)
+            SaleItemPolicy.NormalizeQuantity(item.Quantity);
 
         using var connection = await _connectionFactory.CreateConnectionAsync();
         using var transaction = connection.BeginTransaction();
@@ -169,8 +169,7 @@ public sealed class CheckoutRepository : ICheckoutRepository
 
     public async Task UpdateItemQuantityAsync(UpdateOrderItemQuantityCommand command)
     {
-        if (command.Quantity <= 0)
-            throw new ValidationException("La cantidad debe ser mayor que cero");
+        SaleItemPolicy.NormalizeQuantity(command.Quantity);
 
         using var connection = await _connectionFactory.CreateConnectionAsync();
         using var transaction = connection.BeginTransaction();
@@ -324,7 +323,7 @@ public sealed class CheckoutRepository : ICheckoutRepository
         bool enforceDiscountPolicy)
     {
         var discountType = NormalizeDiscountType(command.DiscountType);
-        var discountValue = Math.Round(command.DiscountValue, 2);
+        var discountValue = PaymentPolicy.RoundMoney(command.DiscountValue);
         if (discountType is not ("none" or "fixed" or "percentage"))
             throw new ValidationException("Tipo de descuento no permitido");
         if (discountValue < 0)
@@ -335,12 +334,12 @@ public sealed class CheckoutRepository : ICheckoutRepository
         if (discountType == "percentage")
         {
             discountPercent = discountValue;
-            discountAmount = Math.Round(subtotal * discountPercent / 100m, 2);
+            discountAmount = PaymentPolicy.RoundMoney(subtotal * discountPercent / 100m);
         }
         else if (discountType == "fixed")
         {
             discountAmount = discountValue;
-            discountPercent = subtotal > 0 ? Math.Round(discountAmount / subtotal * 100m, 2) : 0;
+            discountPercent = subtotal > 0 ? PaymentPolicy.RoundMoney(discountAmount / subtotal * 100m) : 0;
         }
         else
         {
@@ -369,7 +368,7 @@ public sealed class CheckoutRepository : ICheckoutRepository
             }
         }
 
-        var netTotal = Math.Round(subtotal - discountAmount, 2);
+        var netTotal = PaymentPolicy.RoundMoney(subtotal - discountAmount);
         if (command.SubmittedFinalTotal > 0 && Math.Abs(command.SubmittedFinalTotal - netTotal) > 1m)
             throw new ValidationException("El total final no coincide con el descuento aplicado");
         if (command.CreditAmountPaid < 0)
@@ -381,29 +380,25 @@ public sealed class CheckoutRepository : ICheckoutRepository
             throw new ValidationException("El valor pagado no puede superar el total de la venta");
 
         var actualPaid = command.HasCredit && command.CreditAmountPaid < netTotal
-            ? Math.Round(command.CreditAmountPaid, 2)
+            ? PaymentPolicy.RoundMoney(command.CreditAmountPaid)
             : netTotal;
         if (actualPaid > netTotal)
             throw new ValidationException("El valor pagado no puede superar el total de la venta");
 
         var payments = command.Payments.Select(payment =>
         {
-            var method = NormalizePaymentMethod(payment.Method);
-            if (!AllowedPaymentMethods.Contains(method))
-                throw new ValidationException("Metodo de pago invalido");
-            var amount = Math.Round(payment.Amount, 2, MidpointRounding.AwayFromZero);
-            if (amount <= 0)
-                throw new ValidationException("Todos los pagos deben tener un valor mayor que cero");
+            var method = PaymentPolicy.NormalizeMethod(payment.Method);
+            var amount = PaymentPolicy.NormalizePositiveAmount(payment.Amount);
             return new CheckoutPayment(method, amount, NormalizeOptional(payment.Reference));
         }).ToList();
 
-        var expectedPayment = actualPaid + (command.TipIncluded ? Math.Round(command.TipAmount, 2) : 0);
+        var expectedPayment = PaymentPolicy.RoundMoney(
+            actualPaid + (command.TipIncluded ? PaymentPolicy.RoundMoney(command.TipAmount) : 0));
         if (expectedPayment > 0 && payments.Count == 0)
             throw new ValidationException("Debe especificar al menos un metodo de pago");
         if (expectedPayment == 0 && payments.Count > 0)
             throw new ValidationException("No debe registrar pagos cuando toda la cuenta queda a credito");
-        if (Math.Abs(payments.Sum(payment => payment.Amount) - expectedPayment) > 0.01m)
-            throw new ValidationException("La suma de los pagos no coincide con el total a cobrar");
+        PaymentPolicy.ValidatePaymentTotal(expectedPayment, payments.Select(payment => payment.Amount));
 
         return new CheckoutCalculation
         {
@@ -412,8 +407,8 @@ public sealed class CheckoutRepository : ICheckoutRepository
             DiscountAmount = discountAmount,
             NetTotal = netTotal,
             ActualPaid = actualPaid,
-            CreditAmount = command.HasCredit ? Math.Round(netTotal - actualPaid, 2) : 0,
-            TipAmount = Math.Round(command.TipAmount, 2),
+            CreditAmount = command.HasCredit ? PaymentPolicy.RoundMoney(netTotal - actualPaid) : 0,
+            TipAmount = PaymentPolicy.RoundMoney(command.TipAmount),
             SplitCount = Math.Max(1, command.SplitCount),
             Payments = payments
         };
@@ -443,7 +438,7 @@ public sealed class CheckoutRepository : ICheckoutRepository
     {
         foreach (var item in items)
         {
-            if (item.Quantity <= 0 || item.UnitPrice < 0)
+            if (!SaleItemPolicy.IsQuantitySupported(item.Quantity) || item.UnitPrice < 0)
                 throw new ValidationException($"El item {item.Id} tiene cantidad o precio invalido");
             if (!item.ProductExists)
                 throw new ValidationException($"El producto {item.ProductId} no existe en el comercio");
@@ -620,12 +615,16 @@ public sealed class CheckoutRepository : ICheckoutRepository
         long cashRegisterId,
         CheckoutCalculation calculation)
     {
-        var cash = calculation.Payments.Where(payment => payment.Method == "cash").Sum(payment => payment.Amount);
-        var card = calculation.Payments.Where(payment => payment.Method == "card").Sum(payment => payment.Amount);
-        var transfer = calculation.Payments
-            .Where(payment => payment.Method is "transfer" or "nequi")
-            .Sum(payment => payment.Amount);
-        var other = calculation.Payments.Where(payment => payment.Method == "other").Sum(payment => payment.Amount);
+        var accountingPayments = calculation.Payments
+            .Select(payment => new
+            {
+                Method = PaymentPolicy.ToAccountingMethod(payment.Method),
+                payment.Amount
+            }).ToList();
+        var cash = accountingPayments.Where(payment => payment.Method == "cash").Sum(payment => payment.Amount);
+        var card = accountingPayments.Where(payment => payment.Method == "card").Sum(payment => payment.Amount);
+        var transfer = accountingPayments.Where(payment => payment.Method == "transfer").Sum(payment => payment.Amount);
+        var other = accountingPayments.Where(payment => payment.Method == "other").Sum(payment => payment.Amount);
 
         var affected = await connection.ExecuteAsync(@"
             UPDATE sales.cash_registers
@@ -898,11 +897,8 @@ public sealed class CheckoutRepository : ICheckoutRepository
     private static string? NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private static string? ResolvePaymentMethod(IReadOnlyCollection<CheckoutPayment> payments)
-    {
-        var methods = payments.Select(payment => payment.Method).Distinct().ToList();
-        return methods.Count switch { 0 => null, 1 => methods[0], _ => "mixed" };
-    }
+    private static string? ResolvePaymentMethod(IReadOnlyCollection<CheckoutPayment> payments) =>
+        PaymentPolicy.ResolvePersistedMethod(payments.Select(payment => payment.Method));
 
     private sealed class CheckoutTableRow
     {

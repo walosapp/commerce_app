@@ -3,6 +3,7 @@ using Walos.Application.DTOs.Sales;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
+using Walos.Domain.Policies;
 
 namespace Walos.Application.Services;
 
@@ -40,12 +41,8 @@ public class CreditService : ICreditService
 
     public async Task<CreditResponse> AddPaymentAsync(long creditId, long companyId, long branchId, long userId, AddCreditPaymentRequest request)
     {
-        if (request.Amount <= 0)
-            throw new ValidationException("El monto del abono debe ser mayor a cero");
-
-        var paymentMethod = request.PaymentMethod?.Trim().ToLowerInvariant();
-        if (paymentMethod is not ("cash" or "card" or "transfer" or "nequi" or "other"))
-            throw new ValidationException("Metodo de pago invalido");
+        var amount = PaymentPolicy.NormalizePositiveAmount(request.Amount);
+        var paymentMethod = PaymentPolicy.NormalizeMethod(request.PaymentMethod);
 
         var credit = await _creditRepo.ProcessPaymentAsync(new CreditPaymentCommand
         {
@@ -53,13 +50,13 @@ public class CreditService : ICreditService
             CompanyId = companyId,
             BranchId = branchId,
             UserId = userId,
-            Amount = request.Amount,
+            Amount = amount,
             PaymentMethod = paymentMethod,
             Notes = request.Notes?.Trim()
         });
 
         _logger.LogInformation("Abono de {Amount} registrado en credito {CreditId}. Saldo restante: {Remaining}",
-            request.Amount, creditId, credit.CreditAmount);
+            amount, creditId, credit.CreditAmount);
 
         return MapToResponse(await _creditRepo.GetCreditByIdAsync(creditId, companyId, branchId) ?? credit);
     }

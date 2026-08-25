@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
+using Walos.Domain.Policies;
 using Walos.Infrastructure.Data;
 
 namespace Walos.Infrastructure.Repositories;
@@ -529,9 +530,10 @@ public class RefundRepository : IRefundRepository
 
         foreach (var payment in payments)
         {
-            payment.Method = payment.Method?.Trim().ToLowerInvariant();
-            if (payment.Method is not ("cash" or "card" or "transfer" or "nequi" or "other"))
+            if (!PaymentPolicy.IsAcceptedMethod(payment.Method))
                 throw new BusinessException("No se puede determinar el medio original del dinero a devolver");
+
+            payment.Method = PaymentPolicy.NormalizeMethod(payment.Method);
         }
 
         var paymentsTotal = payments.Sum(payment => payment.Amount);

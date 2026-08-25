@@ -359,6 +359,23 @@ public class SalesServiceTests
     }
 
     [Fact]
+    public async Task CreateTable_RejectsQuantityBeyondCurrentDatabasePrecision_WithoutWrites()
+    {
+        var request = new CreateTableRequest
+        {
+            Items = [new CreateTableItemDto { ProductId = 1, Quantity = 1.255m }]
+        };
+
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            _service.CreateTableAsync(CompanyId, BranchId, UserId, request));
+
+        _inventoryRepoMock.Verify(
+            r => r.GetProductByIdAsync(It.IsAny<long>(), It.IsAny<long>()), Times.Never);
+        _salesRepoMock.Verify(r => r.CreateTableAsync(It.IsAny<SalesTable>()), Times.Never);
+        _salesRepoMock.Verify(r => r.CreateOrderAsync(It.IsAny<Order>(), It.IsAny<List<OrderItem>>()), Times.Never);
+    }
+
+    [Fact]
     public async Task CreateTable_AllowsPositiveDecimalQuantity_ForWeightedProduct()
     {
         _inventoryRepoMock.Setup(r => r.GetProductByIdAsync(1, CompanyId))

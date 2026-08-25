@@ -3,6 +3,7 @@ using Walos.Application.DTOs.Sales;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
+using Walos.Domain.Policies;
 using Walos.Application.Services;
 using Walos.Application.Storage;
 
@@ -100,7 +101,8 @@ public class SalesService : ISalesService
 
         var createdTable = await _salesRepo.CreateTableAsync(table);
 
-        var subtotal = items.Sum(item => item.Quantity * item.UnitPrice);
+        var subtotal = PaymentPolicy.RoundMoney(
+            items.Sum(item => SaleItemPolicy.CalculateSubtotal(item.Quantity, item.UnitPrice)));
         var orderNumber = $"ORD-{createdTable.Id}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
 
         var order = new Order
@@ -208,8 +210,7 @@ public class SalesService : ISalesService
 
     public async Task UpdateItemQuantityAsync(long companyId, long branchId, long itemId, UpdateItemQuantityRequest request)
     {
-        if (request.Quantity <= 0)
-            throw new ValidationException("La cantidad debe ser mayor que cero");
+        SaleItemPolicy.NormalizeQuantity(request.Quantity);
 
         var existingItem = await _salesRepo.GetOrderItemByIdAsync(itemId, companyId, branchId)
             ?? throw new NotFoundException("Item no encontrado");
@@ -496,8 +497,10 @@ public class SalesService : ISalesService
     {
         foreach (var requestedItem in requestedItems)
         {
-            if (requestedItem.ProductId <= 0 || requestedItem.Quantity <= 0)
+            if (requestedItem.ProductId <= 0)
                 throw new ValidationException("Todos los items deben tener producto y cantidad validos.");
+
+            SaleItemPolicy.NormalizeQuantity(requestedItem.Quantity);
 
             var product = await GetSaleableProductAsync(requestedItem.ProductId, companyId);
             await ValidateProductStockAsync(product, companyId, branchId, requestedItem.Quantity);
@@ -513,8 +516,11 @@ public class SalesService : ISalesService
         if (requestList.Count == 0)
             throw new ValidationException("Debe agregar al menos un producto");
 
-        if (requestList.Any(item => item.ProductId <= 0 || item.Quantity <= 0))
+        if (requestList.Any(item => item.ProductId <= 0))
             throw new ValidationException("Todos los items deben tener producto y cantidad validos.");
+
+        foreach (var item in requestList)
+            SaleItemPolicy.NormalizeQuantity(item.Quantity);
 
         var products = new Dictionary<long, Product>();
         foreach (var group in requestList.GroupBy(item => item.ProductId))
@@ -527,12 +533,17 @@ public class SalesService : ISalesService
         return requestList.Select(item =>
         {
             var product = products[item.ProductId];
+            var snapshot = SaleItemPolicy.CreateSnapshot(
+                product.Id,
+                product.Name,
+                item.Quantity,
+                product.SalePrice);
             return new OrderItem
             {
-                ProductId = product.Id,
-                ProductName = product.Name,
-                Quantity = item.Quantity,
-                UnitPrice = Math.Round(product.SalePrice, 2)
+                ProductId = snapshot.ProductId,
+                ProductName = snapshot.ProductName,
+                Quantity = snapshot.Quantity,
+                UnitPrice = snapshot.UnitPrice
             };
         }).ToList();
     }

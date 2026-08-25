@@ -5,6 +5,7 @@ using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.PosDeli;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
+using Walos.Domain.Policies;
 
 namespace Walos.API.Controllers;
 
@@ -154,7 +155,7 @@ public class PosDeliController : ControllerBase
         if (request.Items.Count == 0)
             return BadRequest(ApiResponse.Fail("La venta debe tener al menos un producto"));
 
-        if (request.Items.Any(i => i.ProductId <= 0 || i.Quantity <= 0))
+        if (request.Items.Any(i => i.ProductId <= 0 || !SaleItemPolicy.IsQuantitySupported(i.Quantity)))
             return BadRequest(ApiResponse.Fail("Todos los items deben tener producto y cantidad válidos"));
 
         if (request.Payments.Count == 0)
@@ -162,6 +163,13 @@ public class PosDeliController : ControllerBase
 
         if (request.Payments.Any(p => p.Amount <= 0 || string.IsNullOrWhiteSpace(p.Method)))
             return BadRequest(ApiResponse.Fail("Todos los pagos deben tener método y monto mayor a cero"));
+
+        var normalizedPayments = request.Payments.Select(payment => new PosDeliPayment
+        {
+            Method = PaymentPolicy.NormalizeMethod(payment.Method),
+            Amount = PaymentPolicy.NormalizePositiveAmount(payment.Amount),
+            Reference = payment.Reference?.Trim()
+        }).ToList();
 
         using var connection = await _connectionFactory.CreateConnectionAsync();
         using var transaction = connection.BeginTransaction();
@@ -235,25 +243,26 @@ public class PosDeliController : ControllerBase
             var normalizedItems = request.Items.Select(item =>
             {
                 var product = products[item.ProductId];
-                var unitPrice = Math.Round((decimal)product.saleprice, 2);
-                var subtotal = Math.Round(item.Quantity * unitPrice, 2);
+                var snapshot = SaleItemPolicy.CreateSnapshot(
+                    item.ProductId,
+                    (string)product.name,
+                    item.Quantity,
+                    (decimal)product.saleprice);
 
                 return new
                 {
-                    item.ProductId,
-                    ProductName = (string)product.name,
-                    item.Quantity,
-                    UnitPrice = unitPrice,
-                    Subtotal = subtotal,
+                    snapshot.ProductId,
+                    snapshot.ProductName,
+                    snapshot.Quantity,
+                    snapshot.UnitPrice,
+                    snapshot.Subtotal,
                     TrackStock = (bool)product.trackstock,
                     CostPrice = (decimal)product.costprice
                 };
             }).ToList();
 
-            var total = normalizedItems.Sum(i => i.Subtotal);
-            var paymentTotal = request.Payments.Sum(p => p.Amount);
-            if (Math.Abs(paymentTotal - total) > 1)
-                throw new ValidationException($"La suma de pagos ({paymentTotal:N2}) no coincide con el total ({total:N2})");
+            var total = PaymentPolicy.RoundMoney(normalizedItems.Sum(i => i.Subtotal));
+            PaymentPolicy.ValidatePaymentTotal(total, normalizedPayments.Select(payment => payment.Amount));
 
             var orderNumber = $"POS-{DateTime.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}";
             var tableNumber = Random.Shared.Next(900000, 999999);
@@ -286,7 +295,7 @@ public class PosDeliController : ControllerBase
                 )
                 RETURNING id";
 
-            var paymentMethod = ResolvePaymentMethod(request.Payments);
+            var paymentMethod = ResolvePaymentMethod(normalizedPayments);
             var orderId = await connection.ExecuteScalarAsync<long>(orderSql, new
             {
                 CompanyId = _tenantContext.CompanyId,
@@ -323,13 +332,13 @@ public class PosDeliController : ControllerBase
                 INSERT INTO sales.order_payments (company_id, order_id, method, amount, reference, created_at)
                 VALUES (@CompanyId, @OrderId, @Method, @Amount, @Reference, NOW())";
 
-            foreach (var payment in request.Payments)
+            foreach (var payment in normalizedPayments)
             {
                 await connection.ExecuteAsync(paymentSql, new
                 {
                     CompanyId = _tenantContext.CompanyId,
                     OrderId = orderId,
-                    Method = payment.Method.Trim().ToLowerInvariant(),
+                    payment.Method,
                     payment.Amount,
                     payment.Reference
                 }, transaction);
@@ -337,20 +346,16 @@ public class PosDeliController : ControllerBase
 
             if (cashRegisterId.HasValue)
             {
-                var totalCashSales = request.Payments
-                    .Where(p => p.Method.Trim().Equals("cash", StringComparison.OrdinalIgnoreCase))
-                    .Sum(p => p.Amount);
-                var totalCardSales = request.Payments
-                    .Where(p => p.Method.Trim().Equals("card", StringComparison.OrdinalIgnoreCase))
-                    .Sum(p => p.Amount);
-                var totalTransferSales = request.Payments
-                    .Where(p => p.Method.Trim().Equals("transfer", StringComparison.OrdinalIgnoreCase)
-                             || p.Method.Trim().Equals("nequi", StringComparison.OrdinalIgnoreCase))
-                    .Sum(p => p.Amount);
-                var totalOtherSales = request.Payments
-                    .Where(p => !new[] { "cash", "card", "transfer", "nequi" }
-                        .Contains(p.Method.Trim().ToLowerInvariant()))
-                    .Sum(p => p.Amount);
+                var accountingPayments = normalizedPayments
+                    .Select(payment => new
+                    {
+                        Method = PaymentPolicy.ToAccountingMethod(payment.Method),
+                        payment.Amount
+                    }).ToList();
+                var totalCashSales = accountingPayments.Where(p => p.Method == "cash").Sum(p => p.Amount);
+                var totalCardSales = accountingPayments.Where(p => p.Method == "card").Sum(p => p.Amount);
+                var totalTransferSales = accountingPayments.Where(p => p.Method == "transfer").Sum(p => p.Amount);
+                var totalOtherSales = accountingPayments.Where(p => p.Method == "other").Sum(p => p.Amount);
 
                 const string updateRegisterSql = @"
                     UPDATE sales.cash_registers
@@ -416,7 +421,7 @@ public class PosDeliController : ControllerBase
                     BranchId = branchId.Value,
                     item.ProductId,
                     Quantity = item.Quantity,
-                    UnitCost = item.UnitPrice,
+                    UnitCost = item.CostPrice,
                     Notes = $"Venta POS Deli - {orderNumber}",
                     CreatedBy = _tenantContext.UserId
                 }, transaction);
@@ -425,7 +430,7 @@ public class PosDeliController : ControllerBase
             transaction.Commit();
 
             var cashReceived = request.CashReceived ?? 0;
-            var change = Math.Max(0, Math.Round(cashReceived - total, 2));
+            var change = Math.Max(0, PaymentPolicy.RoundMoney(cashReceived - total));
 
             _logger.LogInformation("Venta POS-Deli creada. OrderId={OrderId}, Total={Total}", orderId, total);
 
@@ -452,12 +457,6 @@ public class PosDeliController : ControllerBase
 
     private static string ResolvePaymentMethod(IEnumerable<PosDeliPayment> payments)
     {
-        var methods = payments
-            .Where(p => p.Amount > 0 && !string.IsNullOrWhiteSpace(p.Method))
-            .Select(p => p.Method.Trim().ToLowerInvariant())
-            .Distinct()
-            .ToList();
-
-        return methods.Count == 1 ? methods[0] : "mixed";
+        return PaymentPolicy.ResolvePersistedMethod(payments.Select(payment => payment.Method)) ?? "mixed";
     }
 }
