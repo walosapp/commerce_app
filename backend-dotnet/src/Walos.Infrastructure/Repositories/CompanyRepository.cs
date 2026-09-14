@@ -31,6 +31,8 @@ public class CompanyRepository : ICompanyRepository
                     display_name AS DisplayName,
                     email AS Email,
                     phone AS Phone,
+                    tax_id AS TaxId,
+                    address AS Address,
                     logo_url AS LogoUrl,
                     currency AS Currency,
                     timezone AS Timezone,

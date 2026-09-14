@@ -63,6 +63,59 @@ const printerConfigPayload = (config) => ({
   drawerOffTimeMs: Number(config.drawerOffTimeMs),
 });
 
+const receiptPayload = (receipt) => ({
+  companyName: receipt.companyName,
+  companyLegalName: receipt.companyLegalName,
+  companyPhone: receipt.companyPhone,
+  companyTaxId: receipt.companyTaxId,
+  companyAddress: receipt.companyAddress,
+  currency: receipt.currency,
+  timezone: receipt.timezone,
+  orderId: receipt.orderId,
+  orderNumber: receipt.orderNumber,
+  status: receipt.status,
+  refundStatus: receipt.refundStatus,
+  tableName: receipt.tableName,
+  tableNumber: receipt.tableNumber,
+  createdAt: receipt.createdAt,
+  cashierName: receipt.cashierName,
+  items: receipt.items.map((item) => ({
+    productName: item.productName,
+    quantity: item.quantity,
+    unitPrice: item.unitPrice,
+    subtotal: item.subtotal,
+  })),
+  subtotal: receipt.subtotal,
+  discountType: receipt.discountType,
+  discountValue: receipt.discountValue,
+  discountAmount: receipt.discountAmount,
+  finalTotalPaid: receipt.finalTotalPaid,
+  tipAmount: receipt.tipAmount,
+  tipIncluded: receipt.tipIncluded,
+  splitCount: receipt.splitCount,
+  payments: receipt.payments.map((payment) => ({
+    method: payment.method,
+    amount: payment.amount,
+    reference: payment.reference,
+  })),
+  hasCredit: receipt.hasCredit,
+  creditStatus: receipt.creditStatus,
+  creditOriginalTotal: receipt.creditOriginalTotal,
+  creditAmountPaid: receipt.creditAmountPaid,
+  creditAmount: receipt.creditAmount,
+  creditCustomerName: receipt.creditCustomerName,
+});
+
+const printReceiptPayload = (command) => ({
+  documentVersion: command.documentVersion,
+  jobId: command.jobId,
+  companyId: command.companyId,
+  branchId: command.branchId,
+  orderId: command.orderId,
+  receipt: receiptPayload(command.receipt),
+  fingerprint: command.fingerprint,
+});
+
 export const printAgentService = {
   health: () => request('/v1/health'),
 
@@ -99,6 +152,14 @@ export const printAgentService = {
       method: 'POST',
       token,
       body: { jobId: String(jobId) },
+      timeoutMs: 10000,
+    }),
+
+  printReceipt: (token, command) =>
+    request('/v1/commands/print-receipt', {
+      method: 'POST',
+      token,
+      body: printReceiptPayload(command),
       timeoutMs: 10000,
     }),
 };

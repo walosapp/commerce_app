@@ -308,6 +308,19 @@ public class SalesService : ISalesService
         var company = await _companyRepo.GetCompanySettingsAsync(companyId);
         var items = (await _salesRepo.GetOrderItemsAsync(orderId, companyId, branchId)).ToList();
         var payments = (await _orderPaymentRepo.GetByOrderAsync(orderId, companyId)).ToList();
+        var receiptPayments = payments
+            .Select(payment => new ReceiptPaymentDto(payment.Method, payment.Amount, payment.Reference))
+            .ToList();
+        if (receiptPayments.Count == 0 && order.FinalTotalPaid > 0m &&
+            PaymentPolicy.IsAcceptedMethod(order.PaymentMethod))
+        {
+            // Compatibilidad con órdenes anteriores a 016_cash_registers/order_payments:
+            // solo reconstruye el único método/importe realmente persistido.
+            receiptPayments.Add(new ReceiptPaymentDto(
+                PaymentPolicy.NormalizeMethod(order.PaymentMethod),
+                order.FinalTotalPaid,
+                null));
+        }
         var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId, branchId);
 
         var cashierName = "Cajero";
@@ -319,24 +332,37 @@ public class SalesService : ISalesService
 
         // Buscar credito asociado
         bool hasCredit = false;
+        string? creditStatus = null;
+        decimal? creditOriginalTotal = null;
+        decimal? creditAmountPaid = null;
         decimal? creditAmount = null;
         string? creditCustomerName = null;
-        var credits = await _creditRepo.GetCreditsAsync(companyId, order.BranchId, null, order.OrderNumber);
-        var credit = credits.FirstOrDefault();
+        var credit = await _creditRepo.GetCreditByOrderAsync(order.Id, companyId, order.BranchId);
         if (credit != null)
         {
             hasCredit = true;
+            creditStatus = credit.Status;
+            creditOriginalTotal = credit.OriginalTotal;
+            creditAmountPaid = credit.AmountPaid;
             creditAmount = credit.CreditAmount;
             creditCustomerName = credit.CustomerName;
         }
 
         return new ReceiptData(
+            CompanyId: order.CompanyId,
+            BranchId: order.BranchId,
+            Currency: company?.Currency ?? string.Empty,
+            Timezone: company?.Timezone ?? string.Empty,
             CompanyName: company?.Name ?? "Empresa",
             CompanyLegalName: company?.LegalName,
+            CompanyTaxId: company?.TaxId,
+            CompanyAddress: company?.Address,
             CompanyPhone: company?.Phone,
             CompanyLogoUrl: _fileStorage.ResolvePublicReference(company?.LogoUrl),
             OrderId: order.Id,
             OrderNumber: order.OrderNumber,
+            Status: order.Status,
+            RefundStatus: order.RefundStatus,
             TableName: table?.Name ?? $"Mesa {table?.TableNumber ?? 0}",
             TableNumber: table?.TableNumber ?? 0,
             CreatedAt: order.CreatedAt,
@@ -350,8 +376,11 @@ public class SalesService : ISalesService
             TipAmount: order.TipAmount,
             TipIncluded: order.TipIncluded,
             SplitCount: order.SplitReferenceCount,
-            Payments: payments.Select(p => new ReceiptPaymentDto(p.Method, p.Amount, p.Reference)).ToList(),
+            Payments: receiptPayments,
             HasCredit: hasCredit,
+            CreditStatus: creditStatus,
+            CreditOriginalTotal: creditOriginalTotal,
+            CreditAmountPaid: creditAmountPaid,
             CreditAmount: creditAmount,
             CreditCustomerName: creditCustomerName
         );

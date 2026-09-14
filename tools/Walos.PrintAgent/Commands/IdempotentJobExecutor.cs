@@ -18,6 +18,7 @@ public sealed class IdempotentJobExecutor(AgentStateStore store)
         CancellationToken ct) => await ExecuteAsync(
             jobId,
             command,
+            null,
             static () => true,
             async (_, token) => await operation(token),
             ct);
@@ -25,6 +26,20 @@ public sealed class IdempotentJobExecutor(AgentStateStore store)
     public async Task<JobExecutionResult> ExecuteAsync<TPrepared>(
         string jobId,
         string command,
+        Func<TPrepared> prepare,
+        Func<TPrepared, CancellationToken, Task> operation,
+        CancellationToken ct) => await ExecuteAsync(
+            jobId,
+            command,
+            null,
+            prepare,
+            operation,
+            ct);
+
+    public async Task<JobExecutionResult> ExecuteAsync<TPrepared>(
+        string jobId,
+        string command,
+        string? fingerprint,
         Func<TPrepared> prepare,
         Func<TPrepared, CancellationToken, Task> operation,
         CancellationToken ct)
@@ -35,7 +50,8 @@ public sealed class IdempotentJobExecutor(AgentStateStore store)
             var previous = store.GetJob(jobId);
             if (previous is not null)
             {
-                if (!previous.Command.Equals(command, StringComparison.Ordinal))
+                if (!previous.Command.Equals(command, StringComparison.Ordinal) ||
+                    !string.Equals(previous.Fingerprint, fingerprint, StringComparison.Ordinal))
                 {
                     throw new JobConflictException(jobId);
                 }
@@ -61,7 +77,8 @@ public sealed class IdempotentJobExecutor(AgentStateStore store)
                 command,
                 "reserved",
                 DateTimeOffset.UtcNow,
-                null), ct);
+                null,
+                fingerprint), ct);
             try
             {
                 await operation(prepared, ct);

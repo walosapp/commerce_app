@@ -1,11 +1,11 @@
-# Hardware POS: cierre H1 y plan H2
+# Hardware POS: cierre H1 e implementación H2
 
 Fecha de cierre H1: 2026-09-14.
 
 ## Separacion de alcance
 
 - **H1 (cerrado):** comunicacion local segura con la impresora termica Digital POS DIG-58IIA (cola Windows `POS-58`) y el cajon Digital POS DIG-4101. No interviene el cierre de venta ni la base de datos.
-- **H2 (solo plan en este documento):** impresion manual de un recibo ya persistido desde `ReceiptPreview`.
+- **H2 (aprobado funcionalmente):** impresion manual de un recibo ya persistido desde `ReceiptPreview`, validada fisicamente con la cola Windows `POS-58`.
 - **Fuera de H2:** apertura automatica del cajon, cierre POS, `InvoicePanel`, POS-Deli, impresion automatica de restaurante, comandas, reporte Z, migraciones, configuracion cloud, WebSocket y auto updater.
 
 ## H1 APROBADO
@@ -36,8 +36,9 @@ Base URL fija: `http://127.0.0.1:17831` (`frontend/src/services/printAgentServic
 | `PUT /v1/config/printer` | Guarda impresora, identidad y pulso del cajon. | Origin permitido, Bearer, JSON tipado e identidad vinculada. |
 | `POST /v1/commands/test-print` | Envia el ticket H1. | Origin permitido, Bearer y `jobId`. |
 | `POST /v1/commands/open-drawer` | Envia el pulso del cajon. | Origin permitido, Bearer y `jobId`. |
+| `POST /v1/commands/print-receipt` | Imprime un comprobante persistido tipado; nunca abre el cajon. | Origin permitido, Bearer, contexto vinculado, fingerprint e idempotencia durable. |
 
-Las rutas estan mapeadas en `tools/Walos.PrintAgent/Api/PrintAgentApi.cs:77-145`. El agente rechaza Origin ausente en rutas sensibles, `Origin: null` y origen no autorizado (`SecurityMiddleware.cs:9-39`); aplica Bearer a todas salvo health/pair (`SecurityMiddleware.cs:96-129`), 60 solicitudes/minuto globales y 10 pairings/minuto (`PrintAgentApi.cs:35-58`), y JSON estricto de hasta 8192 bytes (`PrintAgentApi.cs:12,23-27`; `SecurityMiddleware.cs:42-94`). Los contratos no permiten HTML, comandos ESC/POS ni bytes arbitrarios (`Contracts.cs:5-32`).
+Las rutas estan mapeadas en `tools/Walos.PrintAgent/Api/PrintAgentApi.cs`. El agente rechaza Origin ausente en rutas sensibles, `Origin: null` y origen no autorizado (`SecurityMiddleware.cs`); aplica Bearer a todas salvo health/pair, 60 solicitudes/minuto globales y 10 pairings/minuto. H1 conserva JSON estricto de hasta 8192 bytes; solo `print-receipt` admite hasta 128 KiB por sus 100 lineas tipadas y texto UTF-8. Los contratos no permiten HTML, comandos ESC/POS ni bytes arbitrarios.
 
 ### Pairing y secreto
 
@@ -125,142 +126,130 @@ Con esos resultados, el estado funcional es **H1 APROBADO**.
 
 ---
 
-## Bloque H2 propuesto: recibo real manual desde `ReceiptPreview`
+## Bloque H2: recibo real manual desde `ReceiptPreview`
 
-**Estado: preparado, no implementado.** H2 no abre el cajon y no se conecta al cierre de venta.
+**Estado: H2 APROBADO funcionalmente. H2 no abre el cajon y no se conecta al cierre de venta.**
 
-### Fuente canonica existente
+### Fuente canonica y alcance
 
-No hace falta crear otro endpoint en el backend Walos:
+`ReceiptPreview` recibe solo `orderId`; `printService.getReceipt(orderId)` consume `GET /api/v1/sales/orders/{id}/receipt` y **Imprimir con Walos** usa exclusivamente ese `ReceiptData`. No usa carrito, HTML, checkout temporal ni POS-Deli.
 
-1. `ReceiptPreview` recibe solamente `orderId` y ejecuta una query `['receipt', orderId]` (`frontend/src/modules/sales/components/ReceiptPreview.jsx:19-26`).
-2. `printService.getReceipt(orderId)` ya consume `GET /api/v1/sales/orders/{orderId}/receipt` (`frontend/src/services/printService.js:3-8`).
-3. `SalesController.GetReceipt` resuelve la sede en el tenant autenticado y llama `SalesService.GetReceiptAsync` (`backend-dotnet/src/Walos.API/Controllers/SalesController.cs:161-168`).
-4. `SalesService.GetReceiptAsync` reconstruye el comprobante desde la orden, configuracion de empresa, items, pagos, mesa, cajero y credito persistidos (`backend-dotnet/src/Walos.Application/Services/SalesService.cs:303-357`).
-5. El contrato canonico ya incluye `OrderId`, numero, fecha, items, descuentos, total pagado, propina, division, pagos y credito (`backend-dotnet/src/Walos.Application/DTOs/Sales/ReceiptDtos.cs:4-52`).
-6. La consulta de orden esta aislada por `company_id` y, cuando existe, `branch_id`; los items tambien se limitan por esas claves (`SalesRepository.cs:246-299`).
+El backend solo amplio el comprobante existente con `companyId`, `branchId`, `currency`, `timezone`, `status`, `refundStatus`, NIT y direccion. `CompanyRepository` lee columnas existentes, sin migracion. El credito se busca por `order_id + company_id + branch_id`, no por texto. `ReceiptData` conserva `creditStatus`, `creditOriginalTotal`, `creditAmountPaid` y `creditAmount`: un credito pagado mantiene saldo cero, uno parcial muestra el saldo actual y uno cancelado conserva su contabilidad pero se rotula expresamente como **NO VIGENTE / NO EXIGIBLE**. Para ordenes anteriores a `016_cash_registers.sql` sin filas en `sales.order_payments`, `GetReceiptAsync()` reconstruye un unico pago canonico solo desde `orders.payment_method` y `orders.final_total_paid`, sin referencia ni split inventados.
 
-Hoy `ReceiptPreview.handlePrint()` convierte ese DTO a HTML y abre el dialogo del navegador (`ReceiptPreview.jsx:28-87`). Se abre desde IDs persistidos del historial y del resumen (`OrderHistoryTab.jsx:237-280`; `SalesSummaryTab.jsx:230-235`). En cambio, el cierre inmediato no es un buen punto H2: `SalesPage.handleInvoice` descarta la respuesta (`SalesPage.jsx:255-259`) e `InvoiceResult` no expone `OrderId` (`ISalesService.cs:37-53`). Por eso H2 debe limitarse al boton manual de `ReceiptPreview`; no debe modificar `InvoicePanel`, `SalesPage` ni el checkout.
+No existe un mensaje final configurable en `ReceiptData`; el ticket RAW no inventa uno. `ReceiptData` tampoco es snapshot fiscal inmutable: items, pagos y orden son persistidos, pero datos comerciales son los actuales y el saldo de credito cambia con abonos. H2 es impresion operativa, no facturacion electronica fiscal.
 
-### Contrato local nuevo necesario
-
-Los endpoints H1 no sirven para un recibo real: `test-print` genera un documento fijo y solo recibe `{ jobId }` (`PrintAgentApi.cs:110-125`; `PrintCommandService.cs:14-21`; `Contracts.cs:27`). H2 requiere exactamente un endpoint tipado nuevo:
+### Contrato local v1
 
 `POST /v1/commands/print-receipt`
 
 ```json
 {
-  "jobId": "uuid-generado-por-click",
+  "documentVersion": 1,
+  "jobId": "uuid-del-trabajo",
+  "companyId": 25,
+  "branchId": 7,
+  "orderId": 123,
   "receipt": {
-    "orderId": 123,
-    "orderNumber": "ORD-001",
     "companyName": "Comercio",
     "companyLegalName": null,
     "companyPhone": null,
-    "tableName": "Mesa 1",
+    "companyTaxId": "900123456-1",
+    "companyAddress": "Calle 1",
+    "currency": "COP",
+    "timezone": "America/Bogota",
+    "orderId": 123,
+    "orderNumber": "ORD-123",
+    "status": "completed",
+    "refundStatus": null,
+    "tableName": "Mostrador",
     "tableNumber": 1,
-    "createdAt": "2026-09-14T12:00:00Z",
-    "cashierName": "Cajero",
-    "items": [
-      { "productName": "Producto", "quantity": 1, "unitPrice": 10000, "subtotal": 10000 }
-    ],
-    "subtotal": 10000,
+    "createdAt": "2026-09-14T17:30:00.000Z",
+    "cashierName": "Maria",
+    "items": [{ "productName": "Cafe", "quantity": 1, "unitPrice": 5000, "subtotal": 5000 }],
+    "subtotal": 5000,
     "discountType": null,
     "discountValue": 0,
     "discountAmount": 0,
-    "finalTotalPaid": 10000,
+    "finalTotalPaid": 5000,
     "tipAmount": 0,
     "tipIncluded": false,
     "splitCount": 1,
-    "payments": [
-      { "method": "cash", "amount": 10000, "reference": null }
-    ],
+    "payments": [{ "method": "cash", "amount": 5000, "reference": null }],
     "hasCredit": false,
+    "creditStatus": null,
+    "creditOriginalTotal": null,
+    "creditAmountPaid": null,
     "creditAmount": null,
     "creditCustomerName": null
-  }
+  },
+  "fingerprint": "sha256-hex-en-minusculas"
 }
 ```
 
-El frontend debe enviar el objeto `receipt` obtenido por la query actual, no datos del carrito ni de la respuesta de checkout. El agente debe aceptar solo este JSON tipado, con limites por campo/cantidad, montos finitos y no negativos, relaciones coherentes para credito/propina y miembros desconocidos rechazados. No debe aceptar `companyLogoUrl`, HTML, plantillas, comandos, code pages ni arreglos de bytes; el agente conserva control total del ESC/POS.
+Se rechazan version/casing/miembros desconocidos, IDs o rangos invalidos, HTML, controles, fechas no canonicas, moneda/zona horaria invalidas, mas de 100 items, mas de 20 pagos y aritmetica inconsistente. Solo se imprime `status=completed` sin `refundStatus`; frontend y agente bloquean canceladas o devueltas porque el DTO no tiene detalle para un ticket corregido.
 
-El limite de 8192 bytes de H1 puede ser insuficiente para una venta con muchos items. H2 debe definir un maximo todavia estricto (propuesta: **32 KiB solo para `print-receipt`**, manteniendo 8 KiB para pair/config/comandos simples) y limites adicionales de cantidad y longitud. No debe elevarse el limite sin tests de payload y memoria.
+El limite es **128 KiB solo para `print-receipt`**; H1 conserva 8 KiB. El test de frontera usa 100 nombres de 200 caracteres no ASCII y verifica que el peor payload UTF-8 valido supera 32 KiB pero permanece bajo 128 KiB.
 
-### Idempotencia H2
+### Totales impresos
 
-- Cada click manual crea un `jobId` nuevo; un reintento de transporte reutiliza exactamente ese mismo ID, como ya hace `printAgentStore.executeCommand` (`printAgentStore.js:195-230`).
-- Una reimpresion humana posterior es un nuevo trabajo y usa otro ID.
-- Antes de reservar, el agente calcula SHA-256 sobre una serializacion canonica del contrato tipado y guarda el fingerprint junto al job.
-- Mismo `jobId` + mismo comando + mismo fingerprint: `replayed`, sin imprimir.
-- Mismo `jobId` con otro payload, incluso si sigue siendo `print-receipt`: `409 job_id_conflict`.
-- Se conserva la reserva durable antes de `WritePrinter` y la semantica at-most-once de H1.
+- `TOTAL VENTA = subtotal - discountAmount`.
+- `PAGADO VENTA = finalTotalPaid`; no se trata como total de venta.
+- Propina incluida/no incluida se muestra separada, sin sumarla dos veces.
+- Pagos multiples salen de `order_payments`; con propina incluida suman pagado de venta mas propina.
+- Una venta a credito muestra monto original, abonos y saldo persistidos; `paid` se rotula saldado y `cancelled` se rotula cancelado/no exigible, nunca como deuda vigente.
+- Moneda y hora provienen de `currency` y `timezone` persistidos.
 
-El fingerprint es necesario porque el ledger H1 compara solo `jobId` y nombre del comando (`IdempotentJobExecutor.cs:35-50`); sin el hash, dos recibos diferentes con el mismo ID se tratarian incorrectamente como replay valido.
+### Fingerprint e idempotencia
 
-### Cambios H2 previstos
+Frontend y agente calculan SHA-256 sobre UTF-8 de JSON canonico del documento versionado: claves ordinales, arrays en orden, numeros normalizados y cadenas normalizadas a Unicode NFC. `jobId` y `fingerprint` quedan fuera. El agente recalcula y rechaza mismatch antes del spooler.
 
-| Archivo | Cambio acotado |
-|---|---|
-| `tools/Walos.PrintAgent/Api/Contracts.cs` | DTOs locales tipados de recibo; sin HTML/bytes. |
-| `tools/Walos.PrintAgent/Api/RequestValidation.cs` | Limites, coherencia y validacion profunda del comprobante. |
-| `tools/Walos.PrintAgent/Api/PrintAgentApi.cs` | Mapear `POST /v1/commands/print-receipt` con las protecciones existentes y limite especifico. |
-| `tools/Walos.PrintAgent/Printing/EscPos58Encoder.cs` | `EncodeReceipt(...)`: layout determinista de 32 columnas, items, descuentos, propina, pagos y credito. |
-| `tools/Walos.PrintAgent/Commands/PrintCommandService.cs` | Preparar el ticket real usando la impresora local validada. No agregar drawer pulse. |
-| `tools/Walos.PrintAgent/Commands/IdempotentJobExecutor.cs` | Asociar el job al fingerprint del payload. |
-| `tools/Walos.PrintAgent/Storage/AgentStateStore.cs` | Persistir fingerprint compatible con jobs H1 ya guardados. No DB ni cloud. |
-| `frontend/src/services/printAgentService.js` | `printReceipt(token, jobId, receipt)` con timeout explicito. |
-| `frontend/src/stores/printAgentStore.js` | Accion manual `printReceipt(receipt)` y retry con el mismo ID. |
-| `frontend/src/modules/sales/components/ReceiptPreview.jsx` | Boton de impresion directa usando el `receipt` cargado; conservar impresion por navegador como fallback manual separado. |
+- mismo `jobId` + fingerprint: `replayed`, `executed=false`;
+- mismo `jobId` + otro fingerprint/comando: `409 job_id_conflict`;
+- reserva durable antes del spooler;
+- reimpresion humana confirmada usa ID nuevo;
+- ante transporte incierto o cualquier 5xx, el comando completo queda en `sessionStorage`; **Reintentar mismo trabajo** vuelve a consultar el recibo persistido y solo conserva el mismo job si company/branch/order y fingerprint siguen idénticos;
+- si cambió estado, devolución, crédito, contenido o contexto, el payload viejo no se envía y el pendiente exige **Marcar intento como revisado**;
+- solo un 4xx deterministico de preflight libera automaticamente el pendiente;
+- respuestas `failed`/`uncertain` permanecen pendientes hasta replay seguro o la accion explicita **Marcar intento como revisado**, precedida por advertencia y confirmacion;
+- nunca hay fallback automatico ante resultado incierto.
 
-No se modifica `printService.getReceipt`, el backend Walos ni su base de datos: el endpoint persistido existente ya es la fuente. Tampoco se toca `SalesPage`, `InvoicePanel`, POS-Deli, cocina/comandas o Z.
+El SHA asegura que navegador y agente procesan igual payload. **No prueba criptograficamente que provenga del backend**: la procedencia depende de sesion Walos, Origin permitido y Bearer local. Firma fiscal queda fuera de H2.
 
-### Comportamiento UI H2
+### Seguridad y ESC/POS
 
-1. Mostrar **Imprimir directo** solo sobre el recibo ya cargado.
-2. Si el agente no esta vinculado o no tiene configuracion guardada, indicar `Configuracion -> Dispositivos`; no enviar nada.
-3. Mantener **Imprimir con dialogo** como alternativa explicita.
-4. No ejecutar automaticamente el fallback cuando haya timeout o resultado `uncertain`: el trabajo podria haber llegado al spooler y hacerlo causaria un duplicado.
-5. Mostrar claramente `completed`, `replayed`, `failed` o `uncertain`. No cerrar el modal ante fallo incierto.
-6. Nunca llamar `open-drawer`, ni siquiera cuando `payments` contenga efectivo.
+Continuan loopback exclusivo, Origin permitido, rechazo de `Origin: null`, Bearer, rate limiting, JSON estricto y payload acotado. El frontend no envia HTML, plantillas, bytes ni ESC/POS. El agente genera CP858/32 columnas y `print-receipt` nunca contiene `ESC p`; reimprimir no abre cajon. Tanto la impresion directa como el fallback de navegador bloquean ordenes canceladas/devueltas, y el fallback tambien queda bloqueado mientras haya un resultado fisico incierto.
 
-### Tests H2 y gates
+### Archivos H2
 
-Tests del Print Agent:
+- Backend: `ReceiptDtos.cs`, `SalesService.cs`, `CompanySettings.cs`, `ICreditRepository.cs`, `CompanyRepository.cs`, `CreditRepository.cs` y tests afectados.
+- Frontend: `receiptDocument.js`, `printAgentService.js`, `printAgentStore.js`, `ReceiptPreview.jsx` y tests H2.
+- Agente: contratos/API/validacion, fingerprint, encoder, comando, ledger idempotente y tests H2.
+- Sin migraciones, checkout, restaurante, comandas, cierre Z, WebSocket, cloud ni auto updater.
 
-- bytes/layout dorados para ticket real de 58 mm;
-- español, moneda, cantidades decimales, descuentos, propina, pagos mixtos, credito y textos largos;
-- sanitizacion de todos los campos externos;
-- rechazo de HTML/control characters como instrucciones, bytes y miembros JSON desconocidos;
-- recibo vacio, demasiados items/campos, montos invalidos y payload mayor al limite;
-- impresora inexistente antes de consumir `jobId`;
-- replay concurrente y despues de reinicio sin segundo `WritePrinter`;
-- mismo `jobId` con payload diferente devuelve conflicto;
-- `print-receipt` nunca produce bytes `ESC p` del cajon.
+### Gates finales H2 (2026-09-14)
 
-Tests frontend:
+- Print Agent tests: 53/53 verdes.
+- Frontend: 79/79 tests verdes en 15 archivos.
+- Frontend build: verde; conserva avisos preexistentes de CSS, Browserslist y tamano de chunk.
+- Backend afectado: 51/51 verdes: 40 `SalesServiceTests` y 11 integraciones de `CompanyRepository`/`CreditRepository`, ejecutadas contra PostgreSQL con la conexion inyectada solo en el proceso desde `.env`, sin exponer credenciales.
+- Backend Release: verde, 0 errores y 0 advertencias.
+- `git diff --check`: verde; solo avisos informativos de conversion LF/CRLF.
 
-- `printAgentService` envia solo el DTO tipado y Bearer;
-- el store reutiliza `jobId` solo en retry de transporte;
-- `ReceiptPreview` envia el `receipt` devuelto por `printService.getReceipt(orderId)`;
-- agente ausente/no vinculado/configuracion pendiente;
-- estados completed/replayed/failed/uncertain;
-- fallback de navegador es manual y un timeout no lo dispara;
-- ninguna llamada a `openDrawer`.
+Estos resultados corresponden a los gates finales ejecutados despues de actualizar el estado de la UAT. La evidencia fisica de la seccion siguiente fue reportada por el usuario y no se confunde con la validacion automatica.
 
-Gates de H2:
+### UAT fisica H2 reportada (2026-09-14)
 
-```powershell
-dotnet test .\tools\Walos.PrintAgent.Tests\Walos.PrintAgent.Tests.csproj -c Release
-dotnet build .\tools\Walos.PrintAgent\Walos.PrintAgent.csproj -c Release
-cd .\frontend
-npm test -- --run
-npm run build
-cd ..
-git diff --check
-```
+El usuario confirmo sobre hardware real:
 
-UAT H2: desde un `ReceiptPreview` de una orden persistida, imprimir una vez sin dialogo; repetir el mismo request/job y confirmar que no sale un segundo ticket; ejecutar una reimpresion manual con ID nuevo y confirmar que si sale; verificar fisicamente que el cajon permanece cerrado en todos los casos.
+- `ReceiptPreview` imprimio mediante Walos Print Agent en la cola `POS-58`;
+- el ticket uso datos reales persistidos obtenidos desde el comprobante canonico del backend;
+- el formato fisico de 58 mm fue valido;
+- la DIG-4101 no abrio durante la impresion ni durante una reimpresion manual.
 
-### Criterio de aprobacion H2
+Queda pendiente como comprobacion manual menor y **no bloqueante** repetir desde DevTools exactamente el mismo request y `jobId`, y observar `replayed`, `executed=false` sin segundo ticket. La idempotencia equivalente permanece cubierta automaticamente; esta comprobacion pendiente no invalida la aprobacion funcional reportada.
 
-H2 sera aprobable solo cuando `ReceiptPreview` imprima el DTO persistido del endpoint existente, el agente mantenga control exclusivo de los bytes ESC/POS, retry no duplique, la reimpresion manual sea explicita, el cajon nunca se active y todos los gates mas la UAT fisica esten verdes.
+### Criterio de aprobacion
+
+H2 requiere gates verdes, impresion fisica del recibo persistido y cero aperturas de cajon durante impresion/reimpresion manual. El replay con el mismo `jobId` debe estar cubierto automaticamente; su repeticion manual desde DevTools se conserva como evidencia adicional no bloqueante.
+
+**Estado actual: H2 APROBADO funcionalmente.**

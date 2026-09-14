@@ -6,6 +6,7 @@ public interface ICreditRepository
 {
     Task<Credit> CreateCreditAsync(Credit credit);
     Task<IEnumerable<Credit>> GetCreditsAsync(long companyId, long branchId, string? status, string? search);
+    Task<Credit?> GetCreditByOrderAsync(long orderId, long companyId, long branchId);
     Task<Credit?> GetCreditByIdAsync(long creditId, long companyId, long branchId);
     Task<CreditPayment> AddPaymentAsync(CreditPayment payment);
     Task<Credit> ProcessPaymentAsync(CreditPaymentCommand command);

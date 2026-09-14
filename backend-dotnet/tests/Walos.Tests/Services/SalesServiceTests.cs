@@ -92,24 +92,213 @@ public class SalesServiceTests
                 CompanyId = CompanyId,
                 BranchId = BranchId,
                 TableId = tableId,
-                OrderNumber = "ORD-50"
+                OrderNumber = "ORD-50",
+                Status = "completed",
+                RefundStatus = "partial_refund"
             });
         _companyRepoMock.Setup(r => r.GetCompanySettingsAsync(CompanyId))
-            .ReturnsAsync(new CompanySettings { Id = CompanyId, Name = "Walos", LogoUrl = objectKey });
+            .ReturnsAsync(new CompanySettings
+            {
+                Id = CompanyId,
+                Name = "Walos",
+                TaxId = "900123456-7",
+                Address = "Calle 1 # 2-3",
+                Currency = "COP",
+                Timezone = "America/Bogota",
+                LogoUrl = objectKey
+            });
         _salesRepoMock.Setup(r => r.GetOrderItemsAsync(orderId, CompanyId, BranchId))
             .ReturnsAsync([]);
         _orderPaymentRepoMock.Setup(r => r.GetByOrderAsync(orderId, CompanyId))
             .ReturnsAsync([]);
         _salesRepoMock.Setup(r => r.GetTableByIdAsync(tableId, CompanyId, BranchId))
             .ReturnsAsync(new SalesTable { Id = tableId, CompanyId = CompanyId, BranchId = BranchId, TableNumber = 1 });
-        _creditRepoMock.Setup(r => r.GetCreditsAsync(CompanyId, BranchId, null, "ORD-50"))
-            .ReturnsAsync([]);
+        _creditRepoMock.Setup(r => r.GetCreditByOrderAsync(orderId, CompanyId, BranchId))
+            .ReturnsAsync((Credit?)null);
         _fileStorageMock.Setup(s => s.IsManagedReference(objectKey)).Returns(true);
         _fileStorageMock.Setup(s => s.GetPublicUrl(objectKey)).Returns(publicUrl);
 
         var receipt = await _service.GetReceiptAsync(CompanyId, BranchId, orderId);
 
         Assert.Equal(publicUrl, receipt.CompanyLogoUrl);
+        Assert.Equal(CompanyId, receipt.CompanyId);
+        Assert.Equal(BranchId, receipt.BranchId);
+        Assert.Equal("900123456-7", receipt.CompanyTaxId);
+        Assert.Equal("Calle 1 # 2-3", receipt.CompanyAddress);
+        Assert.Equal("COP", receipt.Currency);
+        Assert.Equal("America/Bogota", receipt.Timezone);
+        Assert.Equal("completed", receipt.Status);
+        Assert.Equal("partial_refund", receipt.RefundStatus);
+        _creditRepoMock.Verify(r => r.GetCreditByOrderAsync(orderId, CompanyId, BranchId), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetReceipt_Maps_Credit_By_Persisted_Order_Id()
+    {
+        const long orderId = 51;
+        const long tableId = 71;
+        _salesRepoMock.Setup(r => r.GetOrderByIdAsync(orderId, CompanyId, BranchId))
+            .ReturnsAsync(new Order
+            {
+                Id = orderId,
+                CompanyId = CompanyId,
+                BranchId = BranchId,
+                TableId = tableId,
+                OrderNumber = "ORD-51",
+                Status = "completed",
+                Subtotal = 100000m,
+                PaymentMethod = "cash",
+                FinalTotalPaid = 80000m
+            });
+        _companyRepoMock.Setup(r => r.GetCompanySettingsAsync(CompanyId))
+            .ReturnsAsync(new CompanySettings { Id = CompanyId, Name = "Walos" });
+        _salesRepoMock.Setup(r => r.GetOrderItemsAsync(orderId, CompanyId, BranchId)).ReturnsAsync([]);
+        _orderPaymentRepoMock.Setup(r => r.GetByOrderAsync(orderId, CompanyId)).ReturnsAsync([]);
+        _salesRepoMock.Setup(r => r.GetTableByIdAsync(tableId, CompanyId, BranchId))
+            .ReturnsAsync(new SalesTable { Id = tableId, CompanyId = CompanyId, BranchId = BranchId });
+        _creditRepoMock.Setup(r => r.GetCreditByOrderAsync(orderId, CompanyId, BranchId))
+            .ReturnsAsync(new Credit
+            {
+                OrderId = orderId,
+                CompanyId = CompanyId,
+                BranchId = BranchId,
+                OriginalTotal = 100000m,
+                AmountPaid = 80000m,
+                CreditAmount = 20000m,
+                CustomerName = "Cliente credito",
+                Status = "pending"
+            });
+
+        var receipt = await _service.GetReceiptAsync(CompanyId, BranchId, orderId);
+
+        Assert.True(receipt.HasCredit);
+        Assert.Equal("pending", receipt.CreditStatus);
+        Assert.Equal(100000m, receipt.CreditOriginalTotal);
+        Assert.Equal(80000m, receipt.CreditAmountPaid);
+        Assert.Equal(20000m, receipt.CreditAmount);
+        Assert.Equal("Cliente credito", receipt.CreditCustomerName);
+        _creditRepoMock.Verify(r => r.GetCreditByOrderAsync(orderId, CompanyId, BranchId), Times.Once);
+        _creditRepoMock.Verify(
+            r => r.GetCreditsAsync(It.IsAny<long>(), It.IsAny<long>(), It.IsAny<string?>(), It.IsAny<string?>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetReceipt_Preserves_Paid_Credit_As_Zero_Balance()
+    {
+        const long orderId = 52;
+        _salesRepoMock.Setup(r => r.GetOrderByIdAsync(orderId, CompanyId, BranchId))
+            .ReturnsAsync(new Order
+            {
+                Id = orderId,
+                CompanyId = CompanyId,
+                BranchId = BranchId,
+                OrderNumber = "ORD-52",
+                Status = "completed"
+            });
+        _companyRepoMock.Setup(r => r.GetCompanySettingsAsync(CompanyId))
+            .ReturnsAsync(new CompanySettings { Id = CompanyId, Name = "Walos" });
+        _salesRepoMock.Setup(r => r.GetOrderItemsAsync(orderId, CompanyId, BranchId)).ReturnsAsync([]);
+        _orderPaymentRepoMock.Setup(r => r.GetByOrderAsync(orderId, CompanyId)).ReturnsAsync([]);
+        _salesRepoMock.Setup(r => r.GetTableByIdAsync(0, CompanyId, BranchId)).ReturnsAsync((SalesTable?)null);
+        _creditRepoMock.Setup(r => r.GetCreditByOrderAsync(orderId, CompanyId, BranchId))
+            .ReturnsAsync(new Credit
+            {
+                OrderId = orderId,
+                CompanyId = CompanyId,
+                BranchId = BranchId,
+                OriginalTotal = 0m,
+                AmountPaid = 0m,
+                CreditAmount = 0m,
+                CustomerName = "Cliente saldado",
+                Status = "paid"
+            });
+
+        var receipt = await _service.GetReceiptAsync(CompanyId, BranchId, orderId);
+
+        Assert.True(receipt.HasCredit);
+        Assert.Equal("paid", receipt.CreditStatus);
+        Assert.Equal(0m, receipt.CreditOriginalTotal);
+        Assert.Equal(0m, receipt.CreditAmountPaid);
+        Assert.Equal(0m, receipt.CreditAmount);
+        Assert.Equal("Cliente saldado", receipt.CreditCustomerName);
+    }
+
+    [Fact]
+    public async Task GetReceipt_Preserves_Cancelled_Credit_As_NonCurrent_With_Accounting()
+    {
+        const long orderId = 53;
+        _salesRepoMock.Setup(r => r.GetOrderByIdAsync(orderId, CompanyId, BranchId))
+            .ReturnsAsync(new Order
+            {
+                Id = orderId,
+                CompanyId = CompanyId,
+                BranchId = BranchId,
+                OrderNumber = "ORD-53",
+                Status = "completed",
+                Subtotal = 20000m,
+                PaymentMethod = "cash",
+                FinalTotalPaid = 5000m
+            });
+        _companyRepoMock.Setup(r => r.GetCompanySettingsAsync(CompanyId))
+            .ReturnsAsync(new CompanySettings { Id = CompanyId, Name = "Walos" });
+        _salesRepoMock.Setup(r => r.GetOrderItemsAsync(orderId, CompanyId, BranchId)).ReturnsAsync([]);
+        _orderPaymentRepoMock.Setup(r => r.GetByOrderAsync(orderId, CompanyId)).ReturnsAsync([]);
+        _salesRepoMock.Setup(r => r.GetTableByIdAsync(0, CompanyId, BranchId)).ReturnsAsync((SalesTable?)null);
+        _creditRepoMock.Setup(r => r.GetCreditByOrderAsync(orderId, CompanyId, BranchId))
+            .ReturnsAsync(new Credit
+            {
+                OrderId = orderId,
+                CompanyId = CompanyId,
+                BranchId = BranchId,
+                OriginalTotal = 20000m,
+                AmountPaid = 5000m,
+                CreditAmount = 15000m,
+                CustomerName = "Cliente cancelado",
+                Status = "cancelled"
+            });
+
+        var receipt = await _service.GetReceiptAsync(CompanyId, BranchId, orderId);
+
+        Assert.True(receipt.HasCredit);
+        Assert.Equal("cancelled", receipt.CreditStatus);
+        Assert.Equal(20000m, receipt.CreditOriginalTotal);
+        Assert.Equal(5000m, receipt.CreditAmountPaid);
+        Assert.Equal(15000m, receipt.CreditAmount);
+        Assert.Equal("Cliente cancelado", receipt.CreditCustomerName);
+        var payment = Assert.Single(receipt.Payments);
+        Assert.Equal(5000m, payment.Amount);
+    }
+
+    [Fact]
+    public async Task GetReceipt_Reconstructs_Legacy_Payment_From_Persisted_Order_Fields()
+    {
+        const long orderId = 54;
+        _salesRepoMock.Setup(r => r.GetOrderByIdAsync(orderId, CompanyId, BranchId))
+            .ReturnsAsync(new Order
+            {
+                Id = orderId,
+                CompanyId = CompanyId,
+                BranchId = BranchId,
+                OrderNumber = "ORD-54",
+                Status = "completed",
+                PaymentMethod = " CASH ",
+                FinalTotalPaid = 5000m
+            });
+        _companyRepoMock.Setup(r => r.GetCompanySettingsAsync(CompanyId))
+            .ReturnsAsync(new CompanySettings { Id = CompanyId, Name = "Walos" });
+        _salesRepoMock.Setup(r => r.GetOrderItemsAsync(orderId, CompanyId, BranchId)).ReturnsAsync([]);
+        _orderPaymentRepoMock.Setup(r => r.GetByOrderAsync(orderId, CompanyId)).ReturnsAsync([]);
+        _salesRepoMock.Setup(r => r.GetTableByIdAsync(0, CompanyId, BranchId)).ReturnsAsync((SalesTable?)null);
+        _creditRepoMock.Setup(r => r.GetCreditByOrderAsync(orderId, CompanyId, BranchId))
+            .ReturnsAsync((Credit?)null);
+
+        var receipt = await _service.GetReceiptAsync(CompanyId, BranchId, orderId);
+
+        var payment = Assert.Single(receipt.Payments);
+        Assert.Equal("cash", payment.Method);
+        Assert.Equal(5000m, payment.Amount);
+        Assert.Null(payment.Reference);
     }
 
     [Fact]

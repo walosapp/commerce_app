@@ -26,6 +26,59 @@ public sealed record JobCommandRequest(string JobId);
 
 public sealed record JobCommandResponse(string JobId, string Status, bool Executed);
 
+public sealed record PrintReceiptRequest(
+    int DocumentVersion,
+    string JobId,
+    long CompanyId,
+    long BranchId,
+    long OrderId,
+    ReceiptDocument Receipt,
+    string Fingerprint);
+
+public sealed record ReceiptDocument(
+    string CompanyName,
+    string? CompanyLegalName,
+    string? CompanyPhone,
+    string? CompanyTaxId,
+    string? CompanyAddress,
+    string Currency,
+    string Timezone,
+    long OrderId,
+    string OrderNumber,
+    string Status,
+    string? RefundStatus,
+    string TableName,
+    int TableNumber,
+    string CreatedAt,
+    string CashierName,
+    IReadOnlyList<ReceiptItemDocument> Items,
+    decimal Subtotal,
+    string? DiscountType,
+    decimal DiscountValue,
+    decimal DiscountAmount,
+    decimal FinalTotalPaid,
+    decimal TipAmount,
+    bool TipIncluded,
+    int SplitCount,
+    IReadOnlyList<ReceiptPaymentDocument> Payments,
+    bool HasCredit,
+    string? CreditStatus,
+    decimal? CreditOriginalTotal,
+    decimal? CreditAmountPaid,
+    decimal? CreditAmount,
+    string? CreditCustomerName);
+
+public sealed record ReceiptItemDocument(
+    string ProductName,
+    decimal Quantity,
+    decimal UnitPrice,
+    decimal Subtotal);
+
+public sealed record ReceiptPaymentDocument(
+    string Method,
+    decimal Amount,
+    string? Reference);
+
 public sealed record PrintersResponse(
     IReadOnlyList<PrinterDescriptor> Printers,
     string? SelectedPrinter);

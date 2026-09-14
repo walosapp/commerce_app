@@ -11,7 +11,9 @@ namespace Walos.PrintAgent.Api;
 public static class PrintAgentApi
 {
     public const int Port = 17831;
-    public const long MaxPayloadBytes = 8 * 1024;
+    public const long DefaultMaxPayloadBytes = 8 * 1024;
+    public const long PrintReceiptMaxPayloadBytes = 128 * 1024;
+    public const long MaxPayloadBytes = PrintReceiptMaxPayloadBytes;
 
     public static void ConfigureServices(
         IServiceCollection services,
@@ -150,6 +152,67 @@ public static class PrintAgentApi
                 commands.PrepareDrawerPulse,
                 commands.SendAsync,
                 ct));
+
+        app.MapPost("/v1/commands/print-receipt", async (
+            PrintReceiptRequest request,
+            AgentStateStore store,
+            IdempotentJobExecutor jobs,
+            PrintCommandService commands,
+            CancellationToken ct) =>
+        {
+            var error = RequestValidation.Validate(request);
+            if (error is not null)
+            {
+                return Results.BadRequest(new ErrorResponse("invalid_request", error));
+            }
+
+            if (!store.MatchesPairedCompanyAndBranch(request.CompanyId, request.BranchId))
+            {
+                return Results.Conflict(new ErrorResponse(
+                    "pairing_context_mismatch",
+                    "El recibo no pertenece a la empresa y sucursal vinculadas."));
+            }
+
+            var computedFingerprint = ReceiptFingerprint.Compute(request);
+            if (!computedFingerprint.Equals(request.Fingerprint, StringComparison.Ordinal))
+            {
+                return Results.BadRequest(new ErrorResponse(
+                    "fingerprint_mismatch",
+                    "El fingerprint no coincide con el documento recibido."));
+            }
+
+            try
+            {
+                var result = await jobs.ExecuteAsync(
+                    request.JobId,
+                    "print-receipt",
+                    computedFingerprint,
+                    () => commands.PrepareReceipt(request.Receipt),
+                    commands.SendAsync,
+                    ct);
+                return Results.Ok(new JobCommandResponse(request.JobId, result.Status, result.Executed));
+            }
+            catch (JobConflictException)
+            {
+                return Results.Conflict(new ErrorResponse(
+                    "job_id_conflict",
+                    "El jobId ya fue utilizado con otro comando o documento."));
+            }
+            catch (PrinterNotFoundException exception)
+            {
+                return Results.NotFound(new ErrorResponse("printer_not_found", exception.Message));
+            }
+            catch (PrinterNotConfiguredException exception)
+            {
+                return Results.BadRequest(new ErrorResponse("printer_not_configured", exception.Message));
+            }
+            catch (PrintSpoolerException exception)
+            {
+                return Results.Json(
+                    new ErrorResponse("spooler_error", exception.Message),
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
     }
 
     private static async Task<IResult> ExecuteCommandAsync(

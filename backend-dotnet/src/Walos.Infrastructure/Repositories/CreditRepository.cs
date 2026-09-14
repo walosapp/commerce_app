@@ -139,6 +139,40 @@ public class CreditRepository : ICreditRepository
         }
     }
 
+    public async Task<Credit?> GetCreditByOrderAsync(long orderId, long companyId, long branchId)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            const string sql = @"
+                SELECT id AS Id, company_id AS CompanyId, branch_id AS BranchId,
+                       order_id AS OrderId, customer_name AS CustomerName,
+                       order_number AS OrderNumber, original_total AS OriginalTotal,
+                       amount_paid AS AmountPaid, credit_amount AS CreditAmount,
+                       status AS Status, notes AS Notes,
+                       paid_at AS PaidAt, created_at AS CreatedAt, created_by AS CreatedBy
+                FROM sales.credits
+                WHERE order_id = @OrderId
+                  AND company_id = @CompanyId
+                  AND branch_id = @BranchId
+                ORDER BY id DESC
+                LIMIT 1";
+
+            return await connection.QueryFirstOrDefaultAsync<Credit>(sql, new
+            {
+                OrderId = orderId,
+                CompanyId = companyId,
+                BranchId = branchId
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error obteniendo credito de la orden {OrderId}", orderId);
+            throw;
+        }
+    }
+
     public async Task<CreditPayment> AddPaymentAsync(CreditPayment payment)
     {
         try

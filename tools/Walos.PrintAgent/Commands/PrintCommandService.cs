@@ -1,3 +1,4 @@
+using Walos.PrintAgent.Api;
 using Walos.PrintAgent.Printing;
 using Walos.PrintAgent.Storage;
 
@@ -30,6 +31,15 @@ public sealed class PrintCommandService(
                 configuration.DrawerPin,
                 configuration.DrawerOnTimeMs,
                 configuration.DrawerOffTimeMs));
+    }
+
+    public PreparedPrintJob PrepareReceipt(ReceiptDocument receipt)
+    {
+        var configuration = GetValidConfiguration();
+        return new PreparedPrintJob(
+            configuration.PrinterName,
+            $"Walos - recibo {EscPos58Encoder.Sanitize(receipt.OrderNumber)}",
+            encoder.EncodeReceipt(receipt));
     }
 
     public Task SendAsync(PreparedPrintJob job, CancellationToken ct) =>

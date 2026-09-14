@@ -18,7 +18,8 @@ public sealed record StoredJob(
     string Command,
     string Status,
     DateTimeOffset ReservedAtUtc,
-    DateTimeOffset? CompletedAtUtc);
+    DateTimeOffset? CompletedAtUtc,
+    string? Fingerprint = null);
 
 internal sealed class AgentState
 {
@@ -61,6 +62,14 @@ public sealed class AgentStateStore
                identity.CompanyId == companyId &&
                identity.BranchId == branchId &&
                identity.WorkstationId.Equals(workstationId, StringComparison.Ordinal);
+    }
+
+    public bool MatchesPairedCompanyAndBranch(long companyId, long branchId)
+    {
+        var identity = _state.Identity;
+        return identity is not null &&
+               identity.CompanyId == companyId &&
+               identity.BranchId == branchId;
     }
 
     public StoredJob? GetJob(string jobId) =>

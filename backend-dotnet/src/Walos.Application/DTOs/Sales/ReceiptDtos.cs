@@ -2,15 +2,25 @@ namespace Walos.Application.DTOs.Sales;
 
 // Recibo de venta — entregado al cliente
 public record ReceiptData(
+    // Contexto persistido
+    long CompanyId,
+    long BranchId,
+    string Currency,
+    string Timezone,
+
     // Empresa
     string CompanyName,
     string? CompanyLegalName,
+    string? CompanyTaxId,
+    string? CompanyAddress,
     string? CompanyPhone,
     string? CompanyLogoUrl,
     
     // Orden
     long OrderId,
     string OrderNumber,
+    string Status,
+    string? RefundStatus,
     string TableName,
     int TableNumber,
     DateTime CreatedAt,
@@ -34,6 +44,9 @@ public record ReceiptData(
     
     // Credito
     bool HasCredit,
+    string? CreditStatus,
+    decimal? CreditOriginalTotal,
+    decimal? CreditAmountPaid,
     decimal? CreditAmount,
     string? CreditCustomerName
 );

@@ -8,6 +8,8 @@ public class CompanySettings
     public string? DisplayName { get; set; }
     public string? Email { get; set; }
     public string? Phone { get; set; }
+    public string? TaxId { get; set; }
+    public string? Address { get; set; }
     public string? LogoUrl { get; set; }
     public string Currency { get; set; } = "MXN";
     public string Timezone { get; set; } = "America/Mexico_City";

@@ -47,19 +47,23 @@ public sealed class PayloadLimitMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context)
     {
-        if (context.Request.ContentLength > PrintAgentApi.MaxPayloadBytes)
+        var maxPayloadBytes = context.Request.Path.Equals("/v1/commands/print-receipt")
+            ? PrintAgentApi.PrintReceiptMaxPayloadBytes
+            : PrintAgentApi.DefaultMaxPayloadBytes;
+
+        if (context.Request.ContentLength > maxPayloadBytes)
         {
             context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
             await context.Response.WriteAsJsonAsync(new ErrorResponse(
                 "payload_too_large",
-                $"El payload no puede exceder {PrintAgentApi.MaxPayloadBytes} bytes."));
+                $"El payload no puede exceder {maxPayloadBytes} bytes."));
             return;
         }
 
         var bodySizeFeature = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
         if (bodySizeFeature is { IsReadOnly: false })
         {
-            bodySizeFeature.MaxRequestBodySize = PrintAgentApi.MaxPayloadBytes;
+            bodySizeFeature.MaxRequestBodySize = maxPayloadBytes;
         }
 
         if (HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method))
@@ -75,7 +79,7 @@ public sealed class PayloadLimitMiddleware(RequestDelegate next)
 
             if (context.Request.ContentLength is null)
             {
-                using var limitedBody = new MemoryStream((int)PrintAgentApi.MaxPayloadBytes);
+                using var limitedBody = new MemoryStream((int)maxPayloadBytes);
                 var buffer = new byte[2048];
                 long total = 0;
                 while (true)
@@ -87,12 +91,12 @@ public sealed class PayloadLimitMiddleware(RequestDelegate next)
                     }
 
                     total += read;
-                    if (total > PrintAgentApi.MaxPayloadBytes)
+                    if (total > maxPayloadBytes)
                     {
                         context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                         await context.Response.WriteAsJsonAsync(new ErrorResponse(
                             "payload_too_large",
-                            $"El payload no puede exceder {PrintAgentApi.MaxPayloadBytes} bytes."));
+                            $"El payload no puede exceder {maxPayloadBytes} bytes."));
                         return;
                     }
 

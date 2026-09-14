@@ -84,6 +84,50 @@ public sealed class IdempotentJobExecutorTests : IDisposable
     }
 
     [Fact]
+    public async Task ReceiptFingerprint_IsDurableAcrossRestartAndRejectsChangedDocument()
+    {
+        const string firstFingerprint = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string changedFingerprint = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        var executions = 0;
+        var firstExecutor = new IdempotentJobExecutor(new AgentStateStore(_directory));
+        await firstExecutor.ExecuteAsync(
+            "receipt-durable-job",
+            "print-receipt",
+            firstFingerprint,
+            static () => true,
+            (_, _) =>
+            {
+                executions++;
+                return Task.CompletedTask;
+            },
+            CancellationToken.None);
+
+        var restartedExecutor = new IdempotentJobExecutor(new AgentStateStore(_directory));
+        var replay = await restartedExecutor.ExecuteAsync(
+            "receipt-durable-job",
+            "print-receipt",
+            firstFingerprint,
+            static () => true,
+            (_, _) =>
+            {
+                executions++;
+                return Task.CompletedTask;
+            },
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<JobConflictException>(() => restartedExecutor.ExecuteAsync(
+            "receipt-durable-job",
+            "print-receipt",
+            changedFingerprint,
+            static () => true,
+            (_, _) => Task.CompletedTask,
+            CancellationToken.None));
+        Assert.Equal(1, executions);
+        Assert.Equal("replayed", replay.Status);
+        Assert.False(replay.Executed);
+    }
+
+    [Fact]
     public async Task SameJobIdForDifferentCommand_IsRejected()
     {
         var executor = new IdempotentJobExecutor(new AgentStateStore(_directory));

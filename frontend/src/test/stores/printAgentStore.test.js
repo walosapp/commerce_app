@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
-import { createPrintAgentState } from '../../stores/printAgentStore';
+import {
+  createPrintAgentState,
+  selectPersistedPrintAgentState,
+} from '../../stores/printAgentStore';
+import { createPrintReceiptCommand } from '../../services/receiptDocument';
 
 const createService = () => ({
   health: vi.fn(),
@@ -9,7 +13,44 @@ const createService = () => ({
   savePrinterConfig: vi.fn(),
   testPrint: vi.fn(),
   openDrawer: vi.fn(),
+  printReceipt: vi.fn(),
 });
+
+const persistedReceipt = {
+  companyId: 25,
+  branchId: 7,
+  companyName: 'Comercio',
+  companyLegalName: null,
+  companyPhone: null,
+  companyTaxId: null,
+  companyAddress: null,
+  currency: 'COP',
+  timezone: 'America/Bogota',
+  orderId: 123,
+  orderNumber: 'ORD-123',
+  status: 'completed',
+  refundStatus: null,
+  tableName: 'Mostrador',
+  tableNumber: 1,
+  createdAt: '2026-09-14T17:30:00Z',
+  cashierName: 'Maria',
+  items: [{ productName: 'Cafe', quantity: 1, unitPrice: 5000, subtotal: 5000 }],
+  subtotal: 5000,
+  discountType: null,
+  discountValue: 0,
+  discountAmount: 0,
+  finalTotalPaid: 5000,
+  tipAmount: 0,
+  tipIncluded: false,
+  splitCount: 1,
+  payments: [{ method: 'cash', amount: 5000, reference: null }],
+  hasCredit: false,
+  creditStatus: null,
+  creditOriginalTotal: null,
+  creditAmountPaid: null,
+  creditAmount: null,
+  creditCustomerName: null,
+};
 
 describe('printAgentStore', () => {
   let service;
@@ -125,5 +166,190 @@ describe('printAgentStore', () => {
 
     await expect(store.getState().openDrawer()).rejects.toThrow('Guarda la configuracion');
     expect(service.openDrawer).not.toHaveBeenCalled();
+  });
+
+  it('reintenta un recibo con el mismo jobId y fingerprint sin abrir el cajon', async () => {
+    service.printReceipt
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValueOnce({ status: 'replayed', executed: false });
+    store.setState({ token: 'agent-token', configurationSaved: true });
+
+    await store.getState().printReceipt(persistedReceipt);
+
+    expect(service.printReceipt).toHaveBeenCalledTimes(2);
+    expect(service.printReceipt.mock.calls[0][1]).toEqual(service.printReceipt.mock.calls[1][1]);
+    expect(service.printReceipt.mock.calls[0][1]).toMatchObject({
+      documentVersion: 1,
+      orderId: 123,
+      jobId: expect.any(String),
+      fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(service.openDrawer).not.toHaveBeenCalled();
+  });
+
+  it('no reintenta un conflicto de jobId informado por el agente', async () => {
+    const conflict = Object.assign(new Error('job_id_conflict'), { status: 409 });
+    service.printReceipt.mockRejectedValue(conflict);
+    store.setState({ token: 'agent-token', configurationSaved: true });
+
+    await expect(store.getState().printReceipt(persistedReceipt)).rejects.toBe(conflict);
+
+    expect(service.printReceipt).toHaveBeenCalledOnce();
+    expect(store.getState().pendingReceiptCommand).toBeNull();
+    expect(service.openDrawer).not.toHaveBeenCalled();
+  });
+
+  it('conserva un 503 tras hidratar y reintenta exactamente el mismo jobId', async () => {
+    const spoolerError = Object.assign(new Error('spooler_error'), { status: 503 });
+    service.printReceipt.mockRejectedValue(spoolerError);
+    store.setState({ token: 'agent-token', configurationSaved: true });
+
+    await expect(store.getState().printReceipt(persistedReceipt)).rejects.toBe(spoolerError);
+
+    const pending = selectPersistedPrintAgentState(store.getState()).pendingReceiptCommand;
+    expect(pending).toMatchObject({
+      orderId: 123,
+      jobId: expect.any(String),
+      fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+
+    const rehydratedService = createService();
+    rehydratedService.printReceipt.mockResolvedValue({ status: 'replayed', executed: false });
+    const rehydrated = createStore(createPrintAgentState(rehydratedService));
+    rehydrated.setState({
+      token: 'agent-token',
+      configurationSaved: true,
+      pendingReceiptCommand: pending,
+      lastCommand: store.getState().lastCommand,
+    });
+
+    await rehydrated.getState().retryReceipt(persistedReceipt);
+
+    expect(rehydratedService.printReceipt).toHaveBeenCalledWith('agent-token', pending);
+    expect(rehydrated.getState().pendingReceiptCommand).toBeNull();
+    expect(rehydratedService.openDrawer).not.toHaveBeenCalled();
+  });
+
+  it('solo libera un intento fallido o incierto mediante reconocimiento explicito', () => {
+    const pending = { orderId: 123, jobId: 'pending-job', fingerprint: 'a'.repeat(64) };
+    store.setState({
+      pendingReceiptCommand: pending,
+      lastCommand: { command: 'print-receipt', jobId: pending.jobId, status: 'failed' },
+    });
+
+    expect(store.getState().pendingReceiptCommand).toBe(pending);
+
+    store.getState().acknowledgeReceiptAttempt();
+
+    expect(store.getState().pendingReceiptCommand).toBeNull();
+    expect(store.getState().lastCommand).toMatchObject({ reviewed: true });
+    expect(service.printReceipt).not.toHaveBeenCalled();
+  });
+
+  it('no pierde un recibo incierto al cambiar de contexto de empresa o sucursal', () => {
+    const pending = { orderId: 123, jobId: 'pending-job', fingerprint: 'a'.repeat(64) };
+    store.setState({
+      pairedContext: { companyId: 25, branchId: 7, workstationId: 'POS-1' },
+      pendingReceiptCommand: pending,
+      lastCommand: { command: 'print-receipt', jobId: pending.jobId, status: 'uncertain' },
+    });
+
+    store.getState().initializeContext({ companyId: 99, branchId: 8 });
+
+    expect(store.getState().pendingReceiptCommand).toBe(pending);
+    expect(store.getState().lastCommand).toMatchObject({ jobId: pending.jobId, status: 'uncertain' });
+  });
+
+  it.each([
+    ['devolucion', { refundStatus: 'full_refund' }],
+    ['contexto', { companyId: 26 }],
+  ])('bloquea retry del payload viejo cuando cambia %s', async (_case, changes) => {
+    const pending = await createPrintReceiptCommand(persistedReceipt, 'same-job');
+    store.setState({
+      token: 'agent-token',
+      configurationSaved: true,
+      pendingReceiptCommand: pending,
+      lastCommand: { command: 'print-receipt', jobId: pending.jobId, status: 'uncertain' },
+    });
+
+    const retry = store.getState().retryReceipt({ ...persistedReceipt, ...changes });
+
+    await expect(retry).rejects.toMatchObject({ code: 'receipt_changed' });
+    expect(service.printReceipt).not.toHaveBeenCalled();
+    expect(store.getState().pendingReceiptCommand).toEqual(pending);
+    expect(store.getState().lastCommand).toMatchObject({ jobId: 'same-job', status: 'stale' });
+  });
+
+  it('bloquea retry cuando cambia el saldo persistido del credito', async () => {
+    const creditReceipt = {
+      ...persistedReceipt,
+      finalTotalPaid: 4000,
+      payments: [{ method: 'cash', amount: 4000, reference: null }],
+      hasCredit: true,
+      creditStatus: 'pending',
+      creditOriginalTotal: 5000,
+      creditAmountPaid: 4000,
+      creditAmount: 1000,
+      creditCustomerName: 'Cliente',
+    };
+    const pending = await createPrintReceiptCommand(creditReceipt, 'credit-job');
+    store.setState({
+      token: 'agent-token',
+      configurationSaved: true,
+      pendingReceiptCommand: pending,
+    });
+
+    const retry = store.getState().retryReceipt({
+      ...creditReceipt,
+      creditStatus: 'partial',
+      creditAmountPaid: 4500,
+      creditAmount: 500,
+    });
+
+    await expect(retry).rejects.toMatchObject({ code: 'receipt_changed' });
+    expect(service.printReceipt).not.toHaveBeenCalled();
+    expect(store.getState().pendingReceiptCommand).toEqual(pending);
+  });
+
+  it('conserva el comando tras dos timeouts y lo reintenta con el mismo job despues de hidratar', async () => {
+    service.printReceipt
+      .mockRejectedValueOnce(new Error('timeout 1'))
+      .mockRejectedValueOnce(new Error('timeout 2'));
+    store.setState({ token: 'agent-token', configurationSaved: true });
+
+    await expect(store.getState().printReceipt(persistedReceipt)).rejects.toThrow('timeout 2');
+
+    const pending = store.getState().pendingReceiptCommand;
+    expect(pending).toMatchObject({
+      jobId: expect.any(String),
+      fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(store.getState().lastCommand.status).toBe('uncertain');
+    expect(selectPersistedPrintAgentState(store.getState())).toMatchObject({
+      pendingReceiptCommand: pending,
+      lastCommand: { jobId: pending.jobId, status: 'uncertain' },
+    });
+
+    const rehydratedService = createService();
+    rehydratedService.printReceipt.mockResolvedValue({ status: 'replayed', executed: false });
+    const rehydrated = createStore(createPrintAgentState(rehydratedService));
+    rehydrated.setState({
+      token: 'agent-token',
+      configurationSaved: true,
+      pendingReceiptCommand: pending,
+      lastCommand: store.getState().lastCommand,
+    });
+
+    await rehydrated.getState().retryReceipt(persistedReceipt);
+
+    expect(rehydratedService.printReceipt).toHaveBeenCalledWith('agent-token', pending);
+    expect(rehydrated.getState().pendingReceiptCommand).toBeNull();
+    expect(rehydrated.getState().lastCommand).toMatchObject({
+      jobId: pending.jobId,
+      fingerprint: pending.fingerprint,
+      status: 'replayed',
+      executed: false,
+    });
+    expect(rehydratedService.openDrawer).not.toHaveBeenCalled();
   });
 });

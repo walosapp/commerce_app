@@ -1,3 +1,4 @@
+using Npgsql;
 using Walos.Domain.Entities;
 
 namespace Walos.Tests.Integration;
@@ -9,6 +10,14 @@ public class CompanyRepositoryIntegrationTests : IntegrationTestBase
     {
         // Arrange
         var companyId = await SeedCompanyAsync("Settings Co");
+        using (var connection = await ConnectionFactory.CreateConnectionAsync())
+        using (var command = new NpgsqlCommand(
+            "UPDATE core.companies SET address = 'Calle 123' WHERE id = @companyId",
+            (NpgsqlConnection)connection))
+        {
+            command.Parameters.AddWithValue("@companyId", companyId);
+            await command.ExecuteNonQueryAsync();
+        }
 
         // Act
         var settings = await CompanyRepository.GetCompanySettingsAsync(companyId);
@@ -17,6 +26,8 @@ public class CompanyRepositoryIntegrationTests : IntegrationTestBase
         Assert.NotNull(settings);
         Assert.Equal(companyId, settings.Id);
         Assert.Equal("Settings Co", settings.Name);
+        Assert.StartsWith("TEST-", settings.TaxId);
+        Assert.Equal("Calle 123", settings.Address);
     }
 
     [SkippableFact]
