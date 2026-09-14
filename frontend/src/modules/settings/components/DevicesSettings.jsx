@@ -1,10 +1,11 @@
-import { Activity, Bluetooth, Cable, Cpu, RefreshCw, Scale, Settings2, Usb } from 'lucide-react';
+import { Activity, Cable, Cpu, Printer, RefreshCw, Scale, Settings2, Usb } from 'lucide-react';
 import useDeviceStore from '../../../stores/deviceStore';
+import PrinterSettings from './PrinterSettings';
 
 const DEVICE_TYPES = [
   { value: 'scale', label: 'Bascula', description: 'Lectura de peso en tiempo real para POS-Deli', icon: Scale },
   { value: 'barcode', label: 'Lector de codigo', description: 'Pendiente de configuracion', icon: Cable },
-  { value: 'printer', label: 'Impresora', description: 'Pendiente de configuracion', icon: Bluetooth },
+  { value: 'printer', label: 'Impresora', description: 'Impresion termica y cajon mediante agente local', icon: Printer },
 ];
 
 const DevicesSettings = () => {
@@ -19,6 +20,7 @@ const DevicesSettings = () => {
 
   const selectedDevice = DEVICE_TYPES.find((item) => item.value === selectedDeviceType) ?? DEVICE_TYPES[0];
   const isScale = selectedDeviceType === 'scale';
+  const isPrinter = selectedDeviceType === 'printer';
 
   return (
     <div className="space-y-6">
@@ -65,12 +67,18 @@ const DevicesSettings = () => {
           <div>
             <h3 className="text-base font-semibold text-gray-900">Configuracion de {selectedDevice.label}</h3>
             <p className="text-sm text-gray-500">
-              {isScale ? 'Defini el tipo de conexion y proba lectura real desde la bascula.' : 'Este tipo de dispositivo todavia no tiene integracion activa.'}
+              {isScale
+                ? 'Defini el tipo de conexion y proba lectura real desde la bascula.'
+                : isPrinter
+                  ? 'Configura la impresora termica y el cajon mediante Walos Print Agent.'
+                  : 'Este tipo de dispositivo todavia no tiene integracion activa.'}
             </p>
           </div>
         </div>
 
-        {isScale ? (
+        {isPrinter ? (
+          <PrinterSettings />
+        ) : isScale ? (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div>

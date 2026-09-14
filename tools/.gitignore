@@ -1,0 +1,6 @@
+**/bin/
+**/obj/
+**/*.user
+**/agent-state.json
+**/agent-state.json.tmp
+**/publish/
