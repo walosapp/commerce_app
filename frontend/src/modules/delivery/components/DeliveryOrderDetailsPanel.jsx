@@ -14,7 +14,7 @@ const STATUS_LABELS = {
   returned:           { label: 'Devuelto',         color: 'bg-orange-100 text-orange-600' },
 };
 
-const DeliveryOrderDetailsPanel = ({ orderId, onClose, onAction }) => {
+const DeliveryOrderDetailsPanel = ({ orderId, onClose, onAction, canManage = false }) => {
   const { data, isLoading } = useQuery({
     queryKey: ['delivery-order', orderId],
     queryFn: () => deliveryService.getOrder(orderId),
@@ -158,27 +158,27 @@ const DeliveryOrderDetailsPanel = ({ orderId, onClose, onAction }) => {
           {order.status === 'out_for_delivery' ? (
             <>
               <button onClick={() => onAction(order, 'deliver')} className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 rounded-lg transition-colors">Entregado</button>
-              <button onClick={() => onAction(order, 'return')} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium py-2 rounded-lg transition-colors">Devolver</button>
+              {canManage && <button onClick={() => onAction(order, 'return')} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium py-2 rounded-lg transition-colors">Devolver</button>}
             </>
           ) : order.status === 'ready_for_dispatch' ? (
             <>
               <button onClick={() => onAction(order, 'dispatch')} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium py-2 rounded-lg transition-colors">Despachar</button>
-              <button onClick={() => onAction(order, 'cancel')} className="flex-1 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-medium py-2 rounded-lg transition-colors">Cancelar</button>
+              {canManage && <button onClick={() => onAction(order, 'cancel')} className="flex-1 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-medium py-2 rounded-lg transition-colors">Cancelar</button>}
             </>
           ) : order.status === 'preparing' ? (
             <>
               <button onClick={() => onAction(order, 'ready')} className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-medium py-2 rounded-lg transition-colors">Marcar Listo</button>
-              <button onClick={() => onAction(order, 'cancel')} className="flex-1 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-medium py-2 rounded-lg transition-colors">Cancelar</button>
+              {canManage && <button onClick={() => onAction(order, 'cancel')} className="flex-1 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-medium py-2 rounded-lg transition-colors">Cancelar</button>}
             </>
           ) : order.status === 'accepted' ? (
             <>
               <button onClick={() => onAction(order, 'prepare')} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 rounded-lg transition-colors">Preparar</button>
-              <button onClick={() => onAction(order, 'reject')} className="flex-1 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-medium py-2 rounded-lg transition-colors">Rechazar</button>
+              {canManage && <button onClick={() => onAction(order, 'reject')} className="flex-1 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-medium py-2 rounded-lg transition-colors">Rechazar</button>}
             </>
           ) : (
             <>
               <button onClick={() => onAction(order, 'accept')} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2 rounded-lg transition-colors">Aceptar</button>
-              <button onClick={() => onAction(order, 'reject')} className="flex-1 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-medium py-2 rounded-lg transition-colors">Rechazar</button>
+              {canManage && <button onClick={() => onAction(order, 'reject')} className="flex-1 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-medium py-2 rounded-lg transition-colors">Rechazar</button>}
             </>
           )}
         </div>

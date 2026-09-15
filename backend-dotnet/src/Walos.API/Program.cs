@@ -10,6 +10,7 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using Walos.API.Authorization;
 using Walos.API.Middleware;
+using Walos.API.Security;
 using Walos.API.Services;
 using Walos.Application;
 using Walos.Domain.Interfaces;
@@ -132,6 +133,7 @@ try
     // JWT Authentication
     var jwtSecret = builder.Configuration["Jwt:Secret"]
         ?? throw new InvalidOperationException("JWT Secret not configured");
+    JwtSecretValidator.ValidateOrThrow(jwtSecret);
 
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
@@ -262,6 +264,10 @@ try
     // Tenant context (MUST be after auth so JWT claims are available)
     app.UseMiddleware<TenantContextMiddleware>();
     app.UseAuthorization();
+
+    // Feature authorization runs only after role/policy authorization succeeds,
+    // so disabled modules never leak configuration to unauthorized callers.
+    app.UseMiddleware<CompanyFeatureMiddleware>();
 
     // Map controllers
     app.MapControllers();

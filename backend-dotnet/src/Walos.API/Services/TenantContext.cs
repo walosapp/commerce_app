@@ -11,4 +11,5 @@ public class TenantContext : ITenantContext
     public string Email { get; set; } = string.Empty;
     public bool IsAuthenticated { get; set; }
     public bool IsDev => Role.Equals("dev", StringComparison.OrdinalIgnoreCase);
+    public bool IsPlatformAdmin { get; set; }
 }

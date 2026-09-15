@@ -10,4 +10,8 @@ public interface IAdminService
     Task<bool> SetTenantActiveAsync(long companyId, bool isActive);
     Task<TenantResponse?> UpdateTenantAsync(long companyId, UpdateTenantRequest request);
     Task ResetTenantAdminPasswordAsync(long companyId, string newPassword);
+    Task<IReadOnlyList<BranchAdminResponse>> GetBranchesAsync(long companyId);
+    Task<BranchAdminResponse> CreateBranchAsync(long companyId, CreateBranchAdminRequest request, long actorId);
+    Task<BranchAdminResponse> UpdateBranchAsync(
+        long companyId, long branchId, UpdateBranchAdminRequest request, long actorId);
 }

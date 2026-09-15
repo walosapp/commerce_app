@@ -13,6 +13,7 @@ public class TenantResponse
     public string Currency { get; set; } = "COP";
     public string Language { get; set; } = "es";
     public string? AdminEmail { get; set; }
+    public bool IsSystem { get; set; }
     public bool IsActive { get; set; }
     public int BranchCount { get; set; }
     public int UserCount { get; set; }

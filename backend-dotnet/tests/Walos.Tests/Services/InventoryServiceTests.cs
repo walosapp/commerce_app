@@ -14,6 +14,7 @@ public class InventoryServiceTests
     private readonly Mock<IInventoryRepository> _repoMock;
     private readonly Mock<IAiService> _aiMock;
     private readonly Mock<IFileStorage> _fileStorageMock;
+    private readonly Mock<IAiCapabilityGuard> _capabilityGuardMock;
     private readonly Mock<ILogger<InventoryService>> _loggerMock;
     private readonly InventoryService _service;
 
@@ -22,11 +23,20 @@ public class InventoryServiceTests
         _repoMock = new Mock<IInventoryRepository>();
         _aiMock = new Mock<IAiService>();
         _fileStorageMock = new Mock<IFileStorage>();
+        _capabilityGuardMock = new Mock<IAiCapabilityGuard>();
+        _capabilityGuardMock
+            .Setup(guard => guard.GetSnapshotAsync(It.IsAny<long>(), It.IsAny<bool>()))
+            .ReturnsAsync(new AiCapabilitySnapshot(new Dictionary<string, bool>
+            {
+                [Walos.Domain.Features.WalosFeatures.Ai] = true,
+                [Walos.Domain.Features.WalosFeatures.Inventory] = true
+            }, "test"));
         _loggerMock = new Mock<ILogger<InventoryService>>();
         _service = new InventoryService(
             _repoMock.Object,
             _aiMock.Object,
             _fileStorageMock.Object,
+            _capabilityGuardMock.Object,
             _loggerMock.Object);
     }
 
@@ -134,17 +144,17 @@ public class InventoryServiceTests
     }
 
     [Fact]
-    public async Task ConfirmAiAction_ThrowsNotFound_WhenInteractionMissing()
+    public async Task ConfirmAiAction_Is_Disabled_Before_Reading_Pending_Interaction()
     {
-        _repoMock.Setup(r => r.GetAiInteractionByIdAsync(999, 1))
-            .ReturnsAsync((AiInteraction?)null);
+        var result = await _service.ConfirmAiActionAsync(999, 1, 1);
 
-        await Assert.ThrowsAsync<NotFoundException>(() =>
-            _service.ConfirmAiActionAsync(999, 1, 1));
+        Assert.False(result.Success);
+        Assert.Contains("no esta disponible en V1", result.Message);
+        _repoMock.Verify(r => r.GetAiInteractionByIdAsync(It.IsAny<long>(), It.IsAny<long>()), Times.Never);
     }
 
     [Fact]
-    public async Task ProcessAiInventoryInput_CallsAiServiceAndSavesInteraction()
+    public async Task ProcessAiInventoryInput_Does_Not_Persist_Mutation_Proposal()
     {
         _repoMock.Setup(r => r.GetAllProductsAsync(1, It.Is<ProductFilter?>(f => f == null)))
             .ReturnsAsync(new List<Product> { new() { Id = 1, Name = "Ron" } });
@@ -182,12 +192,59 @@ public class InventoryServiceTests
 
         var result = await _service.ProcessAiInventoryInputAsync("Llegaron 10 Ron a $15", context);
 
-        Assert.Equal(42, result.InteractionId);
-        Assert.Equal("add_stock", result.Action);
+        Assert.Equal(0, result.InteractionId);
+        Assert.Equal("stock_mutation_disabled", result.Action);
         Assert.Equal(95, result.Confidence);
         Assert.False(result.RequiresConfirmation);
 
-        _repoMock.Verify(r => r.SaveAiInteractionAsync(It.IsAny<AiInteraction>()), Times.Once);
+        _repoMock.Verify(r => r.SaveAiInteractionAsync(It.IsAny<AiInteraction>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessAiInventoryInput_Keeps_Read_Only_Query_And_Uses_No_Prior_History()
+    {
+        _repoMock.Setup(r => r.GetAllProductsAsync(1, It.Is<ProductFilter?>(f => f == null)))
+            .ReturnsAsync([]);
+        _aiMock.Setup(service => service.ProcessInventoryInputAsync(
+                "consulta stock",
+                It.IsAny<AiContext>(),
+                null))
+            .ReturnsAsync(new AiInventoryResponse
+            {
+                Action = "query",
+                Response = "Sin faltantes",
+                Confidence = 100
+            });
+        _repoMock.Setup(repository => repository.SaveAiInteractionAsync(It.IsAny<AiInteraction>()))
+            .ReturnsAsync(new AiInteraction { Id = 55, CompanyId = 1 });
+
+        var result = await _service.ProcessAiInventoryInputAsync(
+            "consulta stock",
+            new AiInputContext { CompanyId = 1, UserId = 2, BranchId = 3, SessionId = "legacy" });
+
+        Assert.Equal("query", result.Action);
+        Assert.Equal(55, result.InteractionId);
+        _repoMock.Verify(repository => repository.GetAiInteractionsBySessionAsync(
+            It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessAiInventoryInput_Fails_Closed_Before_Repository_When_Inventory_Is_Disabled()
+    {
+        _capabilityGuardMock
+            .Setup(guard => guard.GetSnapshotAsync(1, false))
+            .ReturnsAsync(new AiCapabilitySnapshot(new Dictionary<string, bool>
+            {
+                [Walos.Domain.Features.WalosFeatures.Ai] = true
+            }, "disabled"));
+
+        var error = await Assert.ThrowsAsync<FeatureNotEnabledException>(() =>
+            _service.ProcessAiInventoryInputAsync("consulta", new AiInputContext { CompanyId = 1 }));
+
+        Assert.Equal(Walos.Domain.Features.WalosFeatures.Inventory, error.Feature);
+        _repoMock.Verify(r => r.GetAllProductsAsync(
+            It.IsAny<long>(), It.IsAny<ProductFilter?>()), Times.Never);
+        _aiMock.VerifyNoOtherCalls();
     }
 
     [Fact]

@@ -8,16 +8,44 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authService } from '../services/authService';
 
+const EMPTY_AUTH_STATE = Object.freeze({
+  user: null,
+  token: null,
+  tenantId: null,
+  branchId: null,
+  isAuthenticated: false,
+});
+
+const OPERATIONAL_ROLES = new Set(['super_admin', 'manager', 'cashier', 'waiter']);
+
+export const hasCurrentUserContract = (user) => {
+  if (!user || typeof user.isPlatformAdmin !== 'boolean') return false;
+  if (user.role === 'dev' || user.role === 'platform_admin') return user.isPlatformAdmin === true;
+  return OPERATIONAL_ROLES.has(user.role) && user.isPlatformAdmin === false;
+};
+
+export const sanitizePersistedAuthState = (state) => {
+  if (
+    state?.isAuthenticated !== true
+    || !state.token
+    || !hasCurrentUserContract(state.user)
+  ) {
+    return { ...EMPTY_AUTH_STATE };
+  }
+
+  return state;
+};
+
 const useAuthStore = create(
   persist(
     (set, get) => ({
-      user: null,
-      token: null,
-      tenantId: null,
-      branchId: null,
-      isAuthenticated: false,
+      ...EMPTY_AUTH_STATE,
 
       setAuth: (data) => {
+        if (!data?.token || !hasCurrentUserContract(data.user)) {
+          set({ ...EMPTY_AUTH_STATE });
+          return false;
+        }
         set({
           user: data.user,
           token: data.token,
@@ -25,6 +53,7 @@ const useAuthStore = create(
           branchId: data.user.branchId,
           isAuthenticated: true,
         });
+        return true;
       },
 
       logout: async () => {
@@ -51,6 +80,12 @@ const useAuthStore = create(
     }),
     {
       name: 'auth-storage',
+      version: 1,
+      migrate: (persistedState) => sanitizePersistedAuthState(persistedState),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...sanitizePersistedAuthState(persistedState),
+      }),
       partialize: (state) => ({
         user: state.user,
         token: state.token,

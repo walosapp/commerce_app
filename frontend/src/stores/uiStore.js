@@ -14,22 +14,26 @@ const useUiStore = create(
       sidebarCollapsed: false,
       companyName: 'Walos',
       companyLogoUrl: null,
+      brandingTenantId: null,
 
       setTheme: (theme) => set({ theme }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
-      setBranding: ({ companyName, companyLogoUrl }) =>
+      setBranding: ({ companyName, companyLogoUrl, tenantId }) =>
         set((state) => ({
           companyName: companyName === undefined ? state.companyName : companyName,
           companyLogoUrl: companyLogoUrl === undefined ? state.companyLogoUrl : companyLogoUrl,
+          brandingTenantId: tenantId === undefined ? state.brandingTenantId : tenantId,
         })),
+      resetBranding: () => set({ theme: 'light', companyName: 'Walos', companyLogoUrl: null, brandingTenantId: null }),
     }),
     {
       name: 'ui-storage',
+      version: 2,
+      migrate: (persistedState) => ({
+        sidebarCollapsed: persistedState?.sidebarCollapsed === true,
+      }),
       partialize: (state) => ({
-        theme: state.theme,
         sidebarCollapsed: state.sidebarCollapsed,
-        companyName: state.companyName,
-        companyLogoUrl: state.companyLogoUrl,
       }),
     }
   )

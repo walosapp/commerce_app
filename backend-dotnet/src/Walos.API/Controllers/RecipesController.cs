@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Walos.API.Authorization;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Inventory;
 using Walos.Application.Security;
 using Walos.Application.Services;
 using Walos.Domain.Entities;
+using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
@@ -12,6 +14,7 @@ namespace Walos.API.Controllers;
 [ApiController]
 [Route("api/v1/recipes")]
 [Authorize]
+[RequireFeature(WalosFeatures.Inventory)]
 public class RecipesController : ControllerBase
 {
     private readonly IRecipeService _service;

@@ -8,12 +8,14 @@ import DeliveryBoard from './components/DeliveryBoard';
 import DeliveryOrderDetailsPanel from './components/DeliveryOrderDetailsPanel';
 import CreateDeliveryOrderPanel from './components/CreateDeliveryOrderPanel';
 import StatusActionModal from './components/StatusActionModal';
+import { canManageDelivery } from '../../config/companyFeatures';
 
 const IMMEDIATE_ACTIONS = ['accept', 'prepare', 'ready', 'dispatch', 'deliver'];
 const COMMENT_ACTIONS   = ['reject', 'cancel', 'return'];
 
 const DeliveryOrdersPage = () => {
-  const { branchId, tenantId } = useAuthStore();
+  const { branchId, tenantId, user } = useAuthStore();
+  const canManage = canManageDelivery(user);
   const queryClient = useQueryClient();
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -43,6 +45,7 @@ const DeliveryOrdersPage = () => {
   };
 
   const handleAction = async (order, action) => {
+    if (COMMENT_ACTIONS.includes(action) && !canManage) return;
     if (COMMENT_ACTIONS.includes(action)) {
       setActionModal({ order, action });
       return;
@@ -113,6 +116,7 @@ const DeliveryOrdersPage = () => {
             orders={activeOrders}
             onOrderClick={o => setSelectedOrderId(o.id)}
             onAction={handleAction}
+            canManage={canManage}
           />
         )}
 
@@ -150,6 +154,7 @@ const DeliveryOrdersPage = () => {
             setSelectedOrderId(null);
             handleAction(order, action);
           }}
+          canManage={canManage}
         />
       )}
 

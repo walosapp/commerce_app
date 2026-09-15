@@ -1,6 +1,6 @@
-import { Building2, Users, GitBranch, Calendar, ToggleLeft, ToggleRight, Pencil } from 'lucide-react';
+import { Building2, Users, GitBranch, Calendar, ToggleLeft, ToggleRight, Pencil, Puzzle } from 'lucide-react';
 
-const TenantCard = ({ tenant, onToggleStatus, onEdit }) => {
+const TenantCard = ({ tenant, onToggleStatus, onEdit, onManageFeatures, onManageBranches }) => {
   const createdAt = tenant.createdAt
     ? new Date(tenant.createdAt).toLocaleDateString('es-CO')
     : '—';
@@ -24,6 +24,9 @@ const TenantCard = ({ tenant, onToggleStatus, onEdit }) => {
         }`}>
           {tenant.isActive ? 'Activo' : 'Inactivo'}
         </span>
+        {tenant.isSystem && (
+          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">System</span>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
@@ -48,16 +51,32 @@ const TenantCard = ({ tenant, onToggleStatus, onEdit }) => {
         <span className="text-xs text-gray-400">{tenant.currency} · {tenant.country}</span>
         <div className="flex items-center gap-3">
           <button
+            onClick={() => onManageBranches(tenant)}
+            title="Gestionar sucursales"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
+          >
+            <GitBranch size={14} /> Sucursales
+          </button>
+          <button
+            onClick={() => onManageFeatures(tenant)}
+            title="Configurar módulos"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
+          >
+            <Puzzle size={14} /> Módulos
+          </button>
+          <button
             onClick={() => onEdit(tenant)}
             title="Editar comercio"
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
+            disabled={tenant.isSystem}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Pencil size={14} /> Editar
           </button>
           <button
             onClick={() => onToggleStatus(tenant)}
             title={tenant.isActive ? 'Desactivar comercio' : 'Activar comercio'}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
+            disabled={tenant.isSystem}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
           >
             {tenant.isActive
               ? <><ToggleRight size={18} className="text-green-500" /> Desactivar</>

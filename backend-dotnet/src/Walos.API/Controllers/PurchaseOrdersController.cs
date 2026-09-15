@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Walos.API.Authorization;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Suppliers;
 using Walos.Application.Services;
 using Walos.Application.Security;
 using Walos.Domain.Exceptions;
+using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
@@ -12,6 +14,7 @@ namespace Walos.API.Controllers;
 [ApiController]
 [Route("api/v1/purchase-orders")]
 [Authorize]
+[RequireFeature(WalosFeatures.Purchases)]
 public class PurchaseOrdersController : ControllerBase
 {
     private readonly IPurchaseOrderService _service;
@@ -24,6 +27,7 @@ public class PurchaseOrdersController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Policy = WalosPolicies.PurchasesRead)]
     public async Task<IActionResult> GetAll([FromQuery] long? supplierId = null)
     {
         var items = (await _service.GetAllAsync(_tenant.CompanyId, _tenant.BranchId, supplierId)).ToList();
@@ -31,6 +35,7 @@ public class PurchaseOrdersController : ControllerBase
     }
 
     [HttpGet("{id:long}")]
+    [Authorize(Policy = WalosPolicies.PurchasesRead)]
     public async Task<IActionResult> GetById(long id)
     {
         var order = await _service.GetByIdAsync(id, _tenant.CompanyId, _tenant.BranchId);

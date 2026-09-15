@@ -7,7 +7,7 @@ using Walos.Domain.Exceptions;
 
 namespace Walos.Tests.Integration;
 
-public class RefundAtomicityIntegrationTests : IntegrationTestBase
+public class RefundAtomicityIntegrationTests : V1IntegrationTestBase
 {
     private RefundService Service => new(RefundRepository, NullLogger<RefundService>.Instance);
 
@@ -34,6 +34,32 @@ public class RefundAtomicityIntegrationTests : IntegrationTestBase
         Assert.Equal(0.5m, result.Items!.Single().Quantity);
         Assert.Equal(8.5m, await GetStockAsync(ctx));
         Assert.Equal("partial_refund", await GetRefundStatusAsync(ctx));
+    }
+
+    [SkippableFact]
+    public async Task Prepared_Product_Partial_Refund_Restores_Current_Recipe_Ingredient()
+    {
+        var ctx = await SeedPreparedOrderAsync("Prepared partial");
+
+        var result = await RefundAsync(ctx, "partial", NewKey(), 0.5m);
+
+        Assert.Equal(25m, result.RefundAmount);
+        Assert.Equal(9m, await GetStockAsync(ctx));
+        Assert.Equal("refund_recipe", await GetLastMovementTypeAsync(ctx));
+        Assert.Equal(1m, await GetLastMovementQuantityAsync(ctx));
+    }
+
+    [SkippableFact]
+    public async Task Prepared_Product_Full_Refund_Restores_All_Current_Recipe_Ingredients()
+    {
+        var ctx = await SeedPreparedOrderAsync("Prepared full");
+
+        var result = await RefundAsync(ctx, "full", NewKey(), null);
+
+        Assert.Equal(100m, result.RefundAmount);
+        Assert.Equal(12m, await GetStockAsync(ctx));
+        Assert.Equal("refund_recipe", await GetLastMovementTypeAsync(ctx));
+        Assert.Equal(4m, await GetLastMovementQuantityAsync(ctx));
     }
 
     [SkippableFact]
@@ -306,7 +332,8 @@ public class RefundAtomicityIntegrationTests : IntegrationTestBase
         decimal amountPaid = 100m,
         decimal creditBalance = 0m,
         decimal discountAmount = 0m,
-        bool openRegister = false)
+        bool openRegister = false,
+        bool prepared = false)
     {
         var company = await SeedCompanyAsync($"{prefix} Company");
         var branch = await SeedBranchAsync(company, $"{prefix} Branch");
@@ -328,14 +355,36 @@ public class RefundAtomicityIntegrationTests : IntegrationTestBase
                 track_stock, is_for_sale, is_active, created_by
             ) VALUES (
                 @company, @name, @sku, @category, @unit, 20, 50,
-                0, 100, 0, false, 'simple', true, true, true, @user
+                0, 100, 0, false, @productType, @trackStock, true, true, @user
             ) RETURNING id",
             ("@company", company), ("@name", $"Product {prefix}"), ("@sku", $"SKU-{suffix}"),
-            ("@category", category), ("@unit", unit), ("@user", user));
+            ("@category", category), ("@unit", unit), ("@user", user),
+            ("@productType", prepared ? "prepared" : "simple"), ("@trackStock", !prepared));
+
+        var trackedProduct = product;
+        if (prepared)
+        {
+            trackedProduct = await ScalarAsync(conn, @"
+                INSERT INTO inventory.products (
+                    company_id, name, sku, category_id, unit_id, cost_price, sale_price,
+                    min_stock, max_stock, reorder_point, is_perishable, product_type,
+                    track_stock, is_for_sale, is_active, created_by
+                ) VALUES (
+                    @company, @name, @sku, @category, @unit, 5, 0,
+                    0, 100, 0, false, 'supply', true, false, true, @user
+                ) RETURNING id",
+                ("@company", company), ("@name", $"Ingredient {prefix}"), ("@sku", $"ING-{suffix}"),
+                ("@category", category), ("@unit", unit), ("@user", user));
+            await ExecuteAsync(conn, @"
+                INSERT INTO inventory.recipes (company_id, product_id, ingredient_id, quantity, unit_id)
+                VALUES (@company, @product, @ingredient, 2, @unit)",
+                ("@company", company), ("@product", product), ("@ingredient", trackedProduct), ("@unit", unit));
+        }
+
         await ExecuteAsync(conn, @"
             INSERT INTO inventory.stock (company_id, branch_id, product_id, quantity, reserved_quantity)
             VALUES (@company, @branch, @product, 8, 0)",
-            ("@company", company), ("@branch", branch), ("@product", product));
+            ("@company", company), ("@branch", branch), ("@product", trackedProduct));
         var table = await ScalarAsync(conn, @"
             INSERT INTO sales.tables (company_id, branch_id, table_number, name, status, created_by)
             VALUES (@company, @branch, @number, @name, 'invoiced', @user) RETURNING id",
@@ -397,8 +446,11 @@ public class RefundAtomicityIntegrationTests : IntegrationTestBase
                 ("@credit", creditBalance), ("@user", user));
         }
 
-        return new RefundTestContext(company, branch, user, order, orderItem, product, creditId, cashRegisterId);
+        return new RefundTestContext(company, branch, user, order, orderItem, trackedProduct, creditId, cashRegisterId);
     }
+
+    private Task<RefundTestContext> SeedPreparedOrderAsync(string prefix) =>
+        SeedOrderAsync(prefix, paymentMethod: "card", prepared: true);
 
     private async Task PayCreditAsync(RefundTestContext context, decimal amount, string paymentMethod)
     {
@@ -455,6 +507,32 @@ public class RefundAtomicityIntegrationTests : IntegrationTestBase
         DecimalScalarAsync("SELECT COALESCE(SUM(quantity),0) FROM sales.refund_items WHERE order_item_id=@item", ("@item", itemId));
     private Task<decimal> GetRefundedSubtotalAsync(long itemId) =>
         DecimalScalarAsync("SELECT COALESCE(SUM(subtotal),0) FROM sales.refund_items WHERE order_item_id=@item", ("@item", itemId));
+
+    private async Task<string> GetLastMovementTypeAsync(RefundTestContext context)
+    {
+        using var conn = (NpgsqlConnection)await ConnectionFactory.CreateConnectionAsync();
+        using var cmd = new NpgsqlCommand(@"
+            SELECT movement_type
+            FROM inventory.movements
+            WHERE company_id=@company AND branch_id=@branch AND product_id=@product
+              AND reference_type='refund'
+            ORDER BY id DESC
+            LIMIT 1", conn);
+        cmd.Parameters.AddWithValue("@company", context.Company);
+        cmd.Parameters.AddWithValue("@branch", context.Branch);
+        cmd.Parameters.AddWithValue("@product", context.ProductId);
+        return (string)(await cmd.ExecuteScalarAsync() ?? string.Empty);
+    }
+
+    private Task<decimal> GetLastMovementQuantityAsync(RefundTestContext context) =>
+        DecimalScalarAsync(@"
+            SELECT quantity
+            FROM inventory.movements
+            WHERE company_id=@company AND branch_id=@branch AND product_id=@product
+              AND reference_type='refund'
+            ORDER BY id DESC
+            LIMIT 1",
+            ("@company", context.Company), ("@branch", context.Branch), ("@product", context.ProductId));
     private Task<decimal> GetCashRefundMovementsAsync(RefundTestContext context) =>
         DecimalScalarAsync(@"
             SELECT COALESCE(SUM(cm.amount), 0)

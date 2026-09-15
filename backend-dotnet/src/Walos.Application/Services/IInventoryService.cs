@@ -18,8 +18,8 @@ public interface IInventoryService
         string? declaredContentType,
         CancellationToken cancellationToken = default);
     Task<Stock> AddStockAsync(long companyId, long userId, long? tenantBranchId, AddStockRequest request);
-    Task<AiProcessResult> ProcessAiInventoryInputAsync(string userInput, AiInputContext context);
-    Task<AiConfirmResult> ConfirmAiActionAsync(long interactionId, long userId, long companyId);
+    Task<AiProcessResult> ProcessAiInventoryInputAsync(string userInput, AiInputContext context, bool trustedDevBypass = false);
+    Task<AiConfirmResult> ConfirmAiActionAsync(long interactionId, long userId, long companyId, bool trustedDevBypass = false);
     Task<IEnumerable<Stock>> GetLowStockProductsAsync(long companyId, long branchId);
     Task<IEnumerable<ProfitReport>> CalculateProductProfitsAsync(long companyId, long branchId, DateRange? dateRange = null);
 }

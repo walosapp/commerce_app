@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Walos.API.Authorization;
 using Walos.Application.DTOs.Ai;
 using Walos.Application.DTOs.Common;
 using Walos.Application.Security;
 using Walos.Application.Services;
+using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
@@ -11,6 +13,7 @@ namespace Walos.API.Controllers;
 [ApiController]
 [Route("api/v1/ai")]
 [Authorize(Policy = WalosPolicies.InventoryWrite)]
+[RequireFeature(WalosFeatures.Ai)]
 public class AiController : ControllerBase
 {
     private readonly OrchestratorService _orchestrator;
@@ -39,7 +42,8 @@ public class AiController : ControllerBase
             _tenant.BranchId ?? 0,
             companyName,
             request.Message,
-            request.SessionId);
+            request.SessionId,
+            trustedDevBypass: _tenant.IsDev && _tenant.IsPlatformAdmin);
 
         return Ok(ApiResponse<AiChatResponse>.Ok(response));
     }

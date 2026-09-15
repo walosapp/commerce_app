@@ -3,7 +3,7 @@ using Walos.Domain.Entities;
 
 namespace Walos.Tests.Integration;
 
-public class UsersRepositorySecurityIntegrationTests : IntegrationTestBase
+public class UsersRepositorySecurityIntegrationTests : V1IntegrationTestBase
 {
     [SkippableFact]
     public async Task Role_And_Branch_From_Another_Company_Are_Not_Assignable()
@@ -55,6 +55,43 @@ public class UsersRepositorySecurityIntegrationTests : IntegrationTestBase
 
         Assert.Null(await UsersRepository.GetByIdAsync(userA, companyA));
         Assert.DoesNotContain(await UsersRepository.GetAllAsync(companyA), user => user.Id == userA);
+    }
+
+    [SkippableFact]
+    public async Task Existing_Dev_User_Cannot_Be_Reassigned_Or_SoftDeleted()
+    {
+        var companyId = await SeedCompanyAsync("Protected dev mutation");
+        var userId = await SeedUserAsync(companyId, null);
+        var managerRoleId = (await UsersRepository.GetByIdAsync(userId, companyId))!.RoleId;
+        var devRoleId = await SeedRoleAsync(companyId, "dev", 100);
+
+        using (var conn = (NpgsqlConnection)await ConnectionFactory.CreateConnectionAsync())
+        using (var command = new NpgsqlCommand(@"
+            UPDATE core.users SET role_id = @devRoleId
+            WHERE id = @userId AND company_id = @companyId", conn))
+        {
+            command.Parameters.AddWithValue("devRoleId", devRoleId);
+            command.Parameters.AddWithValue("userId", userId);
+            command.Parameters.AddWithValue("companyId", companyId);
+            Assert.Equal(1, await command.ExecuteNonQueryAsync());
+        }
+
+        var updated = await UsersRepository.UpdateAsync(new User
+        {
+            Id = userId,
+            CompanyId = companyId,
+            RoleId = managerRoleId,
+            FirstName = "Changed",
+            LastName = "Role",
+        });
+        var deleted = await UsersRepository.SoftDeleteAsync(userId, companyId);
+
+        Assert.Null(updated);
+        Assert.False(deleted);
+        var persisted = await UsersRepository.GetByIdAsync(userId, companyId);
+        Assert.NotNull(persisted);
+        Assert.Equal("dev", persisted!.RoleCode);
+        Assert.Null(persisted.DeletedAt);
     }
 
     private async Task<long> SeedRoleAsync(long companyId, string code, int accessLevel)

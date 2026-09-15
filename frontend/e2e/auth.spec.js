@@ -1,6 +1,9 @@
 // @ts-check
 import { test, expect } from '@playwright/test'
 
+const E2E_USERNAME = process.env.WALOS_E2E_USERNAME
+const E2E_PASSWORD = process.env.WALOS_E2E_PASSWORD
+
 test.describe('Authentication Flow', () => {
   test.beforeEach(async ({ page }) => {
     // Clear storage before each test
@@ -39,10 +42,11 @@ test.describe('Authentication Flow', () => {
   })
 
   test('should login successfully with valid credentials', async ({ page }) => {
+    test.skip(!E2E_USERNAME || !E2E_PASSWORD, 'Configura WALOS_E2E_USERNAME y WALOS_E2E_PASSWORD')
     await page.goto('/')
 
-    await page.getByLabel(/usuario/i).fill('admin@mibar.com')
-    await page.getByLabel(/contraseña/i).fill('admin123')
+    await page.getByLabel(/usuario/i).fill(E2E_USERNAME)
+    await page.getByLabel(/contraseña/i).fill(E2E_PASSWORD)
     await page.getByRole('button', { name: /iniciar sesión/i }).click()
 
     // Should redirect to app after successful login
@@ -69,11 +73,12 @@ test.describe('Authentication Flow', () => {
   })
 
   test('should persist session after page reload', async ({ page }) => {
+    test.skip(!E2E_USERNAME || !E2E_PASSWORD, 'Configura WALOS_E2E_USERNAME y WALOS_E2E_PASSWORD')
     await page.goto('/')
 
     // Login
-    await page.getByLabel(/usuario/i).fill('admin@mibar.com')
-    await page.getByLabel(/contraseña/i).fill('admin123')
+    await page.getByLabel(/usuario/i).fill(E2E_USERNAME)
+    await page.getByLabel(/contraseña/i).fill(E2E_PASSWORD)
     await page.getByRole('button', { name: /iniciar sesión/i }).click()
 
     // Wait for navigation
@@ -87,10 +92,9 @@ test.describe('Authentication Flow', () => {
     await expect(page).not.toHaveURL(/login/)
   })
 
-  test('should show dev credentials hint', async ({ page }) => {
+  test('should not expose development credentials', async ({ page }) => {
     await page.goto('/')
 
-    await expect(page.getByText('admin@mibar.com')).toBeVisible()
-    await expect(page.getByText('admin123')).toBeVisible()
+    await expect(page.getByText(/Credenciales de desarrollo/i)).toHaveCount(0)
   })
 })

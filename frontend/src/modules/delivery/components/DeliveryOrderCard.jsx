@@ -23,7 +23,7 @@ const elapsedBadge = (createdAt) => {
   return <span className="text-xs font-semibold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">{mins}m ⚠</span>;
 };
 
-const DeliveryOrderCard = ({ order, onClick, onAction }) => {
+const DeliveryOrderCard = ({ order, onClick, onAction, canManage = false }) => {
   const src = SOURCE_BADGES[order.source] ?? SOURCE_BADGES.manual;
   const next = NEXT_ACTION[order.status];
 
@@ -72,7 +72,7 @@ const DeliveryOrderCard = ({ order, onClick, onAction }) => {
               <CheckCircle size={13} /> {next.label}
             </button>
           )}
-          {['new', 'accepted', 'preparing'].includes(order.status) && (
+          {canManage && ['new', 'accepted', 'preparing'].includes(order.status) && (
             <button
               onClick={() => onAction(order, 'reject')}
               className="text-xs text-red-400 hover:text-red-600 transition-colors"

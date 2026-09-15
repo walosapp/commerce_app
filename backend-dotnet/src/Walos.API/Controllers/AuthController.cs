@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
+using Walos.Application.Security;
 using Walos.Application.Services;
 
 namespace Walos.API.Controllers;
@@ -35,7 +36,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("logout")]
-    [Authorize]
+    [Authorize(Policy = WalosPolicies.CanonicalAuthenticated)]
     public async Task<IActionResult> Logout()
     {
         var userIdClaim = User.FindFirst("userId")?.Value;

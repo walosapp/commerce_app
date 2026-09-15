@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Truck, PlusCircle, Search, RefreshCw, Phone, Mail, Package,
@@ -13,6 +13,7 @@ import SupplierDetailPanel from './components/SupplierDetailPanel';
 import PurchaseOrderModal from './components/PurchaseOrderModal';
 import ReceiveOrderModal from './components/ReceiveOrderModal';
 import PurchaseOrderDetailPanel from './components/PurchaseOrderDetailPanel';
+import useCompanyFeatures from '../../hooks/useCompanyFeatures';
 
 const STATUS_BADGE = {
   pending:   { label: 'Pendiente',  cls: 'bg-yellow-100 text-yellow-700', icon: Clock },
@@ -21,15 +22,18 @@ const STATUS_BADGE = {
   cancelled: { label: 'Cancelado',  cls: 'bg-red-100 text-red-700',       icon: XCircle },
 };
 
-const SuppliersPage = () => {
+const SuppliersPage = ({ initialTab = 'suppliers' }) => {
   const { tenantId } = useAuthStore();
+  const { canAccess } = useCompanyFeatures();
+  const suppliersEnabled = canAccess('suppliers');
+  const purchasesEnabled = canAccess('purchases');
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
   const [orderSearch, setOrderSearch] = useState('');
   const [selectedId, setSelectedId] = useState(null);
   const [formModal, setFormModal] = useState(null);
-  const [activeTab, setActiveTab] = useState('suppliers');
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [receiveOrder, setReceiveOrder] = useState(null);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -38,7 +42,7 @@ const SuppliersPage = () => {
   const { data: suppliersData, isLoading, refetch } = useQuery({
     queryKey: ['suppliers', tenantId],
     queryFn: () => supplierService.getAll(),
-    enabled: !!tenantId,
+    enabled: !!tenantId && (suppliersEnabled || (purchasesEnabled && showOrderModal)),
   });
 
   const suppliers = (suppliersData?.data ?? []).filter(s =>
@@ -53,8 +57,20 @@ const SuppliersPage = () => {
   const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
     queryKey: ['purchase-orders', tenantId],
     queryFn: () => purchaseOrderService.getAll(),
-    enabled: !!tenantId,
+    enabled: !!tenantId && purchasesEnabled,
   });
+
+  const tabs = [
+    ...(suppliersEnabled ? [{ k: 'suppliers', l: 'Proveedores', i: Truck }] : []),
+    ...(purchasesEnabled ? [{ k: 'orders', l: 'Compras', i: ShoppingCart }] : []),
+  ];
+
+  useEffect(() => {
+    const requestedTab = initialTab === 'orders' && purchasesEnabled
+      ? 'orders'
+      : (suppliersEnabled ? 'suppliers' : (purchasesEnabled ? 'orders' : undefined));
+    if (requestedTab) setActiveTab(requestedTab);
+  }, [initialTab, purchasesEnabled, suppliersEnabled]);
 
   const orders = (ordersData?.data ?? []).filter(o =>
     !orderSearch.trim() ||
@@ -137,9 +153,11 @@ const SuppliersPage = () => {
             <Truck size={22} className="text-blue-600" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Proveedores</h1>
+            <h1 className="text-xl font-bold text-gray-900">{activeTab === 'orders' ? 'Compras' : 'Proveedores'}</h1>
             <p className="text-sm text-gray-500">
-              {suppliers.length} proveedor{suppliers.length !== 1 ? 'es' : ''}
+              {activeTab === 'orders'
+                ? `${orders.length} pedido${orders.length !== 1 ? 's' : ''}`
+                : `${suppliers.length} proveedor${suppliers.length !== 1 ? 'es' : ''}`}
             </p>
           </div>
         </div>
@@ -195,10 +213,7 @@ const SuppliersPage = () => {
 
       {/* Tabs */}
       <div className="flex border-b bg-white px-6">
-        {[
-          { k: 'suppliers', l: 'Proveedores', i: Truck },
-          { k: 'orders',    l: 'Pedidos',     i: ShoppingCart },
-        ].map(({ k, l, i: Icon }) => (
+        {tabs.map(({ k, l, i: Icon }) => (
           <button
             key={k}
             onClick={() => setActiveTab(k)}
@@ -399,19 +414,20 @@ const SuppliersPage = () => {
       </div>
 
       {/* Side panel */}
-      {selectedId && (
+      {suppliersEnabled && selectedId && (
         <SupplierDetailPanel
           supplierId={selectedId}
           onClose={() => setSelectedId(null)}
           onEdit={s => setFormModal({ supplier: s })}
           onDelete={handleDelete}
-          onOpenOrderDetail={(orderId) => setSelectedOrderId(orderId)}
-          onNewOrder={() => setShowOrderModal(true)}
+          onOpenOrderDetail={purchasesEnabled ? (orderId) => setSelectedOrderId(orderId) : undefined}
+          onNewOrder={purchasesEnabled ? () => setShowOrderModal(true) : undefined}
+          purchasesEnabled={purchasesEnabled}
         />
       )}
 
       {/* Modals */}
-      {formModal !== null && (
+      {suppliersEnabled && formModal !== null && (
         <SupplierFormModal
           supplier={formModal.supplier ?? null}
           onSave={handleSave}
@@ -419,14 +435,16 @@ const SuppliersPage = () => {
         />
       )}
 
-      <PurchaseOrderModal
-        isOpen={showOrderModal}
-        onClose={() => setShowOrderModal(false)}
-        onSaved={refetchOrders}
-        suppliers={suppliersData?.data ?? []}
-      />
+      {purchasesEnabled && (
+        <PurchaseOrderModal
+          isOpen={showOrderModal}
+          onClose={() => setShowOrderModal(false)}
+          onSaved={refetchOrders}
+          suppliers={suppliersData?.data ?? []}
+        />
+      )}
 
-      {selectedOrderId && (
+      {purchasesEnabled && selectedOrderId && (
         <PurchaseOrderDetailPanel
           orderId={selectedOrderId}
           onClose={() => setSelectedOrderId(null)}
@@ -435,15 +453,17 @@ const SuppliersPage = () => {
         />
       )}
 
-      <ReceiveOrderModal
-        isOpen={!!receiveOrder}
-        order={receiveOrder}
-        onClose={() => setReceiveOrder(null)}
-        onSaved={() => {
-          refetchOrders();
-          queryClient.invalidateQueries({ queryKey: ['stock'] });
-        }}
-      />
+      {purchasesEnabled && (
+        <ReceiveOrderModal
+          isOpen={!!receiveOrder}
+          order={receiveOrder}
+          onClose={() => setReceiveOrder(null)}
+          onSaved={() => {
+            refetchOrders();
+            queryClient.invalidateQueries({ queryKey: ['stock'] });
+          }}
+        />
+      )}
     </div>
   );
 };

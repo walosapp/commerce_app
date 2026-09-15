@@ -5,9 +5,26 @@ import toast from 'react-hot-toast';
 
 const AGENT_LABELS = {
   inventory: { label: 'Inventario', icon: Package, color: 'text-green-600', bg: 'bg-green-100' },
+  purchases: { label: 'Compras', icon: Package, color: 'text-amber-600', bg: 'bg-amber-100' },
+  suppliers: { label: 'Proveedores', icon: Package, color: 'text-violet-600', bg: 'bg-violet-100' },
   delivery: { label: 'Domicilios', icon: Truck, color: 'text-blue-600', bg: 'bg-blue-100' },
   general: { label: 'Asistente', icon: Bot, color: 'text-primary-600', bg: 'bg-primary-100' },
   orchestrator: { label: 'Asistente', icon: Bot, color: 'text-primary-600', bg: 'bg-primary-100' },
+};
+
+const CAPABILITY_DESCRIPTIONS = {
+  inventory: '📦 Inventario: consultar stock y alertas',
+  purchases: '🧾 Compras: preparar pedidos de reposición',
+  suppliers: '🏭 Proveedores: consultar proveedores registrados',
+  delivery: '🛵 Domicilios: consultar el estado de pedidos',
+};
+
+export const buildAiWelcomeMessage = (enabledCapabilities = []) => {
+  const capabilities = enabledCapabilities
+    .filter((feature) => CAPABILITY_DESCRIPTIONS[feature])
+    .map((feature) => CAPABILITY_DESCRIPTIONS[feature]);
+  capabilities.push('💬 General: preguntas generales sobre tu negocio');
+  return `¡Hola! Soy tu asistente inteligente. Puedo ayudarte con:\n\n${capabilities.join('\n')}\n\n¿En qué te ayudo?`;
 };
 
 const ChecklistMessage = ({ payload, onSend }) => {
@@ -80,13 +97,13 @@ const DeliveryStatusMessage = ({ payload }) => (
   </div>
 );
 
-const AIChat = ({ onActionConfirmed }) => {
+const AIChat = ({ enabledCapabilities = [] }) => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
       agentType: 'orchestrator',
       responseType: 'text',
-      content: '¡Hola! Soy tu asistente inteligente. Puedo ayudarte con:\n\n📦 Inventario: stock bajo, ingresar productos, crear pedidos a proveedores\n🛵 Domicilios: consultar y actualizar estado de pedidos\n💬 General: cualquier pregunta sobre tu negocio\n\n¿En qué te ayudo?',
+      content: buildAiWelcomeMessage(enabledCapabilities),
     },
   ]);
   const [input, setInput] = useState('');
@@ -141,9 +158,12 @@ const AIChat = ({ onActionConfirmed }) => {
         },
       ]);
 
-      onActionConfirmed?.();
     } catch (err) {
-      const msg = err.response?.data?.message || 'Error al comunicarse con el asistente';
+      const isFeatureDisabled = err.response?.data?.code === 'feature_not_enabled';
+      const msg = isFeatureDisabled
+        ? 'Esa capacidad del asistente no está habilitada para este comercio.'
+        : err.response?.data?.message || 'Error al comunicarse con el asistente';
+      if (isFeatureDisabled) setSessionId(null);
       setMessages((prev) => [...prev, { role: 'assistant', agentType: 'orchestrator', responseType: 'text', content: `❌ ${msg}` }]);
       toast.error(msg);
     } finally {
@@ -163,7 +183,9 @@ const AIChat = ({ onActionConfirmed }) => {
         </div>
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Asistente IA</h3>
-          <p className="text-xs text-gray-500">Inventario · Domicilios · General</p>
+          <p className="text-xs text-gray-500">
+            {[...enabledCapabilities.map((feature) => AGENT_LABELS[feature]?.label || feature), 'General'].join(' · ')}
+          </p>
         </div>
       </div>
 
@@ -189,7 +211,7 @@ const AIChat = ({ onActionConfirmed }) => {
                   msg.role === 'user' ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-900'
                 }`}>
                   {msg.content}
-                  {msg.responseType === 'checklist' && msg.payload && (
+                  {enabledCapabilities.includes('purchases') && msg.responseType === 'checklist' && msg.payload && (
                     <ChecklistMessage payload={msg.payload} onSend={sendMessage} />
                   )}
                   {msg.responseType === 'whatsapp' && msg.payload && (

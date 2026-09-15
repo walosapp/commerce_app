@@ -19,6 +19,15 @@ public class AuthService : IAuthService
 
     private const int MaxFailedAttempts = 5;
     private const int LockoutMinutes = 15;
+    private static readonly HashSet<string> CanonicalRoles = new(StringComparer.Ordinal)
+    {
+        WalosRoles.Dev,
+        WalosRoles.PlatformAdmin,
+        WalosRoles.SuperAdmin,
+        WalosRoles.Manager,
+        WalosRoles.Cashier,
+        WalosRoles.Waiter,
+    };
 
     public AuthService(IAuthRepository authRepo, IConfiguration configuration, ILogger<AuthService> logger)
     {
@@ -74,6 +83,8 @@ public class AuthService : IAuthService
             throw new BusinessException("Credenciales inválidas");
         }
 
+        EnsureCanonicalRole(user);
+
         await _authRepo.ResetFailedLoginAsync(user.Id);
         await _authRepo.UpdateLastLoginAsync(user.Id, ipAddress);
 
@@ -103,6 +114,8 @@ public class AuthService : IAuthService
 
         if (!user.IsActive)
             throw new BusinessException("Cuenta desactivada");
+
+        EnsureCanonicalRole(user);
 
         var tokenString = GenerateJwtToken(user);
         var newRefreshToken = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
@@ -137,10 +150,7 @@ public class AuthService : IAuthService
             new Claim(ClaimTypes.Role, user.RoleCode ?? "user"),
             new Claim(
                 WalosClaimTypes.PlatformAdmin,
-                (string.Equals(user.RoleCode, WalosRoles.Dev, StringComparison.OrdinalIgnoreCase)
-                 && string.Equals(user.CompanyTaxId, WalosSystemIdentity.CompanyTaxId, StringComparison.Ordinal))
-                    .ToString()
-                    .ToLowerInvariant())
+                IsTrustedPlatformAdmin(user).ToString().ToLowerInvariant())
         };
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
@@ -169,6 +179,26 @@ public class AuthService : IAuthService
         BranchId = user.BranchId,
         BranchName = user.BranchName,
         Language = user.Language,
-        AvatarUrl = user.AvatarUrl
+        AvatarUrl = user.AvatarUrl,
+        IsPlatformAdmin = IsTrustedPlatformAdmin(user)
     };
+
+    private static bool IsTrustedPlatformAdmin(User user) =>
+        (string.Equals(user.RoleCode, WalosRoles.Dev, StringComparison.OrdinalIgnoreCase)
+         || string.Equals(user.RoleCode, WalosRoles.PlatformAdmin, StringComparison.OrdinalIgnoreCase))
+        && string.Equals(user.CompanyTaxId, WalosSystemIdentity.CompanyTaxId, StringComparison.Ordinal);
+
+    private void EnsureCanonicalRole(User user)
+    {
+        if (user.RoleCode is not null && CanonicalRoles.Contains(user.RoleCode))
+            return;
+
+        _logger.LogWarning(
+            "Emision de token rechazada para UserId {UserId}: rol no canonico {RoleCode}",
+            user.Id,
+            user.RoleCode ?? "<null>");
+        throw new BusinessException(
+            "La cuenta no tiene un rol autorizado",
+            "unsupported_role");
+    }
 }

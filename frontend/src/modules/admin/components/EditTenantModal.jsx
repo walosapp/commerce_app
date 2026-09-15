@@ -121,7 +121,7 @@ const EditTenantModal = ({ tenant, onClose, onSaved }) => {
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Email del comercio" name="email" type="email" value={form.email} onChange={handleChange} placeholder="contacto@mibar.com" />
-            <Field label="Email admin principal" name="adminEmail" type="email" value={form.adminEmail} onChange={handleChange} placeholder="admin@mibar.com" />
+            <Field label="Email admin principal" name="adminEmail" type="email" value={form.adminEmail} onChange={handleChange} placeholder="admin@comercio.com" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">

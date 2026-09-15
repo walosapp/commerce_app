@@ -2,12 +2,15 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SalesPage from '../../../modules/sales/SalesPage';
 
-const { invoiceTable, enqueuePostSale, invalidateQueries, toastSuccess, toastError } = vi.hoisted(() => ({
+const { invoiceTable, enqueuePostSale, invalidateQueries, toastSuccess, toastError, featureState, queryConfigs, authState } = vi.hoisted(() => ({
   invoiceTable: vi.fn(),
   enqueuePostSale: vi.fn(),
   invalidateQueries: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  featureState: { canAccess: vi.fn() },
+  queryConfigs: [],
+  authState: { branchId: 7, user: { role: 'manager', isPlatformAdmin: false } },
 }));
 
 const table = {
@@ -20,7 +23,9 @@ const table = {
 
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries }),
-  useQuery: ({ queryKey }) => {
+  useQuery: (config) => {
+    queryConfigs.push(config);
+    const { queryKey } = config;
     if (queryKey[0] === 'sales-tables') return { data: { data: [table] }, isLoading: false };
     if (queryKey[0] === 'stock') return { data: { data: [] }, isLoading: false };
     return { data: { data: null }, isLoading: false };
@@ -43,7 +48,11 @@ vi.mock('../../../services/inventoryService', () => ({
 }));
 
 vi.mock('../../../stores/authStore', () => ({
-  default: () => ({ branchId: 7 }),
+  default: () => authState,
+}));
+
+vi.mock('../../../hooks/useCompanyFeatures', () => ({
+  default: () => featureState,
 }));
 
 vi.mock('../../../stores/postSaleHardwareStore', () => ({
@@ -72,8 +81,8 @@ vi.mock('../../../modules/sales/components/InvoicePanel', () => ({
 }));
 
 vi.mock('../../../modules/sales/components/AddTablePanel', () => ({ default: () => null }));
-vi.mock('../../../modules/sales/components/CreditsPanel', () => ({ default: () => null }));
-vi.mock('../../../modules/sales/components/SalesSummaryTab', () => ({ default: () => null }));
+vi.mock('../../../modules/sales/components/CreditsPanel', () => ({ default: () => <div>Panel de créditos</div> }));
+vi.mock('../../../modules/sales/components/SalesSummaryTab', () => ({ default: ({ canRefund }) => <div>{canRefund ? 'Puede devolver' : 'Solo consulta'}</div> }));
 vi.mock('../../../modules/sales/components/CashRegisterBar', () => ({ default: () => null }));
 vi.mock('../../../modules/sales/components/OpenCashRegisterModal', () => ({ default: () => null }));
 vi.mock('../../../modules/sales/components/CloseCashRegisterModal', () => ({ default: () => null }));
@@ -89,6 +98,9 @@ const confirmSale = async () => {
 describe('SalesPage postventa restaurante H3', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    queryConfigs.length = 0;
+    authState.user = { role: 'manager', isPlatformAdmin: false };
+    featureState.canAccess.mockReturnValue(true);
     invoiceTable.mockResolvedValue({
       data: {
         orderId: 987,
@@ -153,5 +165,61 @@ describe('SalesPage postventa restaurante H3', () => {
 
     await waitFor(() => expect(enqueuePostSale).toHaveBeenCalledWith({ orderId: 987 }));
     expect(invoiceTable).toHaveBeenCalledTimes(1);
+  });
+
+  it('no inicia caja cuando el feature cash esta apagado', () => {
+    featureState.canAccess.mockImplementation((code) => code === 'restaurant');
+
+    render(<SalesPage />);
+
+    expect(queryConfigs.find((config) => config.queryKey[0] === 'cash-register-active')?.enabled).toBe(false);
+    expect(queryConfigs.find((config) => config.queryKey[0] === 'sales-tables')?.enabled).toBe(true);
+    expect(screen.queryByRole('button', { name: /Caja/i })).not.toBeInTheDocument();
+  });
+
+  it('permite caja sin montar queries de restaurante', () => {
+    featureState.canAccess.mockImplementation((code) => code === 'cash');
+
+    render(<SalesPage initialTab="cash" />);
+
+    expect(queryConfigs.find((config) => config.queryKey[0] === 'cash-register-active')?.enabled).toBe(true);
+    expect(queryConfigs.find((config) => config.queryKey[0] === 'sales-tables')?.enabled).toBe(false);
+    expect(queryConfigs.find((config) => config.queryKey[0] === 'stock')?.enabled).toBe(false);
+    expect(screen.queryByRole('button', { name: /Mesas/i })).not.toBeInTheDocument();
+  });
+
+  it('synchronizes the active view when routing between sales and cash', async () => {
+    featureState.canAccess.mockImplementation((code) => ['restaurant', 'cash'].includes(code));
+    const view = render(<SalesPage initialTab="tables" />);
+    expect(screen.getAllByRole('button', { name: 'Facturar mesa' }).length).toBeGreaterThan(0);
+
+    view.rerender(<SalesPage initialTab="cash" />);
+    expect(await screen.findByText('No hay caja abierta')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Facturar mesa' })).not.toBeInTheDocument();
+
+    view.rerender(<SalesPage initialTab="tables" />);
+    expect((await screen.findAllByRole('button', { name: 'Facturar mesa' })).length).toBeGreaterThan(0);
+  });
+
+  it('hides credits and refund actions from waiter but keeps sales read-only', () => {
+    authState.user = { role: 'waiter', isPlatformAdmin: false };
+    featureState.canAccess.mockImplementation((code) => code === 'restaurant');
+
+    render(<SalesPage />);
+
+    expect(screen.queryByRole('button', { name: /Créditos/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Ventas/i }));
+    expect(screen.getByText('Solo consulta')).toBeInTheDocument();
+  });
+
+  it('allows cashier cash operations when the company modules are enabled', () => {
+    authState.user = { role: 'cashier', isPlatformAdmin: false };
+    featureState.canAccess.mockImplementation((code) => ['restaurant', 'cash'].includes(code));
+
+    render(<SalesPage />);
+
+    expect(screen.getByRole('button', { name: /Créditos/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Ventas/i }));
+    expect(screen.getByText('Puede devolver')).toBeInTheDocument();
   });
 });

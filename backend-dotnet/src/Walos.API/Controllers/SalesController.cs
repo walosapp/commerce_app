@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Walos.API.Authorization;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Sales;
 using Walos.Application.Services;
 using Walos.Application.Security;
 using Walos.Domain.Entities;
+using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
@@ -12,6 +14,7 @@ namespace Walos.API.Controllers;
 [ApiController]
 [Route("api/v1/sales")]
 [Authorize(Policy = WalosPolicies.SalesOperator)]
+[RequireAnyFeature(WalosFeatures.Restaurant, WalosFeatures.Pos)]
 public class SalesController : ControllerBase
 {
     private readonly ISalesRepository _salesRepo;
@@ -53,6 +56,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpGet("tables")]
+    [RequireFeature(WalosFeatures.Restaurant)]
     public async Task<IActionResult> GetTables([FromQuery] long? branchId)
     {
         var branch = await _salesService.ResolveBranchAsync(
@@ -63,6 +67,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpPost("tables")]
+    [RequireFeature(WalosFeatures.Restaurant)]
     [Authorize(Policy = WalosPolicies.SalesOperator)]
     public async Task<IActionResult> CreateTable([FromBody] CreateTableRequest request, [FromQuery] long? branchId = null)
     {
@@ -75,6 +80,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpPost("tables/{id:long}/invoice")]
+    [RequireFeature(WalosFeatures.Restaurant)]
     [Authorize(Policy = WalosPolicies.SalesOperator)]
     public async Task<IActionResult> InvoiceTable(long id, [FromBody] InvoiceTableRequest? request, [FromQuery] long? branchId = null)
     {
@@ -87,6 +93,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpDelete("tables/{id:long}")]
+    [RequireFeature(WalosFeatures.Restaurant)]
     [Authorize(Policy = WalosPolicies.SalesOperator)]
     public async Task<IActionResult> CancelTable(long id, [FromQuery] long? branchId = null)
     {
@@ -97,6 +104,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpPatch("items/{itemId:long}/quantity")]
+    [RequireFeature(WalosFeatures.Restaurant)]
     [Authorize(Policy = WalosPolicies.SalesOperator)]
     public async Task<IActionResult> UpdateItemQuantity(long itemId, [FromBody] UpdateItemQuantityRequest request, [FromQuery] long? branchId = null)
     {
@@ -107,6 +115,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpPost("tables/{id:long}/items")]
+    [RequireFeature(WalosFeatures.Restaurant)]
     [Authorize(Policy = WalosPolicies.SalesOperator)]
     public async Task<IActionResult> AddItemsToTable(long id, [FromBody] List<CreateTableItemDto> items, [FromQuery] long? branchId = null)
     {
@@ -118,6 +127,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpPatch("tables/{id:long}/name")]
+    [RequireFeature(WalosFeatures.Restaurant)]
     [Authorize(Policy = WalosPolicies.SalesOperator)]
     public async Task<IActionResult> RenameTable(long id, [FromBody] RenameTableRequest request, [FromQuery] long? branchId = null)
     {
@@ -168,6 +178,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpGet("orders/{id:long}/kitchen")]
+    [RequireFeature(WalosFeatures.Restaurant)]
     public async Task<IActionResult> GetKitchenTicket(long id, [FromQuery] long? branchId = null)
     {
         var branch = await _salesService.ResolveBranchAsync(

@@ -106,8 +106,9 @@ const SettingsPage = () => {
     setBranding({
       companyName: settings.displayName || settings.name || 'Walos',
       companyLogoUrl: settings.logoUrl || null,
+      tenantId,
     });
-  }, [settingsData, setBranding, setTheme]);
+  }, [settingsData, setBranding, setTheme, tenantId]);
 
   useEffect(() => {
     const settings = operationsData?.data;

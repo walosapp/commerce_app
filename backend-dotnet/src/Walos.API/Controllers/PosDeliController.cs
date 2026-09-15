@@ -1,9 +1,12 @@
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Walos.API.Authorization;
+using Walos.Application.Security;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.PosDeli;
 using Walos.Domain.Exceptions;
+using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
 using Walos.Domain.Policies;
 using Walos.Infrastructure.Inventory;
@@ -12,7 +15,8 @@ namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/pos-deli")]
-[Authorize(Roles = "dev,super_admin,admin,manager,cashier")]
+[Authorize(Policy = WalosPolicies.PosDeliOperator)]
+[RequireFeature(WalosFeatures.Pos)]
 public class PosDeliController : ControllerBase
 {
     private readonly IDbConnectionFactory _connectionFactory;

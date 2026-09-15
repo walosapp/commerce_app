@@ -13,6 +13,7 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState('productName');
   const [sortDirection, setSortDirection] = useState('asc');
+  const showActions = Boolean(onEdit || onDelete || onAddStock);
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -160,7 +161,7 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
                 <th className="px-4 py-3">Costo</th>
                 <th className="px-4 py-3">Precio Venta</th>
                 <th className="px-4 py-3">Estado</th>
-                <th className="px-4 py-3 text-right">Acciones</th>
+                {showActions && <th className="px-4 py-3 text-right">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -220,31 +221,31 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
                       ? getStatusBadge(item.stockStatus)
                       : <span className="badge badge-warning">Incompleto</span>}
                   </td>
-                  <td className="px-4 py-3">
+                  {showActions && <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <button
+                      {onAddStock && <button
                         onClick={() => onAddStock?.(item)}
                         className="rounded-lg p-1.5 text-green-600 hover:bg-green-50 transition-colors"
                         title="Agregar stock"
                       >
                         <Plus className="h-4 w-4" />
-                      </button>
-                      <button
+                      </button>}
+                      {onEdit && <button
                         onClick={() => onEdit?.(item)}
                         className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 transition-colors"
                         title="Editar producto"
                       >
                         <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
+                      </button>}
+                      {onDelete && <button
                         onClick={() => onDelete?.(item)}
                         className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 transition-colors"
                         title="Eliminar producto"
                       >
                         <Trash2 className="h-4 w-4" />
-                      </button>
+                      </button>}
                     </div>
-                  </td>
+                  </td>}
                 </tr>
               ))}
             </tbody>

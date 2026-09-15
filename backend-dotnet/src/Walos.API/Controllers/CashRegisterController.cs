@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Walos.API.Authorization;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Sales;
 using Walos.Application.Services;
 using Walos.Application.Security;
+using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
@@ -11,6 +13,7 @@ namespace Walos.API.Controllers;
 [ApiController]
 [Route("api/v1/sales/cash-register")]
 [Authorize(Policy = WalosPolicies.CashOperator)]
+[RequireFeature(WalosFeatures.Cash)]
 public class CashRegisterController : ControllerBase
 {
     private readonly ICashRegisterService _cashRegisterService;

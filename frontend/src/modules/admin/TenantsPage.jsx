@@ -6,12 +6,16 @@ import adminService from '../../services/adminService';
 import TenantCard from './components/TenantCard';
 import CreateTenantModal from './components/CreateTenantModal';
 import EditTenantModal from './components/EditTenantModal';
+import CompanyFeaturesPanel from './components/CompanyFeaturesPanel';
+import CompanyBranchesPanel from './components/CompanyBranchesPanel';
 
 const TenantsPage = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState(null);
+  const [featuresTenant, setFeaturesTenant] = useState(null);
+  const [branchesTenant, setBranchesTenant] = useState(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['admin-tenants'],
@@ -41,6 +45,10 @@ const TenantsPage = () => {
   };
 
   const handleToggleStatus = async (tenant) => {
+    if (tenant.isSystem) {
+      toast.error('El comercio System está protegido');
+      return;
+    }
     try {
       await adminService.setTenantStatus(tenant.id, !tenant.isActive);
       toast.success(tenant.isActive ? 'Comercio desactivado' : 'Comercio activado');
@@ -118,6 +126,8 @@ const TenantsPage = () => {
               tenant={tenant}
               onToggleStatus={handleToggleStatus}
               onEdit={setEditingTenant}
+              onManageFeatures={setFeaturesTenant}
+              onManageBranches={setBranchesTenant}
             />
           ))}
         </div>
@@ -134,6 +144,22 @@ const TenantsPage = () => {
         onClose={() => setEditingTenant(null)}
         onSaved={handleUpdate}
       />
+
+      {featuresTenant && (
+        <CompanyFeaturesPanel
+          companyId={featuresTenant.id}
+          companyName={featuresTenant.name}
+          onClose={() => setFeaturesTenant(null)}
+        />
+      )}
+
+      {branchesTenant && (
+        <CompanyBranchesPanel
+          companyId={branchesTenant.id}
+          companyName={branchesTenant.name}
+          onClose={() => setBranchesTenant(null)}
+        />
+      )}
     </div>
   );
 };

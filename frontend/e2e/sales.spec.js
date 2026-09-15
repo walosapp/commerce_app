@@ -1,15 +1,19 @@
 // @ts-check
 import { test, expect } from '@playwright/test'
 
+const E2E_USERNAME = process.env.WALOS_E2E_USERNAME
+const E2E_PASSWORD = process.env.WALOS_E2E_PASSWORD
+
 test.describe('Sales Flow', () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(!E2E_USERNAME || !E2E_PASSWORD, 'Configura WALOS_E2E_USERNAME y WALOS_E2E_PASSWORD')
     // Login before each test
     await page.goto('/')
     await page.evaluate(() => localStorage.clear())
     await page.goto('/')
 
-    await page.getByLabel(/usuario/i).fill('admin@mibar.com')
-    await page.getByLabel(/contraseña/i).fill('admin123')
+    await page.getByLabel(/usuario/i).fill(E2E_USERNAME)
+    await page.getByLabel(/contraseña/i).fill(E2E_PASSWORD)
     await page.getByRole('button', { name: /iniciar sesión/i }).click()
 
     // Wait for authenticated state

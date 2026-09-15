@@ -6,6 +6,8 @@ using Walos.Domain.Entities.Platform;
 using Walos.Domain.Interfaces;
 using Walos.Infrastructure.Services;
 using Walos.Application.Security;
+using Walos.API.Authorization;
+using Walos.Domain.Features;
 
 namespace Walos.API.Controllers;
 
@@ -52,6 +54,7 @@ public class PlatformController : ControllerBase
     }
 
     [HttpGet("ai-usage")]
+    [RequireFeature(WalosFeatures.Ai)]
     public async Task<IActionResult> GetAiUsage()
     {
         var settings = await _platformRepo.GetAiSettingsAsync(_tenant.CompanyId);
@@ -60,6 +63,7 @@ public class PlatformController : ControllerBase
 
     [HttpPut("ai-key")]
     [Authorize(Policy = WalosPolicies.Settings)]
+    [RequireFeature(WalosFeatures.Ai)]
     public async Task<IActionResult> UpdateAiKey([FromBody] UpdateAiKeyRequest req)
     {
         string? encryptedKey = null;

@@ -196,7 +196,7 @@ const CreateTenantModal = ({ isOpen, onClose, onCreated }) => {
                 <Field label="Nombre" name="adminFirstName" value={form.adminFirstName} onChange={handleChange} required placeholder="Juan" />
                 <Field label="Apellido" name="adminLastName" value={form.adminLastName} onChange={handleChange} required placeholder="Pérez" />
               </div>
-              <Field label="Email del administrador" name="adminEmail" value={form.adminEmail} onChange={handleChange} type="email" required placeholder="admin@mibar.com" />
+              <Field label="Email del administrador" name="adminEmail" value={form.adminEmail} onChange={handleChange} type="email" required placeholder="admin@comercio.com" />
               <Field label="Contraseña temporal" name="adminPassword" value={form.adminPassword} onChange={handleChange} type="password" required placeholder="mínimo 6 caracteres" />
               <p className="text-xs text-gray-500 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                 El administrador podrá cambiar su contraseña después del primer login.

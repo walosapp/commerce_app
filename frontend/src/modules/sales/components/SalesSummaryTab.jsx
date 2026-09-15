@@ -107,7 +107,7 @@ const OrderRow = ({ order, onRefund, onPrintReceipt }) => {
   );
 };
 
-const SalesSummaryTab = () => {
+const SalesSummaryTab = ({ canRefund = false }) => {
   const { branchId } = useAuthStore();
   const queryClient = useQueryClient();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -227,7 +227,7 @@ const SalesSummaryTab = () => {
         ) : orders.length === 0 ? (
           <p className="text-center text-sm text-gray-400 py-8">Sin ventas en esta fecha</p>
         ) : (
-          orders.map(o => <OrderRow key={o.id} order={o} onRefund={setRefundTarget} onPrintReceipt={(order) => setReceiptOrderId(order.id)} />)
+          orders.map(o => <OrderRow key={o.id} order={o} onRefund={canRefund ? setRefundTarget : undefined} onPrintReceipt={(order) => setReceiptOrderId(order.id)} />)
         )}
       </div>
 
@@ -235,7 +235,7 @@ const SalesSummaryTab = () => {
         <ReceiptPreview orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />
       )}
 
-      <RefundModal
+      {canRefund && <RefundModal
         isOpen={!!refundTarget}
         onClose={() => setRefundTarget(null)}
         onConfirm={async (payload) => {
@@ -245,7 +245,7 @@ const SalesSummaryTab = () => {
           queryClient.invalidateQueries({ queryKey: ['sales-summary'] });
         }}
         order={refundTarget}
-      />
+      />}
 
     </div>
   );

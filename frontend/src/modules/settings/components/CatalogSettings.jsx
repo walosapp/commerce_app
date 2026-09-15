@@ -6,6 +6,7 @@ import {
 import toast from 'react-hot-toast';
 import catalogService from '../../../services/catalogService';
 import useAuthStore from '../../../stores/authStore';
+import { canDeleteCatalog } from '../../../config/companyFeatures';
 
 const UNIT_TYPES = [
   { value: 'quantity', label: 'Cantidad' },
@@ -167,7 +168,8 @@ const UnitForm = ({ initial, onSave, onCancel }) => {
 
 // ─── Main Component ─────────────────────────────────────────────────────────────
 const CatalogSettings = () => {
-  const { tenantId } = useAuthStore();
+  const { tenantId, user } = useAuthStore();
+  const deleteAllowed = canDeleteCatalog(user);
   const queryClient = useQueryClient();
 
   const [catForm, setCatForm] = useState(null);   // null | 'new' | {category obj}
@@ -311,9 +313,11 @@ const CatalogSettings = () => {
                       <button onClick={() => setCatForm(cat)} className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors" title="Editar">
                         <Pencil size={14} />
                       </button>
-                      <button onClick={() => handleDeleteCat(cat)} disabled={cat.productCount > 0} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={cat.productCount > 0 ? 'Tiene productos asociados' : 'Eliminar'}>
-                        <Trash2 size={14} />
-                      </button>
+                      {deleteAllowed && (
+                        <button onClick={() => handleDeleteCat(cat)} disabled={cat.productCount > 0} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={cat.productCount > 0 ? 'Tiene productos asociados' : 'Eliminar'}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -384,9 +388,11 @@ const CatalogSettings = () => {
                               <button onClick={() => setUnitForm(unit)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Editar">
                                 <Pencil size={14} />
                               </button>
-                              <button onClick={() => handleDeleteUnit(unit)} disabled={unit.productCount > 0} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={unit.productCount > 0 ? 'Tiene productos asociados' : 'Eliminar'}>
-                                <Trash2 size={14} />
-                              </button>
+                              {deleteAllowed && (
+                                <button onClick={() => handleDeleteUnit(unit)} disabled={unit.productCount > 0} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={unit.productCount > 0 ? 'Tiene productos asociados' : 'Eliminar'}>
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
                             </div>
                           </div>
                         )}

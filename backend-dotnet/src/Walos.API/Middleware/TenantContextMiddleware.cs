@@ -50,6 +50,10 @@ public class TenantContextMiddleware
 
             tenant.Role = role!;
             tenant.Email = context.User.FindFirst(ClaimTypes.Email)?.Value ?? string.Empty;
+            tenant.IsPlatformAdmin = string.Equals(
+                context.User.FindFirst(WalosClaimTypes.PlatformAdmin)?.Value,
+                bool.TrueString,
+                StringComparison.OrdinalIgnoreCase);
         }
 
         await _next(context);

@@ -13,17 +13,20 @@ public class InventoryService : IInventoryService
     private readonly IInventoryRepository _repository;
     private readonly IAiService _aiService;
     private readonly IFileStorage _fileStorage;
+    private readonly IAiCapabilityGuard _capabilityGuard;
     private readonly ILogger<InventoryService> _logger;
 
     public InventoryService(
         IInventoryRepository repository,
         IAiService aiService,
         IFileStorage fileStorage,
+        IAiCapabilityGuard capabilityGuard,
         ILogger<InventoryService> logger)
     {
         _repository = repository;
         _aiService = aiService;
         _fileStorage = fileStorage;
+        _capabilityGuard = capabilityGuard;
         _logger = logger;
     }
 
@@ -262,29 +265,23 @@ public class InventoryService : IInventoryService
         return stock;
     }
 
-    public async Task<AiProcessResult> ProcessAiInventoryInputAsync(string userInput, AiInputContext context)
+    public async Task<AiProcessResult> ProcessAiInventoryInputAsync(
+        string userInput,
+        AiInputContext context,
+        bool trustedDevBypass = false)
     {
         try
         {
+            var capabilities = await _capabilityGuard.GetSnapshotAsync(context.CompanyId, trustedDevBypass);
+            capabilities.Ensure(Walos.Domain.Features.WalosFeatures.Ai, Walos.Domain.Features.WalosFeatures.Inventory);
             var sessionId = context.SessionId ?? Guid.NewGuid().ToString();
 
+            capabilities.Ensure(Walos.Domain.Features.WalosFeatures.Inventory);
             var existingProducts = await _repository.GetAllProductsAsync(context.CompanyId);
+            capabilities.Ensure(Walos.Domain.Features.WalosFeatures.Inventory);
             var categories = await _repository.GetCategoriesAsync(context.CompanyId);
+            capabilities.Ensure(Walos.Domain.Features.WalosFeatures.Inventory);
             var units = await _repository.GetUnitsAsync(context.CompanyId);
-
-            // Build conversation history from previous interactions in this session
-            List<AiConversationMessage>? history = null;
-            if (context.SessionId is not null)
-            {
-                var previousInteractions = await _repository.GetAiInteractionsBySessionAsync(context.SessionId, context.CompanyId);
-                history = previousInteractions
-                    .SelectMany(i => new[]
-                    {
-                        new AiConversationMessage { Role = "user", Content = i.UserInput },
-                        new AiConversationMessage { Role = "assistant", Content = i.AiResponse }
-                    })
-                    .ToList();
-            }
 
             var aiResponse = await _aiService.ProcessInventoryInputAsync(userInput, new AiContext
             {
@@ -294,7 +291,19 @@ public class InventoryService : IInventoryService
                 ExistingProductNames = existingProducts.Select(p => p.Name).ToList(),
                 Categories = categories.Select(c => c.Name).ToList(),
                 Units = units.Select(u => $"{u.Name} ({u.Abbreviation})").ToList()
-            }, history);
+            }, history: null);
+
+            if (aiResponse.Action is "add_stock" or "create_and_stock")
+            {
+                return new AiProcessResult
+                {
+                    SessionId = sessionId,
+                    Action = "stock_mutation_disabled",
+                    Response = "Por seguridad, el ingreso de stock desde IA no esta disponible en V1. Registra la entrada desde Inventario para garantizar una operacion atomica y auditable.",
+                    Confidence = aiResponse.Confidence,
+                    RequiresConfirmation = false
+                };
+            }
 
             var interaction = new AiInteraction
             {
@@ -333,152 +342,22 @@ public class InventoryService : IInventoryService
         }
     }
 
-    public async Task<AiConfirmResult> ConfirmAiActionAsync(long interactionId, long userId, long companyId)
+    public async Task<AiConfirmResult> ConfirmAiActionAsync(
+        long interactionId,
+        long userId,
+        long companyId,
+        bool trustedDevBypass = false)
     {
-        try
+        var capabilities = await _capabilityGuard.GetSnapshotAsync(companyId, trustedDevBypass);
+        capabilities.Ensure(
+            Walos.Domain.Features.WalosFeatures.Ai,
+            Walos.Domain.Features.WalosFeatures.Inventory);
+
+        return new AiConfirmResult
         {
-            var interaction = await _repository.GetAiInteractionByIdAsync(interactionId, companyId);
-
-            if (interaction is null)
-                throw new NotFoundException("Interacción");
-
-            var data = JsonSerializer.Deserialize<AiInventoryData>(
-                interaction.ProcessedData ?? "{}",
-                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, PropertyNameCaseInsensitive = true });
-
-            if (interaction.AiAction is "add_stock" or "create_and_stock")
-            {
-                var movements = new List<Movement>();
-                var createdProducts = new List<string>();
-                var categories = await _repository.GetCategoriesAsync(companyId);
-                var units = await _repository.GetUnitsAsync(companyId);
-
-                foreach (var product in data?.Products ?? new List<AiProductEntry>())
-                {
-                    var productRecords = await _repository.FindProductsByNameAsync(companyId, product.Name);
-                    var productRecord = productRecords.FirstOrDefault();
-
-                    if (productRecord is null)
-                    {
-                        // --- NEW PRODUCT: create with profit margin ---
-                        product.IsNew = true;
-                        var category = categories.FirstOrDefault(c =>
-                            c.Name.Equals(product.Category, StringComparison.OrdinalIgnoreCase))
-                            ?? categories.FirstOrDefault();
-
-                        var unit = units.FirstOrDefault(u =>
-                            u.Name.Equals(product.Unit?.Split(" (")[0], StringComparison.OrdinalIgnoreCase)
-                            || u.Abbreviation.Equals(product.Unit, StringComparison.OrdinalIgnoreCase))
-                            ?? units.FirstOrDefault();
-
-                        if (category is null || unit is null)
-                            throw new BusinessException("No hay categorías o unidades disponibles. Créalas primero.");
-
-                        // Calculate sale price from margin; fallback to explicit sale_price or 30% default margin
-                        var salePrice = product.ProfitMargin > 0
-                            ? product.UnitCost * (1 + product.ProfitMargin / 100m)
-                            : product.SalePrice > 0
-                                ? product.SalePrice
-                                : product.UnitCost * 1.3m;
-
-                        var sku = $"AI-{DateTime.UtcNow:yyyyMMddHHmmss}-{movements.Count + 1}";
-
-                        var newProduct = await _repository.CreateProductAsync(new Product
-                        {
-                            CompanyId = companyId,
-                            Name = product.Name,
-                            Sku = sku,
-                            Description = product.Description ?? "Producto creado por IA",
-                            CategoryId = category.Id,
-                            UnitId = unit.Id,
-                            CostPrice = product.UnitCost,
-                            SalePrice = Math.Round(salePrice, 2),
-                            MinStock = product.MinStock > 0 ? product.MinStock : 10,
-                            MaxStock = 0,
-                            ReorderPoint = 0,
-                            IsPerishable = false,
-                            IsActive = true,
-                            CreatedBy = userId
-                        });
-
-                        await _repository.CreateStockEntryAsync(
-                            interaction.BranchId, newProduct.Id, 0, companyId);
-
-                        productRecord = newProduct;
-                        createdProducts.Add($"{product.Name} (costo: ${product.UnitCost:N0}, venta: ${salePrice:N0}, margen: {(product.ProfitMargin > 0 ? product.ProfitMargin : 30)}%)");
-                    }
-                    else
-                    {
-                        // --- EXISTING PRODUCT: weighted average cost ---
-                        var currentStock = await _repository.GetStockByProductAsync(
-                            interaction.BranchId, productRecord.Id, companyId);
-                        var currentQty = currentStock?.Quantity ?? 0;
-                        var currentCost = productRecord.CostPrice;
-
-                        // Weighted average: (currentQty * currentCost + newQty * newCost) / (currentQty + newQty)
-                        var totalQty = currentQty + product.Quantity;
-                        var weightedAvgCost = totalQty > 0
-                            ? (currentQty * currentCost + product.Quantity * product.UnitCost) / totalQty
-                            : product.UnitCost;
-                        weightedAvgCost = Math.Round(weightedAvgCost, 2);
-
-                        // Update product cost price
-                        await _repository.UpdateProductCostAndPriceAsync(
-                            productRecord.Id, companyId, weightedAvgCost);
-
-                        _logger.LogInformation(
-                            "Costo promedio ponderado de {Product}: ({OldQty} × ${OldCost} + {NewQty} × ${NewCost}) / {TotalQty} = ${AvgCost}",
-                            product.Name, currentQty, currentCost, product.Quantity, product.UnitCost, totalQty, weightedAvgCost);
-                    }
-
-                    if (productRecord is null)
-                        throw new BusinessException($"Producto \"{product.Name}\" no encontrado. Créalo primero.");
-
-                    await _repository.UpdateStockAsync(
-                        interaction.BranchId,
-                        productRecord.Id,
-                        product.Quantity,
-                        companyId);
-
-                    var movement = await _repository.CreateMovementAsync(new Movement
-                    {
-                        CompanyId = companyId,
-                        BranchId = interaction.BranchId,
-                        ProductId = productRecord.Id,
-                        MovementType = "purchase",
-                        Quantity = product.Quantity,
-                        UnitCost = product.UnitCost,
-                        Notes = $"Entrada registrada por IA: {interaction.UserInput}",
-                        CreatedByAi = true,
-                        AiConfidence = interaction.ConfidenceScore,
-                        AiMetadata = JsonSerializer.Serialize(new { interactionId }),
-                        CreatedBy = userId
-                    });
-
-                    movements.Add(movement);
-                }
-
-                await _repository.UpdateAiInteractionStatusAsync(interactionId, "success", true, companyId);
-
-                var msg = createdProducts.Any()
-                    ? $"{movements.Count} producto(s) procesado(s). Nuevos creados: {string.Join(", ", createdProducts)}"
-                    : $"{movements.Count} producto(s) agregado(s) al inventario";
-
-                return new AiConfirmResult
-                {
-                    Success = true,
-                    Message = msg,
-                    Movements = movements
-                };
-            }
-
-            throw new BusinessException("Acción no soportada");
-        }
-        catch (Exception ex) when (ex is not NotFoundException and not BusinessException)
-        {
-            _logger.LogError(ex, "Error confirmando acción IA");
-            throw;
-        }
+            Success = false,
+            Message = "Por seguridad, el ingreso de stock desde IA no esta disponible en V1. Registra la entrada desde Inventario para garantizar una operacion atomica y auditable."
+        };
     }
 
     public async Task<IEnumerable<Stock>> GetLowStockProductsAsync(long companyId, long branchId)

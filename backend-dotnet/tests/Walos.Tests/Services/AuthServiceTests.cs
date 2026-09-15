@@ -143,7 +143,7 @@ public class AuthServiceTests
             {
                 Id = 5, Email = "ok@test.com", IsActive = true,
                 PasswordHash = hash, CompanyId = 1, BranchId = 10,
-                FirstName = "Ana", LastName = "Lopez", RoleCode = "admin"
+                FirstName = "Ana", LastName = "Lopez", RoleCode = WalosRoles.Manager
             });
 
         var result = await _service.LoginAsync("ok@test.com", "mypass", "127.0.0.1");
@@ -151,7 +151,7 @@ public class AuthServiceTests
         Assert.NotEmpty(result.Token);
         Assert.NotEmpty(result.RefreshToken);
         Assert.Equal("Ana Lopez", result.User.Name);
-        Assert.Equal("admin", result.User.Role);
+        Assert.Equal(WalosRoles.Manager, result.User.Role);
         Assert.Equal(1, result.User.CompanyId);
 
         _repoMock.Verify(r => r.ResetFailedLoginAsync(5), Times.Once);
@@ -160,11 +160,45 @@ public class AuthServiceTests
     }
 
     [Theory]
-    [InlineData("WALOS-SYSTEM-001", "true")]
-    [InlineData("TENANT-OTHER", "false")]
-    public async Task Login_PlatformAdmin_Claim_Requires_Dev_From_Trusted_System_Company(
+    [InlineData("admin")]
+    [InlineData("owner")]
+    [InlineData(null)]
+    public async Task Login_Rejects_NonCanonical_Role_Without_Issuing_Tokens(string? role)
+    {
+        var hash = BCrypt.Net.BCrypt.HashPassword("mypass");
+        _repoMock.Setup(r => r.GetUserByEmailAsync("legacy@test.com"))
+            .ReturnsAsync(new User
+            {
+                Id = 51,
+                Email = "legacy@test.com",
+                IsActive = true,
+                PasswordHash = hash,
+                CompanyId = 1,
+                RoleCode = role,
+            });
+
+        var error = await Assert.ThrowsAsync<BusinessException>(() =>
+            _service.LoginAsync("legacy@test.com", "mypass", null));
+
+        Assert.Equal("unsupported_role", error.Code);
+        _repoMock.Verify(r => r.ResetFailedLoginAsync(It.IsAny<long>()), Times.Never);
+        _repoMock.Verify(r => r.UpdateLastLoginAsync(It.IsAny<long>(), It.IsAny<string?>()), Times.Never);
+        _repoMock.Verify(r => r.SaveRefreshTokenAsync(
+            It.IsAny<long>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(WalosRoles.Dev, "WALOS-SYSTEM-001", "true", true)]
+    [InlineData(WalosRoles.PlatformAdmin, "WALOS-SYSTEM-001", "true", true)]
+    [InlineData(WalosRoles.Dev, "TENANT-OTHER", "false", false)]
+    [InlineData(WalosRoles.PlatformAdmin, "TENANT-OTHER", "false", false)]
+    [InlineData(WalosRoles.SuperAdmin, "WALOS-SYSTEM-001", "false", false)]
+    [InlineData(WalosRoles.SuperAdmin, "TENANT-OTHER", "false", false)]
+    public async Task Login_PlatformAdmin_Claim_And_UserInfo_Use_The_Same_Trusted_Server_Condition(
+        string role,
         string companyTaxId,
-        string expectedClaim)
+        string expectedClaim,
+        bool expectedUserInfo)
     {
         var hash = BCrypt.Net.BCrypt.HashPassword("mypass");
         _repoMock.Setup(r => r.GetUserByEmailAsync("dev@test.com"))
@@ -176,7 +210,7 @@ public class AuthServiceTests
                 PasswordHash = hash,
                 CompanyId = 10,
                 BranchId = 20,
-                RoleCode = WalosRoles.Dev,
+                RoleCode = role,
                 CompanyTaxId = companyTaxId,
             });
 
@@ -184,6 +218,7 @@ public class AuthServiceTests
         var token = new JwtSecurityTokenHandler().ReadJwtToken(result.Token);
 
         Assert.Equal(expectedClaim, token.Claims.Single(c => c.Type == WalosClaimTypes.PlatformAdmin).Value);
+        Assert.Equal(expectedUserInfo, result.User.IsPlatformAdmin);
     }
 
     // ── RefreshTokenAsync ──
@@ -225,7 +260,7 @@ public class AuthServiceTests
             .ReturnsAsync(new User
             {
                 Id = 7, Email = "refresh@test.com", IsActive = true,
-                PasswordHash = "x", CompanyId = 1, FirstName = "R", RoleCode = "user"
+                PasswordHash = "x", CompanyId = 1, FirstName = "R", RoleCode = WalosRoles.Manager
             });
 
         var result = await _service.RefreshTokenAsync("valid");
@@ -233,6 +268,26 @@ public class AuthServiceTests
         Assert.NotEmpty(result.Token);
         Assert.NotEmpty(result.RefreshToken);
         _repoMock.Verify(r => r.SaveRefreshTokenAsync(7, It.IsAny<string>(), It.IsAny<DateTime>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Refresh_Rejects_NonCanonical_Role_Without_Issuing_Tokens()
+    {
+        _repoMock.Setup(r => r.GetUserByRefreshTokenAsync("legacy"))
+            .ReturnsAsync(new User
+            {
+                Id = 8,
+                Email = "legacy@test.com",
+                IsActive = true,
+                RoleCode = "admin",
+            });
+
+        var error = await Assert.ThrowsAsync<BusinessException>(() =>
+            _service.RefreshTokenAsync("legacy"));
+
+        Assert.Equal("unsupported_role", error.Code);
+        _repoMock.Verify(r => r.SaveRefreshTokenAsync(
+            It.IsAny<long>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
     }
 
     // ── LogoutAsync ──

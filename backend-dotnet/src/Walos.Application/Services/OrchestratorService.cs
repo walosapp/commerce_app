@@ -2,8 +2,9 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Walos.Application.DTOs.Ai;
 using Walos.Domain.Entities;
+using Walos.Domain.Exceptions;
+using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
-using Walos.Application.Services;
 
 namespace Walos.Application.Services;
 
@@ -14,6 +15,7 @@ public class OrchestratorService
     private readonly IInventoryRepository _inventory;
     private readonly IDeliveryRepository _delivery;
     private readonly ISuppliersRepository _suppliers;
+    private readonly IAiCapabilityGuard _capabilityGuard;
     private readonly ILogger<OrchestratorService> _logger;
 
     private static readonly JsonSerializerOptions _json = new()
@@ -27,6 +29,7 @@ public class OrchestratorService
         IInventoryRepository inventory,
         IDeliveryRepository delivery,
         ISuppliersRepository suppliers,
+        IAiCapabilityGuard capabilityGuard,
         ILogger<OrchestratorService> logger)
     {
         _sessions = sessions;
@@ -34,19 +37,45 @@ public class OrchestratorService
         _inventory = inventory;
         _delivery = delivery;
         _suppliers = suppliers;
+        _capabilityGuard = capabilityGuard;
         _logger = logger;
     }
 
-    public async Task<AiChatResponse> ChatAsync(long companyId, long userId, long branchId, string companyName, string message, long? sessionId)
+    public async Task<AiChatResponse> ChatAsync(
+        long companyId,
+        long userId,
+        long branchId,
+        string companyName,
+        string message,
+        long? sessionId,
+        bool trustedDevBypass = false)
     {
+        await using var conversationLock = await _sessions.AcquireConversationLockAsync(companyId, userId);
+        var capabilities = await _capabilityGuard.GetSnapshotAsync(companyId, trustedDevBypass);
+        capabilities.Ensure(WalosFeatures.Ai);
+
         var session = sessionId.HasValue
-            ? await _sessions.GetSessionAsync(sessionId.Value, companyId) ?? await _sessions.GetOrCreateSessionAsync(companyId, userId)
+            ? await _sessions.GetSessionAsync(sessionId.Value, companyId, userId) ?? await _sessions.GetOrCreateSessionAsync(companyId, userId)
             : await _sessions.GetOrCreateSessionAsync(companyId, userId);
 
-        await _sessions.AddMessageAsync(session.Id, "user", message);
-
-        var history = await _sessions.GetMessagesAsync(session.Id);
         var context = ParseContext(session.Context);
+        if (!context.TryGetValue("capability_fingerprint", out var storedFingerprint)
+            || !string.Equals(storedFingerprint?.ToString(), capabilities.Fingerprint, StringComparison.Ordinal))
+        {
+            context = new Dictionary<string, object>
+            {
+                ["capability_fingerprint"] = capabilities.Fingerprint
+            };
+            await _sessions.ResetSessionAsync(
+                session.Id,
+                companyId,
+                userId,
+                JsonSerializer.Serialize(context, _json));
+        }
+
+        var history = (await _sessions.GetMessagesAsync(session.Id, companyId, userId))
+            .Where(aiMessage => HasCapabilityFingerprint(aiMessage.Metadata, capabilities.Fingerprint))
+            .ToList();
         var lastAgent = context.TryGetValue("last_agent", out var la) ? la.ToString() : "orchestrator";
 
         // Build conversation history for AI
@@ -60,10 +89,14 @@ public class OrchestratorService
         if (context.TryGetValue("flow", out var flow))
         {
             _logger.LogInformation("Continuing flow {Flow} for session {SessionId}", flow, session.Id);
-            var flowResult = await HandleFlowAsync(session.Id, companyId, branchId, companyName, message, flow.ToString()!, context, userId);
+            var flowResult = await HandleFlowAsync(
+                session.Id, companyId, branchId, companyName, message,
+                flow.ToString()!, context, userId, capabilities);
             flowResult.SessionId = session.Id;
-            await _sessions.AddMessageAsync(session.Id, "assistant", flowResult.Message,
-                flowResult.Payload != null ? JsonSerializer.Serialize(flowResult.Payload, _json) : "{}");
+            await _sessions.AddMessageAsync(
+                session.Id, companyId, userId, "user", message, BuildMessageMetadata(capabilities.Fingerprint));
+            await _sessions.AddMessageAsync(session.Id, companyId, userId, "assistant", flowResult.Message,
+                BuildMessageMetadata(capabilities.Fingerprint, flowResult.Payload));
             return flowResult;
         }
 
@@ -75,14 +108,29 @@ public class OrchestratorService
         switch (intent)
         {
             case "inventory":
+                capabilities.Ensure(WalosFeatures.Inventory);
                 context["last_agent"] = "inventory";
-                await _sessions.UpdateSessionContextAsync(session.Id, JsonSerializer.Serialize(context, _json), "inventory");
-                response = await HandleInventoryAsync(session.Id, companyId, branchId, companyName, message, context, userId, conversationHistory);
+                await _sessions.UpdateSessionContextAsync(session.Id, companyId, userId, JsonSerializer.Serialize(context, _json), "inventory");
+                response = await HandleInventoryAsync(
+                    session.Id, companyId, branchId, companyName, message, context,
+                    userId, capabilities, WalosFeatures.Inventory, conversationHistory);
+                break;
+            case "purchases":
+                capabilities.Ensure(WalosFeatures.Purchases);
+                context["last_agent"] = "inventory";
+                await _sessions.UpdateSessionContextAsync(session.Id, companyId, userId, JsonSerializer.Serialize(context, _json), "inventory");
+                response = await HandleInventoryAsync(
+                    session.Id, companyId, branchId, companyName, message, context,
+                    userId, capabilities, WalosFeatures.Purchases, conversationHistory);
+                break;
+            case "suppliers":
+                response = await HandleSuppliersAsync(companyId, companyName, message, capabilities, conversationHistory);
                 break;
             case "delivery":
+                capabilities.Ensure(WalosFeatures.Delivery);
                 context["last_agent"] = "delivery";
-                await _sessions.UpdateSessionContextAsync(session.Id, JsonSerializer.Serialize(context, _json), "delivery");
-                response = await HandleDeliveryAsync(session.Id, companyId, branchId, message, context, conversationHistory);
+                await _sessions.UpdateSessionContextAsync(session.Id, companyId, userId, JsonSerializer.Serialize(context, _json), "delivery");
+                response = await HandleDeliveryAsync(session.Id, companyId, branchId, message, context, capabilities, conversationHistory);
                 break;
             default:
                 response = await HandleGeneralAsync(session.Id, companyId, companyName, message, history);
@@ -90,8 +138,10 @@ public class OrchestratorService
         }
 
         response.SessionId = session.Id;
-        await _sessions.AddMessageAsync(session.Id, "assistant", response.Message,
-            response.Payload != null ? JsonSerializer.Serialize(response.Payload, _json) : "{}");
+        await _sessions.AddMessageAsync(
+            session.Id, companyId, userId, "user", message, BuildMessageMetadata(capabilities.Fingerprint));
+        await _sessions.AddMessageAsync(session.Id, companyId, userId, "assistant", response.Message,
+            BuildMessageMetadata(capabilities.Fingerprint, response.Payload));
 
         return response;
     }
@@ -113,7 +163,9 @@ CONTEXTO ACTUAL:
 - Solo cambiar de agente si el usuario cambia explícitamente de tema
 
 CATEGORÍAS:
-- inventory: productos, stock, inventario, proveedores, pedidos de compra a proveedores, 'llegaron productos', 'agregar stock'
+- inventory: productos, stock, inventario, 'llegaron productos', 'agregar stock'
+- purchases: crear pedidos u órdenes de compra a proveedores, sugerencias de reposición
+- suppliers: consultar proveedores concretos, datos o contacto de proveedor
 - delivery: domicilios, pedidos de CLIENTES, repartidores, entregas, 'pedido #123', 'dónde está mi pedido'
 - general: ventas, finanzas, reportes, ayuda general
 
@@ -129,12 +181,12 @@ Historial reciente:
 
 Mensaje actual: {message}
 
-Responde SOLO con: inventory | delivery | general";
+Responde SOLO con: inventory | purchases | suppliers | delivery | general";
 
         var result = await _aiService.ClassifyAsync(prompt);
         var clean = result.Trim().ToLowerInvariant();
         _logger.LogDebug("Raw classification result: '{Result}' -> '{Clean}'", result, clean);
-        return clean is "inventory" or "delivery" ? clean : "general";
+        return clean is "inventory" or "purchases" or "suppliers" or "delivery" ? clean : "general";
     }
 
     // ─────────────────────────────────────────
@@ -143,8 +195,10 @@ Responde SOLO con: inventory | delivery | general";
     private async Task<AiChatResponse> HandleInventoryAsync(
         long sessionId, long companyId, long branchId, string companyName,
         string message, Dictionary<string, object> context, long userId,
+        AiCapabilitySnapshot capabilities, string requiredFeature,
         List<AiConversationMessage>? conversationHistory = null)
     {
+        capabilities.Ensure(requiredFeature);
         var products = await _inventory.GetAllProductsAsync(companyId);
         var stock = await _inventory.GetStockByBranchAsync(branchId, companyId);
         var categories = await _inventory.GetCategoriesAsync(companyId);
@@ -214,21 +268,13 @@ IMPORTANTE:
 
 CAPACIDADES:
 - Consultar stock (bajo, sin stock, por producto) → usar action 'query'
-- Registrar entrada de stock (el usuario dice cuánto llegó) → usar action 'add_stock'
+- Las entradas de stock NO se registran desde IA en V1. Si el usuario lo pide, indícale que debe usar el módulo Inventario y responde con action 'query'
 - Crear pedido a proveedor: SOLO cuando el usuario dice explícitamente que quiere hacer un pedido/orden de compra → usar action 'show_low_stock_checklist'
 
 FLUJOS ESPECIALES - responde con JSON:
 
 SI el usuario dice explícitamente que quiere crear un pedido, orden de compra, o hacer un pedido a proveedor (ej: 'quiero hacer un pedido', 'generar orden de compra', 'pedir productos'), Y hay productos con stock bajo, responde:
 {{ ""action"": ""show_low_stock_checklist"", ""response"": ""[texto natural]"" }}
-
-SI el usuario quiere registrar stock (ej: 'llegaron 10 cervezas', 'agrega 50 al sku: PROD-01'), responde:
-{{ ""action"": ""add_stock"", ""response"": ""[texto natural describiendo lo que se va a agregar]"", ""data"": {{ ""products"": [{{ ""name"": ""NOMBRE EXACTO del producto"", ""sku"": ""SKU del producto"", ""quantity"": 10 }}] }} }}
-
-REGLA CRÍTICA PARA add_stock:
-- El campo 'name' DEBE ser el nombre EXACTO del producto como aparece en el inventario
-- El campo 'sku' DEBE ser el SKU exacto del producto. Si no lo conoces, déjalo vacío
-- Siempre incluye ambos campos para cada producto
 
 PARA CONSULTAS GENERALES de stock (ej: 'tengo stock bajo?', 'cuál es el stock?', 'hay productos sin stock?'), responde con action 'query' y proporciona la información directamente:
 {{ ""action"": ""query"", ""response"": ""[texto natural con la información solicitada]"" }}
@@ -243,10 +289,13 @@ Responde SIEMPRE en JSON válido. Idioma: español.";
         {
             var parsed = JsonSerializer.Deserialize<JsonElement>(aiRaw);
             var action = parsed.TryGetProperty("action", out var a) ? a.GetString() ?? "query" : "query";
-            var responseText = parsed.TryGetProperty("response", out var r) ? r.GetString() ?? aiRaw : aiRaw;
+            var responseText = parsed.TryGetProperty("response", out var r) && r.ValueKind == JsonValueKind.String
+                ? r.GetString() ?? "No pude interpretar la respuesta del asistente."
+                : "No pude interpretar la respuesta del asistente.";
 
             if (action == "show_low_stock_checklist")
             {
+                capabilities.Ensure(WalosFeatures.Purchases);
                 // Si no hay productos con stock bajo, responder con mensaje informativo
                 if (lowStockItems.Count == 0)
                 {
@@ -275,8 +324,9 @@ Responde SIEMPRE en JSON válido. Idioma: español.";
 
                 // Save flow state in session context
                 context["flow"] = "awaiting_checklist_confirmation";
+                context["flow_capability"] = WalosFeatures.Purchases;
                 context["checklist_items"] = JsonSerializer.Serialize(checklist, _json);
-                await _sessions.UpdateSessionContextAsync(sessionId, JsonSerializer.Serialize(context, _json), "inventory");
+                await _sessions.UpdateSessionContextAsync(sessionId, companyId, userId, JsonSerializer.Serialize(context, _json), "inventory");
 
                 return new AiChatResponse
                 {
@@ -294,26 +344,11 @@ Responde SIEMPRE en JSON válido. Idioma: español.";
 
             if (action == "add_stock")
             {
-                // Parse products from AI response
-                var productsData = parsed.TryGetProperty("data", out var d) && d.TryGetProperty("products", out var p) 
-                    ? p.GetRawText() : "[]";
-                
-                // Start confirmation flow
-                context["flow"] = "awaiting_stock_confirmation";
-                context["pending_stock"] = productsData;
-                await _sessions.UpdateSessionContextAsync(sessionId, JsonSerializer.Serialize(context, _json), "inventory");
-
                 return new AiChatResponse
                 {
                     AgentType = "inventory",
-                    ResponseType = "confirmation",
-                    Message = responseText + "\n\n¿Confirmas que deseas agregar este stock? Responde 'sí' para confirmar o 'no' para cancelar.",
-                    Payload = new AiConfirmationPayload
-                    {
-                        Action = "add_stock",
-                        Data = productsData,
-                        Prompt = "¿Confirmas el ingreso de stock?"
-                    }
+                    ResponseType = "text",
+                    Message = "Por seguridad, el ingreso de stock desde IA no esta disponible en V1. Registra la entrada desde Inventario para garantizar una operacion atomica y auditable."
                 };
             }
 
@@ -324,9 +359,17 @@ Responde SIEMPRE en JSON válido. Idioma: español.";
                 Message = responseText
             };
         }
-        catch
+        catch (FeatureNotEnabledException)
         {
-            return new AiChatResponse { AgentType = "inventory", ResponseType = "text", Message = aiRaw };
+            throw;
+        }
+        catch (JsonException)
+        {
+            return new AiChatResponse { AgentType = "inventory", ResponseType = "text", Message = "No pude interpretar la respuesta del asistente." };
+        }
+        catch (InvalidOperationException)
+        {
+            return new AiChatResponse { AgentType = "inventory", ResponseType = "text", Message = "No pude interpretar la respuesta del asistente." };
         }
     }
 
@@ -335,11 +378,13 @@ Responde SIEMPRE en JSON válido. Idioma: español.";
     // ─────────────────────────────────────────
     private async Task<AiChatResponse> HandleFlowAsync(
         long sessionId, long companyId, long branchId, string companyName,
-        string message, string flow, Dictionary<string, object> context, long userId)
+        string message, string flow, Dictionary<string, object> context, long userId,
+        AiCapabilitySnapshot capabilities)
     {
         if (flow == "awaiting_checklist_confirmation")
         {
-            // User has selected items and named a supplier
+            capabilities.Ensure(WalosFeatures.Purchases);
+            // Supplier data is a read-only shared dependency of the purchases helper.
             var suppliersRaw = await _suppliers.GetAllAsync(companyId, null);
             var supplierNames = string.Join(", ", suppliersRaw.Select(s => s.Name));
 
@@ -379,7 +424,9 @@ Idioma: español.";
             {
                 var parsed = JsonSerializer.Deserialize<JsonElement>(aiRaw);
                 var action = parsed.TryGetProperty("action", out var a) ? a.GetString() ?? "" : "";
-                var responseText = parsed.TryGetProperty("response", out var r) ? r.GetString() ?? aiRaw : aiRaw;
+                var responseText = parsed.TryGetProperty("response", out var r) && r.ValueKind == JsonValueKind.String
+                    ? r.GetString() ?? "No pude interpretar la respuesta del asistente."
+                    : "No pude interpretar la respuesta del asistente.";
 
                 if (action == "need_supplier")
                 {
@@ -394,8 +441,9 @@ Idioma: español.";
 
                     // Clean flow from context
                     context.Remove("flow");
+                    context.Remove("flow_capability");
                     context.Remove("checklist_items");
-                    await _sessions.UpdateSessionContextAsync(sessionId, JsonSerializer.Serialize(context, _json), "inventory");
+                    await _sessions.UpdateSessionContextAsync(sessionId, companyId, userId, JsonSerializer.Serialize(context, _json), "inventory");
 
                     var waUrl = !string.IsNullOrWhiteSpace(supplierPhone)
                         ? $"https://wa.me/{supplierPhone.Replace("+", "").Replace(" ", "")}?text={Uri.EscapeDataString(waMsg)}"
@@ -415,100 +463,34 @@ Idioma: español.";
                     };
                 }
             }
-            catch { }
+            catch (JsonException) { }
+            catch (InvalidOperationException) { }
 
-            return new AiChatResponse { AgentType = "inventory", ResponseType = "text", Message = aiRaw, SessionId = sessionId };
+            return new AiChatResponse { AgentType = "inventory", ResponseType = "text", Message = "No pude interpretar la respuesta del asistente.", SessionId = sessionId };
         }
 
         if (flow == "awaiting_stock_confirmation")
         {
-            var pendingStockJson = context.TryGetValue("pending_stock", out var ps) ? ps.ToString()! : "[]";
-            var isConfirmed = message.Trim().ToLowerInvariant() is "sí" or "si" or "s" or "yes" or "confirmar" or "confirmo";
-            var isCancelled = message.Trim().ToLowerInvariant() is "no" or "n" or "cancelar" or "cancelo";
+            // Revalidate the current tenant capability before handling a legacy pending action.
+            capabilities.Ensure(WalosFeatures.Inventory);
+            context.Remove("flow");
+            context.Remove("flow_capability");
+            context.Remove("pending_stock");
+            await _sessions.UpdateSessionContextAsync(
+                sessionId, companyId, userId, JsonSerializer.Serialize(context, _json), "inventory");
 
-            if (isCancelled)
+            return new AiChatResponse
             {
-                context.Remove("flow");
-                context.Remove("pending_stock");
-                await _sessions.UpdateSessionContextAsync(sessionId, JsonSerializer.Serialize(context, _json), "inventory");
-                return new AiChatResponse { AgentType = "inventory", ResponseType = "text", Message = "Entendido, no se agregó ningún stock. ¿En qué más puedo ayudarte?", SessionId = sessionId };
-            }
-
-            if (isConfirmed)
-            {
-                try
-                {
-                    // Load products to find by name
-                    var allProducts = await _inventory.GetAllProductsAsync(companyId);
-                    var stockItems = JsonSerializer.Deserialize<List<PendingStockItem>>(pendingStockJson, _json) ?? new();
-                    var results = new List<string>();
-
-                    foreach (var item in stockItems)
-                    {
-                        // Find product: prioritize exact SKU match, then exact name, then fuzzy name
-                        var product = (!string.IsNullOrEmpty(item.Sku)
-                            ? allProducts.FirstOrDefault(p => string.Equals(p.Sku, item.Sku, StringComparison.OrdinalIgnoreCase))
-                            : null)
-                            ?? allProducts.FirstOrDefault(p => string.Equals(p.Name, item.Name, StringComparison.OrdinalIgnoreCase))
-                            ?? allProducts.FirstOrDefault(p =>
-                                p.Name.Contains(item.Name, StringComparison.OrdinalIgnoreCase) ||
-                                item.Name.Contains(p.Name, StringComparison.OrdinalIgnoreCase));
-                        
-                        if (product != null && branchId > 0)
-                        {
-                            // UpdateStockAsync: inserts if not exists, adds quantity if exists
-                            await _inventory.UpdateStockAsync(branchId, product.Id, item.Quantity, companyId);
-                            // Add movement for traceability
-                            await _inventory.CreateMovementAsync(new Movement
-                            {
-                                CompanyId = companyId,
-                                BranchId = branchId,
-                                ProductId = product.Id,
-                                Quantity = item.Quantity,
-                                UnitCost = product.CostPrice,
-                                MovementType = "purchase",
-                                Notes = $"Ingreso de stock por asistente IA: {item.Quantity} unidades",
-                                CreatedBy = userId
-                            });
-                            results.Add($"✅ {product.Name}: +{item.Quantity}");
-                        }
-                        else
-                        {
-                            results.Add($"⚠️ No encontrado: {item.Name} (SKU: {item.Sku ?? "N/A"})");
-                        }
-                    }
-
-                    context.Remove("flow");
-                    context.Remove("pending_stock");
-                    await _sessions.UpdateSessionContextAsync(sessionId, JsonSerializer.Serialize(context, _json), "inventory");
-
-                    var successCount = results.Count(r => r.StartsWith("✅"));
-                    var successMessage = successCount > 0
-                        ? $"Stock actualizado:\n{string.Join("\n", results)}"
-                        : "No se encontraron productos para agregar stock. Por favor verifica los nombres o SKUs.";
-
-                    return new AiChatResponse { AgentType = "inventory", ResponseType = "text", Message = successMessage, SessionId = sessionId };
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error adding stock from AI flow");
-                    return new AiChatResponse { AgentType = "inventory", ResponseType = "text", Message = "Hubo un error al agregar el stock. Por favor intenta manualmente desde el módulo de inventario.", SessionId = sessionId };
-                }
-            }
-
-            // Neither confirmed nor cancelled - ask again
-            return new AiChatResponse 
-            { 
-                AgentType = "inventory", 
-                ResponseType = "text", 
-                Message = "Por favor responde 'sí' para confirmar el ingreso de stock o 'no' para cancelar.", 
-                SessionId = sessionId 
+                AgentType = "inventory",
+                ResponseType = "text",
+                Message = "Por seguridad, el ingreso de stock desde IA no esta disponible en V1. Registra la entrada desde Inventario para garantizar una operacion atomica y auditable.",
+                SessionId = sessionId
             };
         }
 
         // Unknown flow — reset
         context.Remove("flow");
-        await _sessions.UpdateSessionContextAsync(sessionId, JsonSerializer.Serialize(context, _json), "orchestrator");
+        await _sessions.UpdateSessionContextAsync(sessionId, companyId, userId, JsonSerializer.Serialize(context, _json), "orchestrator");
         return new AiChatResponse { AgentType = "orchestrator", ResponseType = "text", Message = "Entendido, ¿en qué más te puedo ayudar?", SessionId = sessionId };
     }
 
@@ -518,8 +500,10 @@ Idioma: español.";
     private async Task<AiChatResponse> HandleDeliveryAsync(
         long sessionId, long companyId, long branchId,
         string message, Dictionary<string, object> context,
+        AiCapabilitySnapshot capabilities,
         List<AiConversationMessage>? conversationHistory = null)
     {
+        capabilities.Ensure(WalosFeatures.Delivery);
         var orders = await _delivery.GetOrdersAsync(companyId, branchId, null, DateTime.UtcNow.Date, DateTime.UtcNow);
         var activeOrders = orders.Take(20).ToList();
 
@@ -550,7 +534,9 @@ Idioma: español.";
         {
             var parsed = JsonSerializer.Deserialize<JsonElement>(aiRaw);
             var action = parsed.TryGetProperty("action", out var a) ? a.GetString() ?? "query" : "query";
-            var responseText = parsed.TryGetProperty("response", out var r) ? r.GetString() ?? aiRaw : aiRaw;
+            var responseText = parsed.TryGetProperty("response", out var r) && r.ValueKind == JsonValueKind.String
+                ? r.GetString() ?? "No pude interpretar la respuesta del asistente."
+                : "No pude interpretar la respuesta del asistente.";
 
             if (action == "update_status")
             {
@@ -564,10 +550,39 @@ Idioma: español.";
 
             return new AiChatResponse { AgentType = "delivery", ResponseType = "text", Message = responseText };
         }
-        catch
+        catch (JsonException)
         {
-            return new AiChatResponse { AgentType = "delivery", ResponseType = "text", Message = aiRaw };
+            return new AiChatResponse { AgentType = "delivery", ResponseType = "text", Message = "No pude interpretar la respuesta del asistente." };
         }
+        catch (InvalidOperationException)
+        {
+            return new AiChatResponse { AgentType = "delivery", ResponseType = "text", Message = "No pude interpretar la respuesta del asistente." };
+        }
+    }
+
+    private async Task<AiChatResponse> HandleSuppliersAsync(
+        long companyId,
+        string companyName,
+        string message,
+        AiCapabilitySnapshot capabilities,
+        List<AiConversationMessage>? conversationHistory = null)
+    {
+        capabilities.Ensure(WalosFeatures.Suppliers);
+        var suppliers = (await _suppliers.GetAllAsync(companyId, null)).ToList();
+        var supplierNames = suppliers.Count == 0
+            ? "No hay proveedores registrados."
+            : string.Join(", ", suppliers.Select(supplier => supplier.Name));
+        var prompt = $@"Eres el asistente de proveedores de {companyName}.
+Proveedores registrados: {supplierNames}
+Responde solo consultas informativas. No crees, edites ni elimines proveedores. Idioma: español.";
+        var responseText = await _aiService.ChatAsync(prompt, message, conversationHistory);
+
+        return new AiChatResponse
+        {
+            AgentType = "suppliers",
+            ResponseType = "text",
+            Message = responseText
+        };
     }
 
     // ─────────────────────────────────────────
@@ -595,5 +610,25 @@ Historial reciente:
         try { return JsonSerializer.Deserialize<Dictionary<string, object>>(contextJson, _json) ?? new(); }
         catch { return new(); }
     }
-}
 
+    private static bool HasCapabilityFingerprint(string metadataJson, string fingerprint)
+    {
+        try
+        {
+            var metadata = JsonSerializer.Deserialize<JsonElement>(metadataJson);
+            return metadata.TryGetProperty("capability_fingerprint", out var stored)
+                && string.Equals(stored.GetString(), fingerprint, StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string BuildMessageMetadata(string fingerprint, object? payload = null) =>
+        JsonSerializer.Serialize(new
+        {
+            capability_fingerprint = fingerprint,
+            payload
+        }, _json);
+}

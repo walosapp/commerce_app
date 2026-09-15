@@ -13,6 +13,39 @@ export const platformService = {
     return r.data;
   },
 
+  getAdminFeatures: async () => {
+    const r = await api.get(`${BASE}/admin/features`);
+    return r.data;
+  },
+
+  getAdminCompanyFeatures: async (companyId) => {
+    const r = await api.get(`${BASE}/admin/companies/${companyId}/features`);
+    return r.data;
+  },
+
+  updateAdminCompanyFeature: async (companyId, featureCode, isEnabled) => {
+    const r = await api.put(
+      `${BASE}/admin/companies/${companyId}/features/${featureCode}`,
+      { isEnabled },
+    );
+    return r.data;
+  },
+
+  getAdminBranches: async (companyId) => {
+    const r = await api.get(`${BASE}/admin/companies/${companyId}/branches`);
+    return r.data;
+  },
+
+  createAdminBranch: async (companyId, data) => {
+    const r = await api.post(`${BASE}/admin/companies/${companyId}/branches`, data);
+    return r.data;
+  },
+
+  updateAdminBranch: async (companyId, branchId, data) => {
+    const r = await api.put(`${BASE}/admin/companies/${companyId}/branches/${branchId}`, data);
+    return r.data;
+  },
+
   getAdminCompanyPlan: async (companyId) => {
     const r = await api.get(`${BASE}/admin/companies/${companyId}/plan`);
     return r.data;

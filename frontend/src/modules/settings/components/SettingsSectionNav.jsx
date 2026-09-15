@@ -1,8 +1,9 @@
 import { Palette, Store, Percent, LayoutList, CreditCard, Cpu, FileText, Cable } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import useAuthStore from '../../../stores/authStore';
+import useCompanyFeatures from '../../../hooks/useCompanyFeatures';
 
-const CATALOG_ROLES = ['dev', 'super_admin', 'admin', 'manager'];
+const CATALOG_ROLES = ['dev', 'super_admin', 'manager'];
 
 export const sections = [
   { key: 'branding',  label: 'Branding',    path: '/settings/branding',  icon: Store },
@@ -11,13 +12,16 @@ export const sections = [
   { key: 'catalog',   label: 'Catalogo',     path: '/settings/catalog',   icon: LayoutList, roles: CATALOG_ROLES },
   { key: 'devices',   label: 'Dispositivos', path: '/settings/devices',   icon: Cable },
   { key: 'plan',      label: 'Mi Plan',      path: '/settings/plan',      icon: FileText },
-  { key: 'ai',        label: 'IA',           path: '/settings/ai',        icon: Cpu },
+  { key: 'ai',        label: 'IA',           path: '/settings/ai',        icon: Cpu, feature: 'ai' },
   { key: 'payments',  label: 'Pagos',        path: '/settings/payments',  icon: CreditCard },
 ];
 
 const SettingsSectionNav = ({ activeSection }) => {
   const { user } = useAuthStore();
-  const visibleSections = sections.filter(s => !s.roles || s.roles.includes(user?.role));
+  const { canAccess } = useCompanyFeatures();
+  const visibleSections = sections.filter((section) =>
+    (!section.roles || section.roles.includes(user?.role)) &&
+    (!section.feature || canAccess(section.feature)));
 
   return (
     <div className="flex border-b bg-white px-6 flex-shrink-0">

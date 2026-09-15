@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Walos.API.Authorization;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Inventory;
 using Walos.Application.Services;
+using Walos.Application.Security;
+using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
@@ -10,6 +13,8 @@ namespace Walos.API.Controllers;
 [ApiController]
 [Route("api/v1/catalog")]
 [Authorize]
+[RequireAnyFeature(WalosFeatures.Inventory, WalosFeatures.Restaurant, WalosFeatures.Pos,
+    WalosFeatures.Purchases, WalosFeatures.Suppliers)]
 public class CatalogController : ControllerBase
 {
     private readonly ICatalogService _service;
@@ -29,7 +34,8 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPost("categories")]
-    [Authorize(Roles = "dev,super_admin,admin,manager")]
+    [Authorize(Policy = WalosPolicies.CatalogWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> CreateCategory([FromBody] SaveCategoryRequest request)
     {
         var result = await _service.CreateCategoryAsync(_tenant.CompanyId, request);
@@ -37,7 +43,8 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPut("categories/{id:long}")]
-    [Authorize(Roles = "dev,super_admin,admin,manager")]
+    [Authorize(Policy = WalosPolicies.CatalogWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> UpdateCategory(long id, [FromBody] SaveCategoryRequest request)
     {
         var result = await _service.UpdateCategoryAsync(id, _tenant.CompanyId, request);
@@ -46,7 +53,8 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPatch("categories/{id:long}/status")]
-    [Authorize(Roles = "dev,super_admin,admin,manager")]
+    [Authorize(Policy = WalosPolicies.CatalogWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> SetCategoryStatus(long id, [FromBody] SetStatusRequest request)
     {
         var ok = await _service.SetCategoryStatusAsync(id, _tenant.CompanyId, request.IsActive);
@@ -55,7 +63,8 @@ public class CatalogController : ControllerBase
     }
 
     [HttpDelete("categories/{id:long}")]
-    [Authorize(Roles = "dev,super_admin,admin")]
+    [Authorize(Policy = WalosPolicies.CatalogDelete)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> DeleteCategory(long id)
     {
         try
@@ -78,7 +87,8 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPost("units")]
-    [Authorize(Roles = "dev,super_admin,admin,manager")]
+    [Authorize(Policy = WalosPolicies.CatalogWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> CreateUnit([FromBody] SaveUnitRequest request)
     {
         try
@@ -93,7 +103,8 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPut("units/{id:long}")]
-    [Authorize(Roles = "dev,super_admin,admin,manager")]
+    [Authorize(Policy = WalosPolicies.CatalogWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> UpdateUnit(long id, [FromBody] SaveUnitRequest request)
     {
         var result = await _service.UpdateUnitAsync(id, _tenant.CompanyId, request);
@@ -102,7 +113,8 @@ public class CatalogController : ControllerBase
     }
 
     [HttpPatch("units/{id:long}/status")]
-    [Authorize(Roles = "dev,super_admin,admin,manager")]
+    [Authorize(Policy = WalosPolicies.CatalogWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> SetUnitStatus(long id, [FromBody] SetStatusRequest request)
     {
         var ok = await _service.SetUnitStatusAsync(id, _tenant.CompanyId, request.IsActive);
@@ -111,7 +123,8 @@ public class CatalogController : ControllerBase
     }
 
     [HttpDelete("units/{id:long}")]
-    [Authorize(Roles = "dev,super_admin,admin")]
+    [Authorize(Policy = WalosPolicies.CatalogDelete)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> DeleteUnit(long id)
     {
         try

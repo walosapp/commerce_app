@@ -1,10 +1,12 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Walos.API.Authorization;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Inventory;
 using Walos.Application.Security;
 using Walos.Application.Services;
 using Walos.Domain.Entities;
+using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
 using Walos.Infrastructure.Services;
 
@@ -13,6 +15,8 @@ namespace Walos.API.Controllers;
 [ApiController]
 [Route("api/v1/inventory")]
 [Authorize]
+[RequireAnyFeature(WalosFeatures.Inventory, WalosFeatures.Restaurant, WalosFeatures.Pos,
+    WalosFeatures.Purchases, WalosFeatures.Suppliers, WalosFeatures.Delivery)]
 public class InventoryController : ControllerBase
 {
     private readonly IInventoryRepository _repository;
@@ -79,6 +83,7 @@ public class InventoryController : ControllerBase
     /// </summary>
     [HttpPost("products")]
     [Authorize(Policy = WalosPolicies.InventoryWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> CreateProduct([FromBody] CreateProductRequest request)
     {
         try
@@ -99,6 +104,7 @@ public class InventoryController : ControllerBase
     /// </summary>
     [HttpPut("products/{id:long}")]
     [Authorize(Policy = WalosPolicies.InventoryWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> UpdateProduct(long id, [FromBody] UpdateProductRequest request)
     {
         var updated = await _service.UpdateProductAsync(id, _tenant.CompanyId, _tenant.UserId, request);
@@ -113,6 +119,7 @@ public class InventoryController : ControllerBase
     /// </summary>
     [HttpPost("products/{id:long}/image")]
     [Authorize(Policy = WalosPolicies.InventoryWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     [RequestSizeLimit(2 * 1024 * 1024)] // 2MB
     public async Task<IActionResult> UploadProductImage(long id, IFormFile file)
     {
@@ -142,6 +149,7 @@ public class InventoryController : ControllerBase
     /// </summary>
     [HttpDelete("products/{id:long}")]
     [Authorize(Policy = WalosPolicies.InventoryWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> DeleteProduct(long id)
     {
         var companyId = _tenant.CompanyId;
@@ -158,7 +166,8 @@ public class InventoryController : ControllerBase
     /// GET /api/v1/inventory/products/template - Descargar plantilla Excel
     /// </summary>
     [HttpGet("products/template")]
-    [Authorize(Roles = "dev,super_admin,admin,manager")]
+    [Authorize(Policy = WalosPolicies.CatalogWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> DownloadTemplate()
     {
         var companyId = _tenant.CompanyId;
@@ -173,6 +182,7 @@ public class InventoryController : ControllerBase
     /// </summary>
     [HttpPost("products/import")]
     [Authorize(Policy = WalosPolicies.InventoryWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> ImportProducts(IFormFile file)
     {
         if (file is null || file.Length == 0)
@@ -324,6 +334,7 @@ public class InventoryController : ControllerBase
     /// </summary>
     [HttpPost("stock/add")]
     [Authorize(Policy = WalosPolicies.InventoryWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> AddStock([FromBody] AddStockRequest request)
     {
         var stock = await _service.AddStockAsync(_tenant.CompanyId, _tenant.UserId, _tenant.BranchId, request);
@@ -335,6 +346,8 @@ public class InventoryController : ControllerBase
     /// </summary>
     [HttpPost("ai/process")]
     [Authorize(Policy = WalosPolicies.InventoryWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
+    [RequireFeature(WalosFeatures.Ai)]
     public async Task<IActionResult> ProcessAIInput([FromBody] AiInputRequest request)
     {
         var companyId = _tenant.CompanyId;
@@ -350,7 +363,10 @@ public class InventoryController : ControllerBase
             SessionId = request.SessionId
         };
 
-        var result = await _service.ProcessAiInventoryInputAsync(request.UserInput, context);
+        var result = await _service.ProcessAiInventoryInputAsync(
+            request.UserInput,
+            context,
+            trustedDevBypass: _tenant.IsDev && _tenant.IsPlatformAdmin);
 
         return Ok(ApiResponse<AiProcessResult>.Ok(result, "Entrada procesada por IA"));
     }
@@ -360,12 +376,18 @@ public class InventoryController : ControllerBase
     /// </summary>
     [HttpPost("ai/confirm/{interactionId:long}")]
     [Authorize(Policy = WalosPolicies.InventoryWrite)]
+    [RequireFeature(WalosFeatures.Inventory)]
+    [RequireFeature(WalosFeatures.Ai)]
     public async Task<IActionResult> ConfirmAIAction(long interactionId)
     {
         var companyId = _tenant.CompanyId;
         var userId = _tenant.UserId;
 
-        var result = await _service.ConfirmAiActionAsync(interactionId, userId, companyId);
+        var result = await _service.ConfirmAiActionAsync(
+            interactionId,
+            userId,
+            companyId,
+            trustedDevBypass: _tenant.IsDev && _tenant.IsPlatformAdmin);
 
         return Ok(ApiResponse<AiConfirmResult>.Ok(result, result.Message));
     }
@@ -390,6 +412,7 @@ public class InventoryController : ControllerBase
     /// </summary>
     [HttpGet("reports/profits")]
     [Authorize(Policy = WalosPolicies.Finance)]
+    [RequireFeature(WalosFeatures.Inventory)]
     public async Task<IActionResult> GetProfitsReport(
         [FromQuery] long? branchId,
         [FromQuery] DateTime? startDate,

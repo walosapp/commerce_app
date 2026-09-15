@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Walos.API.Authorization;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Delivery;
 using Walos.Application.Security;
 using Walos.Application.Services;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
+using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
@@ -13,6 +15,7 @@ namespace Walos.API.Controllers;
 [ApiController]
 [Route("api/v1/delivery")]
 [Authorize(Policy = WalosPolicies.DeliveryOperator)]
+[RequireFeature(WalosFeatures.Delivery)]
 public class DeliveryController : ControllerBase
 {
     private readonly IDeliveryService _deliveryService;

@@ -9,11 +9,13 @@ import userService from '../../services/userService';
 import adminService from '../../services/adminService';
 
 const ROLE_COLORS = {
-  admin:   'bg-purple-100 text-purple-700',
-  manager: 'bg-blue-100 text-blue-700',
-  cashier: 'bg-green-100 text-green-700',
-  waiter:  'bg-orange-100 text-orange-700',
-  default: 'bg-gray-100 text-gray-600',
+  dev:            'bg-violet-100 text-violet-700',
+  platform_admin: 'bg-purple-100 text-purple-700',
+  super_admin:    'bg-red-100 text-red-700',
+  manager:        'bg-blue-100 text-blue-700',
+  cashier:        'bg-green-100 text-green-700',
+  waiter:         'bg-orange-100 text-orange-700',
+  default:        'bg-gray-100 text-gray-600',
 };
 
 const ResetPasswordModal = ({ user, onClose, onSave }) => {

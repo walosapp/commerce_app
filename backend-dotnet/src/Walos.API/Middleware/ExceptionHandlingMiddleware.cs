@@ -35,6 +35,7 @@ public class ExceptionHandlingMiddleware
         {
             ValidationException => StatusCodes.Status400BadRequest,
             NotFoundException => StatusCodes.Status404NotFound,
+            FeatureNotEnabledException => StatusCodes.Status403Forbidden,
             BusinessException => StatusCodes.Status422UnprocessableEntity,
             UnauthorizedAccessException => StatusCodes.Status403Forbidden,
             _ => StatusCodes.Status500InternalServerError
@@ -55,6 +56,9 @@ public class ExceptionHandlingMiddleware
 
         if (exception is BusinessException bizEx && bizEx.Code is not null)
             response["code"] = bizEx.Code;
+
+        if (exception is FeatureNotEnabledException featureEx)
+            response["details"] = new { feature = featureEx.Feature };
 
         if (exception is ValidationException valEx && valEx.Details is not null)
             response["details"] = valEx.Details;

@@ -22,6 +22,8 @@ import {
   Scale,
   Settings,
   ShoppingCart,
+  Wallet,
+  ClipboardList,
   Truck,
   Users,
   X,
@@ -31,6 +33,8 @@ import companyService from '../../services/companyService';
 import inventoryService from '../../services/inventoryService';
 import useAuthStore from '../../stores/authStore';
 import useUiStore from '../../stores/uiStore';
+import useCompanyFeatures from '../../hooks/useCompanyFeatures';
+import { canAccessPlatform, canManageSettings, canManageTenantUsers } from '../../config/companyFeatures';
 import { resetTenantPwaBranding, syncTenantPwaBranding } from '../../utils/pwaBranding';
 import { resolveAssetUrl } from '../../utils/assetUrl';
 
@@ -43,22 +47,26 @@ const Layout = ({ children }) => {
   const setSidebarCollapsed = useUiStore((state) => state.setSidebarCollapsed);
   const companyName = useUiStore((state) => state.companyName);
   const companyLogoUrl = useUiStore((state) => state.companyLogoUrl);
+  const brandingTenantId = useUiStore((state) => state.brandingTenantId);
   const setBranding = useUiStore((state) => state.setBranding);
+  const resetBranding = useUiStore((state) => state.resetBranding);
   const setTheme = useUiStore((state) => state.setTheme);
   const navigate = useNavigate();
   const location = useLocation();
+  const { canAccess, isPlatformOnly, isReady } = useCompanyFeatures();
+  const canUseInventory = isReady && canAccess('inventory');
 
   const { data: settingsData } = useQuery({
     queryKey: ['company-settings', tenantId],
     queryFn: () => companyService.getSettings(),
-    enabled: !!user && !!tenantId,
+    enabled: !!user && !!tenantId && !isPlatformOnly,
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: alertsData } = useQuery({
     queryKey: ['alerts', branchId],
     queryFn: () => inventoryService.getAlerts(branchId),
-    enabled: !!branchId && !!user,
+    enabled: !!branchId && !!user && canUseInventory,
     refetchInterval: 30000,
   });
 
@@ -69,17 +77,22 @@ const Layout = ({ children }) => {
     setBranding({
       companyName: settings.displayName || settings.name || 'Walos',
       companyLogoUrl: settings.logoUrl || null,
+      tenantId,
     });
 
     if (settings.themePreference) {
       setTheme(settings.themePreference);
     }
-  }, [setBranding, setTheme, settingsData]);
+  }, [setBranding, setTheme, settingsData, tenantId]);
+
+  useEffect(() => {
+    if (!tenantId || (brandingTenantId !== null && brandingTenantId !== tenantId)) resetBranding();
+  }, [brandingTenantId, resetBranding, tenantId]);
 
   useEffect(() => {
     const settings = settingsData?.data;
 
-    if (!tenantId || !settings?.logoUrl) {
+    if (isPlatformOnly || !tenantId || !settings?.logoUrl) {
       resetTenantPwaBranding();
       return;
     }
@@ -92,9 +105,10 @@ const Layout = ({ children }) => {
     return () => {
       resetTenantPwaBranding();
     };
-  }, [tenantId, settingsData]);
+  }, [isPlatformOnly, tenantId, settingsData]);
 
   const handleLogout = () => {
+    resetBranding();
     logout();
     navigate('/login');
   };
@@ -109,22 +123,35 @@ const Layout = ({ children }) => {
     }
   };
 
-  const menuItems = [
-    { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'Asistente IA', path: '/ai-assistant', icon: Bot },
-    { name: 'Inventario', path: '/inventory', icon: Package },
-    { name: 'Ventas', path: '/sales', icon: ShoppingCart },
-    { name: 'POS-Deli', path: '/pos-deli', icon: Scale },
-    { name: 'Pedidos', path: '/delivery', icon: Bike },
-    { name: 'Finanzas', path: '/finance', icon: Landmark },
-    { name: 'Proveedores', path: '/suppliers', icon: Truck },
-    ...((['dev','super_admin','admin','manager'].includes(user?.role)) ? [{ name: 'Usuarios', path: '/users', icon: Users }] : []),
-    ...(user?.role === 'dev' ? [{ name: 'Comercios', path: '/admin/tenants', icon: Building2 }] : []),
-    { name: 'Configuracion', path: '/settings', icon: Settings },
-  ];
+  const operationalMenuItems = [
+    { feature: 'dashboard', name: 'Dashboard', path: '/', icon: LayoutDashboard },
+    { feature: 'inventory', name: 'Inventario', path: '/inventory', icon: Package },
+    { feature: 'restaurant', name: 'Restaurante', path: '/sales', icon: ShoppingCart },
+    { feature: 'pos', name: 'POS', path: '/pos-deli', icon: Scale },
+    { feature: 'cash', name: 'Caja', path: '/cash', icon: Wallet },
+    { feature: 'purchases', name: 'Compras', path: '/purchases', icon: ClipboardList },
+    { feature: 'suppliers', name: 'Proveedores', path: '/suppliers', icon: Truck },
+    { feature: 'delivery', name: 'Delivery', path: '/delivery', icon: Bike },
+    { feature: 'finance', name: 'Finanzas', path: '/finance', icon: Landmark },
+    { feature: 'ai', name: 'Asistente IA', path: '/ai-assistant', icon: Bot },
+  ].filter((item) => (item.feature === 'dashboard' || isReady) && canAccess(item.feature));
 
-  const displayName = companyName || 'Walos';
-  const logoSrc = resolveAssetUrl(companyLogoUrl);
+  const platformMenuItems = canAccessPlatform(user)
+    ? [{ name: 'Comercios', path: '/admin/tenants', icon: Building2 }]
+    : [];
+
+  const menuItems = isPlatformOnly
+    ? platformMenuItems
+    : [
+        ...operationalMenuItems,
+        ...(canManageTenantUsers(user) ? [{ name: 'Usuarios', path: '/users', icon: Users }] : []),
+        ...platformMenuItems,
+        ...(canManageSettings(user) ? [{ name: 'Configuracion', path: '/settings', icon: Settings }] : []),
+      ];
+
+  const hasCurrentTenantBranding = brandingTenantId === tenantId;
+  const displayName = hasCurrentTenantBranding ? (companyName || 'Walos') : 'Walos';
+  const logoSrc = resolveAssetUrl(hasCurrentTenantBranding ? companyLogoUrl : null);
   const walosLogoSrc = '/walos-logo.png';
   const alertsCount = alertsData?.count || alertsData?.data?.length || 0;
   const userDisplayName = user?.first_name
@@ -311,18 +338,20 @@ const Layout = ({ children }) => {
             >
               <RefreshCw className={`h-5 w-5 ${syncing ? 'animate-spin text-primary-600' : ''}`} />
             </button>
-            <button
-              onClick={() => navigate('/alerts')}
-              className="relative rounded-lg p-2 transition-colors hover:bg-gray-100"
-              title="Ver alertas"
-            >
-              <Bell className="h-5 w-5" />
-              {alertsCount > 0 && (
-                <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
-                  {alertsCount > 99 ? '99+' : alertsCount}
-                </span>
-              )}
-            </button>
+            {canUseInventory && (
+              <button
+                onClick={() => navigate('/alerts')}
+                className="relative rounded-lg p-2 transition-colors hover:bg-gray-100"
+                title="Ver alertas"
+              >
+                <Bell className="h-5 w-5" />
+                {alertsCount > 0 && (
+                  <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                    {alertsCount > 99 ? '99+' : alertsCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             <button
               onClick={handleLogout}

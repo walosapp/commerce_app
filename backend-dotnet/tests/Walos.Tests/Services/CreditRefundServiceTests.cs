@@ -78,6 +78,33 @@ public class CreditRefundServiceTests
         repository.Verify(r => r.ProcessAsync(It.IsAny<RefundProcessCommand>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData("0.001")]
+    [InlineData("1.999")]
+    public async Task Refund_Rejects_Quantity_With_More_Than_Two_Decimals(string quantityText)
+    {
+        var repository = new Mock<IRefundRepository>();
+        var service = new RefundService(repository.Object, NullLogger<RefundService>.Instance);
+
+        await Assert.ThrowsAsync<ValidationException>(() => service.CreateRefundAsync(
+            1, 2, 3, "refund-key-precision", new CreateRefundRequest
+            {
+                OrderId = 4,
+                RefundType = "partial",
+                Reason = "Motivo suficientemente largo",
+                Items =
+                [
+                    new RefundItemRequest
+                    {
+                        OrderItemId = 5,
+                        Quantity = decimal.Parse(quantityText, System.Globalization.CultureInfo.InvariantCulture)
+                    }
+                ]
+            }));
+
+        repository.Verify(r => r.ProcessAsync(It.IsAny<RefundProcessCommand>()), Times.Never);
+    }
+
     [Fact]
     public async Task Refund_Fingerprint_Is_Deterministic_For_Item_Order()
     {

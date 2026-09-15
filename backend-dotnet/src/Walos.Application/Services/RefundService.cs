@@ -6,6 +6,7 @@ using Walos.Application.DTOs.Sales;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
+using Walos.Domain.Policies;
 
 namespace Walos.Application.Services;
 
@@ -56,6 +57,10 @@ public class RefundService : IRefundService
 
         if (items.Any(i => i.OrderItemId <= 0 || i.Quantity <= 0))
             throw new ValidationException("Todos los items deben tener id y cantidad positiva.");
+
+        if (items.Any(i => !SaleItemPolicy.IsQuantitySupported(i.Quantity)))
+            throw new ValidationException(
+                $"La cantidad admite temporalmente hasta {SaleItemPolicy.CurrentQuantityDecimals} decimales.");
 
         if (items.GroupBy(i => i.OrderItemId).Any(g => g.Count() > 1))
             throw new ValidationException("No se puede repetir el mismo item en una devolucion.");

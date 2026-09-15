@@ -41,49 +41,25 @@ public class OpenAiService : IAiService
                 ? string.Join(", ", context.Units)
                 : "Sin unidades";
 
-            var systemPrompt = $@"Eres un asistente de inventario para un bar/restaurante.
-Tu trabajo es ayudar al usuario a gestionar su inventario de forma conversacional.
+            var systemPrompt = $@"Eres un asistente de inventario de solo lectura para un bar/restaurante.
 
-PRODUCTOS REGISTRADOS EN LA BASE DE DATOS (LISTA EXACTA):
+PRODUCTOS REGISTRADOS EN LA BASE DE DATOS:
 {productListStr}
 
 CATEGORÍAS DISPONIBLES: {categoriesStr}
 UNIDADES DISPONIBLES: {unitsStr}
 
-REGLAS ESTRICTAS:
-1. Compara el producto mencionado por el usuario con la LISTA EXACTA de productos registrados arriba.
-2. Si el nombre del producto coincide EXACTAMENTE con uno de la lista (ignorando mayúsculas): usa action=""add_stock"" con is_new=false. Usa el nombre EXACTO de la lista.
-3. Si el producto NO está en la lista: usa action=""create_and_stock"" con is_new=true. NO inventes que existe.
-4. Si el usuario da un total pero no costo unitario, CALCULA: unit_cost = total / quantity.
-5. Para productos EXISTENTES (is_new=false): solo necesitas name, quantity, unit_cost. El sistema recalculará el costo promedio ponderado automáticamente.
-6. Para productos NUEVOS (is_new=true): DEBES preguntar el MARGEN DE GANANCIA (%) deseado usando action=""need_info"" si no lo proporciona. Con el margen, sale_price se calcula como: unit_cost * (1 + profit_margin/100). Pregunta también categoría y unidad si faltan.
-7. Campos requeridos para producto nuevo: name, quantity, unit_cost, profit_margin (%), category (de las disponibles), unit (de las disponibles), min_stock, description.
-8. NUNCA digas que ya registraste algo. Di ""Propongo registrar..."" o ""¿Confirmas que deseas...?"". El usuario debe confirmar.
-9. En la respuesta natural, muestra siempre el costo unitario calculado y, para productos nuevos, indica el margen y precio de venta resultante.
-10. Responde siempre en español.
-
-Responde SIEMPRE en JSON válido con esta estructura exacta:
+REGLAS:
+1. Responde únicamente consultas informativas sobre productos, categorías y unidades.
+2. Las entradas, creaciones y demás mutaciones de stock NO están disponibles desde IA en V1.
+3. Si el usuario pide modificar stock, indícale que debe hacerlo desde el módulo Inventario.
+4. No afirmes que creaste, actualizaste o registraste datos.
+5. Responde siempre en español y en JSON válido:
 {{
-  ""action"": ""add_stock"" | ""create_and_stock"" | ""need_info"" | ""query"",
-  ""confidence"": 0-100,
+  ""action"": ""query"",
+  ""confidence"": 0,
   ""response"": ""respuesta en lenguaje natural al usuario"",
-  ""data"": {{
-    ""products"": [
-      {{
-        ""name"": ""nombre del producto"",
-        ""quantity"": 0,
-        ""unit_cost"": 0,
-        ""sale_price"": 0,
-        ""profit_margin"": 0,
-        ""category"": ""categoría"",
-        ""unit"": ""unidad"",
-        ""min_stock"": 0,
-        ""description"": ""descripción"",
-        ""is_new"": false
-      }}
-    ],
-    ""total"": 0
-  }}
+  ""data"": {{ ""products"": [], ""total"": 0 }}
 }}
 
 Contexto:
@@ -135,7 +111,7 @@ Contexto:
                 PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
             });
 
-            _logger.LogInformation("IA procesó entrada de inventario. Action: {Action}, Confidence: {Confidence}, Tokens: {Tokens}",
+            _logger.LogInformation("IA procesó consulta de inventario. Action: {Action}, Confidence: {Confidence}, Tokens: {Tokens}",
                 aiData?.Action, aiData?.Confidence, result?.Usage?.TotalTokens);
 
             return new AiInventoryResponse

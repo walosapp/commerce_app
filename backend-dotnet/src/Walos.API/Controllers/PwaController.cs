@@ -77,10 +77,17 @@ public class PwaController : ControllerBase
             return BadRequest(new { message = "Tamano de icono no permitido" });
 
         var settings = await _companyService.GetSettingsWithRawLogoAsync(tenantId);
-        await using var sourceStream = await OpenLogoStreamAsync(settings.LogoUrl, tenantId);
+        var sourceStream = await OpenLogoStreamAsync(settings.LogoUrl, tenantId);
+        var isFallback = sourceStream is null;
+        sourceStream ??= OpenFallbackLogoStream();
+        await using (sourceStream)
+        {
+            return await RenderIconAsync(sourceStream, size, isFallback);
+        }
+    }
 
-        if (sourceStream is null)
-            return NotFound(new { message = "El tenant no tiene logo configurado" });
+    private async Task<IActionResult> RenderIconAsync(Stream sourceStream, int size, bool isFallback)
+    {
 
         using var sourceImage = await Image.LoadAsync<Rgba32>(sourceStream);
 
@@ -105,21 +112,27 @@ public class PwaController : ControllerBase
         await canvas.SaveAsPngAsync(output, new PngEncoder());
         output.Position = 0;
 
-        Response.Headers.CacheControl = "public,max-age=31536000,immutable";
+        Response.Headers.CacheControl = isFallback
+            ? "public,max-age=300"
+            : "public,max-age=31536000,immutable";
         return File(output, "image/png");
     }
+
+    private static Stream OpenFallbackLogoStream() =>
+        typeof(PwaController).Assembly.GetManifestResourceStream("Walos.API.Assets.walos-default.png")
+        ?? throw new InvalidOperationException("El logo fallback de Walos no esta disponible");
 
     private async Task<Stream?> OpenLogoStreamAsync(string? logoReference, long tenantId)
     {
         if (string.IsNullOrWhiteSpace(logoReference))
             return null;
 
-        if (IsCanonicalBrandingKey(logoReference, tenantId))
+        if (_fileStorage.TryGetManagedObjectKey(logoReference, out var objectKey))
         {
-            if (!_fileStorage.IsManagedReference(logoReference))
+            if (!IsCanonicalBrandingKey(objectKey, tenantId))
                 return null;
 
-            return await _fileStorage.OpenReadAsync(logoReference, HttpContext.RequestAborted);
+            return await _fileStorage.OpenReadAsync(objectKey, HttpContext.RequestAborted);
         }
 
         var logoPath = ResolveLegacyLogoPhysicalPath(logoReference);

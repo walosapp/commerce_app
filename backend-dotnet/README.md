@@ -149,100 +149,40 @@ dotnet run --project src/Walos.API
 | GET | `/health` | Health check |
 | GET | `/api/v1` | Info de la API |
 
-## Flujo del Asistente de IA (detalle)
+## Asistente de IA en V1
 
-### POST `/ai/process`
+### POST `/ai/chat`
 
-**Request:**
-```json
-{
-  "userInput": "Me llegaron 100 whisky por 8500000",
-  "inputType": "text",
-  "sessionId": "uuid-opcional"
-}
-```
+El orquestador clasifica la consulta y habilita únicamente capacidades de lectura compatibles con los módulos activos de la empresa:
 
-**Proceso interno:**
-1. Carga productos existentes, categorías y unidades de la DB
-2. Si hay `sessionId`, recupera las últimas 10 interacciones para contexto
-3. Construye system prompt con lista exacta de productos y reglas estrictas
-4. Envía a OpenAI: `[system, ...historial, user_message]`
-5. Parsea JSON de respuesta de la IA
-6. Guarda interacción en `ai_interactions`
-7. Devuelve resultado al frontend
+- inventario: consultas de productos, stock y alertas;
+- compras: preparación de una lista de reposición;
+- proveedores: consultas informativas;
+- delivery: consulta de pedidos;
+- general: orientación sobre el negocio.
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "interactionId": 18,
-    "sessionId": "uuid",
-    "action": "create_and_stock",
-    "response": "Propongo crear Whisky: costo $85K, venta $119K (40% margen)",
-    "data": {
-      "products": [{
-        "name": "Whisky Jack Daniels",
-        "quantity": 100,
-        "unit_cost": 85000,
-        "sale_price": 119000,
-        "profit_margin": 40,
-        "category": "Bebidas Alcohólicas",
-        "unit": "Botella",
-        "is_new": true
-      }],
-      "total": 8500000
-    },
-    "confidence": 95
-  }
-}
-```
+Cada conversación está aislada por empresa y usuario. Los cambios de módulos invalidan el contexto previo mediante un fingerprint de capacidades.
 
-### POST `/ai/confirm/:id`
+### Mutaciones deshabilitadas
 
-**Proceso interno según acción:**
-
-**`add_stock` (producto existente):**
-1. Busca producto en DB por nombre
-2. Obtiene stock actual de la sucursal
-3. Calcula costo promedio ponderado: `(stockActual × costoActual + qtyNueva × costoNuevo) / total`
-4. Actualiza `products.cost_price` en DB
-5. Incrementa `stock.quantity`
-6. Crea movimiento tipo `purchase`
-
-**`create_and_stock` (producto nuevo):**
-1. Busca producto → no existe → crea con:
-   - `sale_price = unit_cost × (1 + profit_margin / 100)` (o fallback 30%)
-   - SKU auto-generado: `AI-yyyyMMddHHmmss-N`
-   - Categoría y unidad de las disponibles
-2. Crea entrada en `stock` con qty=0
-3. Incrementa stock con la cantidad
-4. Crea movimiento tipo `purchase`
-
-**Safety nets:**
-- Si la IA dice `is_new: false` pero el producto no existe en DB → se trata como nuevo
-- Si falta categoría/unidad → usa la primera disponible
-- Si falta margen → default 30%
+En V1 la IA **no crea productos, no registra entradas de stock y no cambia estados operativos**. Esas acciones se realizan desde sus módulos para conservar atomicidad, idempotencia y auditoría. Los endpoints legacy `/ai/process` y `/ai/confirm/:id` mantienen esta restricción y no ejecutan escrituras de inventario.
 
 ## Clases Clave
 
-### `InventoryService.cs` (Application)
-- `ProcessAiInventoryInputAsync`: orquesta contexto → OpenAI → guardar interacción
-- `ConfirmAiActionAsync`: ejecuta la acción (crear producto, actualizar stock, movimiento)
+### `OrchestratorService.cs` (Application)
+- Aplica el gate de capacidades antes de consultar repositorios.
+- Mantiene sesiones por empresa/usuario y despacha consultas de solo lectura.
+
+### `AiCapabilityGuard.cs` (Application)
+- Resuelve en bloque los módulos habilitados para la empresa.
+- Falla cerrado cuando una capacidad requerida está deshabilitada.
 
 ### `OpenAiService.cs` (Infrastructure)
-- Construye system prompt con productos/categorías/unidades exactas
-- Envía historial de sesión como mensajes previos
-- Parsea respuesta JSON estricta de la IA
+- Construye prompts de solo lectura y procesa respuestas estructuradas.
 
-### `InventoryRepository.cs` (Infrastructure)
-- ~660 líneas con todas las queries SQL parametrizadas
-- Métodos clave: `FindProductsByNameAsync`, `UpdateStockAsync`, `CreateProductAsync`, `UpdateProductCostAndPriceAsync`, `GetStockByProductAsync`, `GetAiInteractionsBySessionAsync`
-
-### `IAiService.cs` (Domain)
-- `AiProductEntry`: name, quantity, unitCost, salePrice, profitMargin, category, unit, isNew
-- `AiContext`: companyName, existingProductNames, categories, units
-- `AiConversationMessage`: role (user/assistant), content
+### `AiSessionRepository.cs` (Infrastructure)
+- Persiste contexto y mensajes con alcance de empresa/usuario.
+- Serializa conversaciones concurrentes del mismo usuario con un advisory lock transaccional.
 
 ## Multi-tenancy
 
@@ -279,8 +219,7 @@ Serilog escribe a:
 
 Logs importantes del flujo IA:
 ```
-[INF] IA procesó entrada de inventario. Action: add_stock, Confidence: 100, Tokens: 952
-[INF] Costo promedio ponderado de Cerveza Águila: (54 × $0 + 500 × $2500) / 554 = $2256.32
+[INF] Orchestrator intent: inventory (last_agent: orchestrator) for session 42
 ```
 
 ## Pruebas

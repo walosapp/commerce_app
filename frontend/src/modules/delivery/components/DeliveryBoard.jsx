@@ -8,7 +8,7 @@ const COLUMNS = [
   { status: 'out_for_delivery',   label: 'En camino',      color: 'border-orange-400', badge: 'bg-orange-100 text-orange-700' },
 ];
 
-const DeliveryBoard = ({ orders, onOrderClick, onAction }) => {
+const DeliveryBoard = ({ orders, onOrderClick, onAction, canManage = false }) => {
   return (
     <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
       {COLUMNS.map(col => {
@@ -28,6 +28,7 @@ const DeliveryBoard = ({ orders, onOrderClick, onAction }) => {
                   order={order}
                   onClick={onOrderClick}
                   onAction={onAction}
+                  canManage={canManage}
                 />
               ))}
               {colOrders.length === 0 && (

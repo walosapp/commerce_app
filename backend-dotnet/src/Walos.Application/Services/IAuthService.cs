@@ -37,4 +37,5 @@ public class UserInfo
     public string? BranchName { get; set; }
     public string? Language { get; set; }
     public string? AvatarUrl { get; set; }
+    public bool IsPlatformAdmin { get; set; }
 }

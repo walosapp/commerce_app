@@ -145,6 +145,11 @@ public sealed partial class SupabaseFileStorage : IFileStorage
     public bool IsManagedReference(string? objectKeyOrManagedPublicUrl) =>
         TryResolveObjectKey(objectKeyOrManagedPublicUrl, out _);
 
+    public bool TryGetManagedObjectKey(
+        string? objectKeyOrManagedPublicUrl,
+        out string objectKey) =>
+        TryResolveObjectKey(objectKeyOrManagedPublicUrl, out objectKey);
+
     public string GetPublicUrl(string objectKey)
     {
         if (!IsCanonicalObjectKey(objectKey))

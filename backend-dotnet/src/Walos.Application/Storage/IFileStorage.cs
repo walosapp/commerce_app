@@ -37,5 +37,6 @@ public interface IFileStorage
         CancellationToken cancellationToken = default);
 
     bool IsManagedReference(string? objectKeyOrManagedPublicUrl);
+    bool TryGetManagedObjectKey(string? objectKeyOrManagedPublicUrl, out string objectKey);
     string GetPublicUrl(string objectKey);
 }

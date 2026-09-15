@@ -9,22 +9,23 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, Info, X } from 'lucide-react';
 import inventoryService from '../../services/inventoryService';
 import useAuthStore from '../../stores/authStore';
+import useCompanyFeatures from '../../hooks/useCompanyFeatures';
 import AIChat from './components/AIChat';
-import toast from 'react-hot-toast';
 
 const AiAssistantPage = () => {
   const { branchId } = useAuthStore();
+  const { canAccess } = useCompanyFeatures();
+  const inventoryEnabled = canAccess('inventory');
+  const enabledCapabilities = ['inventory', 'purchases', 'suppliers', 'delivery']
+    .filter((feature) => canAccess(feature));
   const [showTips, setShowTips] = useState(false);
 
   const { data: lowStockData } = useQuery({
     queryKey: ['lowStock', branchId],
     queryFn: () => inventoryService.getLowStock(branchId),
-    enabled: !!branchId,
+    enabled: !!branchId && inventoryEnabled,
   });
 
-  const handleActionConfirmed = () => {
-    toast.success('Acción confirmada y aplicada correctamente');
-  };
 
   return (
     <div className="space-y-6">
@@ -58,27 +59,32 @@ const AiAssistantPage = () => {
             💡 Consejos Rápidos
           </h3>
           <div className="grid gap-2 sm:grid-cols-2">
-            <p className="text-sm text-primary-800">
-              • Usa el micrófono para registrar pedidos más rápido
-            </p>
-            <p className="text-sm text-primary-800">
-              • Di "Me llegaron X productos a Y pesos" para registrar entradas
-            </p>
-            <p className="text-sm text-primary-800">
-              • Pregunta "¿Cuánto estoy ganando?" para ver márgenes
-            </p>
-            <p className="text-sm text-primary-800">
-              • El asistente te alertará automáticamente sobre stock bajo
-            </p>
-            <p className="text-sm text-primary-800">
-              • Consulta reportes de ventas, proveedores y más
-            </p>
+            {inventoryEnabled && (
+              <p className="text-sm text-primary-800">
+                • Consulta stock y alertas; los ingresos se registran de forma segura desde Inventario
+              </p>
+            )}
+            {canAccess('finance') && (
+              <p className="text-sm text-primary-800">
+                • Pregunta por conceptos financieros y estrategia de negocio
+              </p>
+            )}
+            {inventoryEnabled && (
+              <p className="text-sm text-primary-800">
+                • El asistente puede orientarte sobre productos con stock bajo
+              </p>
+            )}
+            {canAccess('suppliers') && (
+              <p className="text-sm text-primary-800">
+                • Consulta la información disponible de tus proveedores
+              </p>
+            )}
           </div>
         </div>
       )}
 
       {/* Low Stock Alert */}
-      {lowStockData && lowStockData.count > 0 && (
+      {inventoryEnabled && lowStockData && lowStockData.count > 0 && (
         <div className="rounded-lg border-l-4 border-yellow-500 bg-yellow-50 p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="h-5 w-5 shrink-0 text-yellow-600" />
@@ -99,7 +105,10 @@ const AiAssistantPage = () => {
       )}
 
       {/* Chat - full width */}
-      <AIChat onActionConfirmed={handleActionConfirmed} />
+      <AIChat
+        key={enabledCapabilities.join('|')}
+        enabledCapabilities={enabledCapabilities}
+      />
     </div>
   );
 };

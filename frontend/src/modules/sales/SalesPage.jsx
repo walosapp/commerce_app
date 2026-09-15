@@ -27,6 +27,8 @@ import OrderHistoryTab from './components/OrderHistoryTab';
 
 import { formatCurrency } from '../../utils/formatCurrency';
 import { calculateExpectedCash } from '../../utils/cashRegister';
+import useCompanyFeatures from '../../hooks/useCompanyFeatures';
+import { canOperateCash } from '../../config/companyFeatures';
 
 const CashSummaryView = ({ register }) => {
   const elapsed = Math.floor((Date.now() - new Date(register.openedAt).getTime()) / 60000);
@@ -81,8 +83,12 @@ const CashSummaryView = ({ register }) => {
   );
 };
 
-const SalesPage = () => {
-  const { branchId } = useAuthStore();
+const SalesPage = ({ initialTab = 'tables' }) => {
+  const { branchId, user } = useAuthStore();
+  const { canAccess } = useCompanyFeatures();
+  const restaurantEnabled = canAccess('restaurant');
+  const cashEnabled = canAccess('cash');
+  const canUseCashOperations = canOperateCash(user);
   const enqueuePostSale = usePostSaleHardwareStore((state) => state.enqueuePostSale);
   const queryClient = useQueryClient();
   const areaRef = useRef(null);
@@ -93,7 +99,7 @@ const SalesPage = () => {
   const [addProductsTarget, setAddProductsTarget] = useState(null);
   const [arrangeKey, setArrangeKey] = useState(0);
   const [showCredits, setShowCredits] = useState(false);
-  const [activeTab, setActiveTab] = useState('tables');
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   // Cash register state
   const [showOpenCash, setShowOpenCash] = useState(false);
@@ -105,7 +111,7 @@ const SalesPage = () => {
   const { data: cashRegData, isLoading: cashLoading } = useQuery({
     queryKey: ['cash-register-active', branchId],
     queryFn: () => cashRegisterService.getActive(),
-    enabled: !!branchId,
+    enabled: !!branchId && cashEnabled,
     refetchInterval: 60000,
   });
   const activeRegister = cashRegData?.data || null;
@@ -113,14 +119,14 @@ const SalesPage = () => {
   const { data: tablesData, isLoading: tablesLoading } = useQuery({
     queryKey: ['sales-tables', branchId],
     queryFn: () => salesService.getTables(branchId),
-    enabled: !!branchId,
+    enabled: !!branchId && restaurantEnabled,
     refetchInterval: 30000,
   });
 
   const { data: stockData, isLoading: stockLoading } = useQuery({
     queryKey: ['stock', branchId],
     queryFn: () => inventoryService.getStock(branchId),
-    enabled: !!branchId,
+    enabled: !!branchId && restaurantEnabled,
   });
 
   const tables = tablesData?.data || [];
@@ -312,24 +318,35 @@ const SalesPage = () => {
   };
 
   const TABS = [
-    { k: 'tables',  label: 'Mesas',   icon: TableProperties },
-    { k: 'credits', label: 'Créditos', icon: CreditCard },
-    { k: 'sales',   label: 'Ventas',   icon: TrendingUp },
-    { k: 'history', label: 'Historial', icon: ClipboardList },
-    { k: 'cash',    label: 'Caja',     icon: Wallet },
+    ...(restaurantEnabled ? [
+      { k: 'tables',  label: 'Mesas',   icon: TableProperties },
+      ...(canUseCashOperations ? [{ k: 'credits', label: 'Créditos', icon: CreditCard }] : []),
+      { k: 'sales',   label: 'Ventas',   icon: TrendingUp },
+      { k: 'history', label: 'Historial', icon: ClipboardList },
+    ] : []),
+    ...(cashEnabled ? [{ k: 'cash', label: 'Caja', icon: Wallet }] : []),
   ];
+
+  useEffect(() => {
+    const requestedTab = initialTab === 'cash' && cashEnabled
+      ? 'cash'
+      : (restaurantEnabled ? 'tables' : (cashEnabled ? 'cash' : undefined));
+    if (requestedTab) setActiveTab(requestedTab);
+  }, [canUseCashOperations, cashEnabled, initialTab, restaurantEnabled]);
 
   return (
     <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden">
 
       {/* Cash register bar */}
-      <CashRegisterBar
-        register={activeRegister}
-        onOpen={() => setShowOpenCash(true)}
-        onClose={() => setShowCloseCash(true)}
-        onMovement={(type) => setCashMovementType(type)}
-        onHistory={() => setShowCashHistory(true)}
-      />
+      {cashEnabled && (
+        <CashRegisterBar
+          register={activeRegister}
+          onOpen={() => setShowOpenCash(true)}
+          onClose={() => setShowCloseCash(true)}
+          onMovement={(type) => setCashMovementType(type)}
+          onHistory={() => setShowCashHistory(true)}
+        />
+      )}
 
       {/* Top bar */}
       <div className="px-4 md:px-6 py-4 border-b bg-white flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
@@ -338,9 +355,11 @@ const SalesPage = () => {
             <ShoppingCart size={20} className="text-primary-600" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Ventas</h1>
+            <h1 className="text-xl font-bold text-gray-900">{restaurantEnabled ? 'Restaurante' : 'Caja'}</h1>
             <p className="text-sm text-gray-500">
-              {tables.length} mesa{tables.length !== 1 ? 's' : ''} activa{tables.length !== 1 ? 's' : ''}
+              {restaurantEnabled
+                ? `${tables.length} mesa${tables.length !== 1 ? 's' : ''} activa${tables.length !== 1 ? 's' : ''}`
+                : 'Control del turno de caja'}
             </p>
           </div>
         </div>
@@ -453,13 +472,13 @@ const SalesPage = () => {
         )}
 
         {/* ── CRÉDITOS TAB ── */}
-        {activeTab === 'credits' && (
+        {canUseCashOperations && activeTab === 'credits' && (
           <CreditsPanel inline />
         )}
 
         {/* ── VENTAS TAB ── */}
         {activeTab === 'sales' && (
-          <SalesSummaryTab />
+          <SalesSummaryTab canRefund={canUseCashOperations} />
         )}
 
         {/* ── HISTORIAL TAB ── */}
@@ -490,56 +509,64 @@ const SalesPage = () => {
 
       </div>
 
-      <AddTablePanel
-        isOpen={showAddPanel}
-        onClose={() => setShowAddPanel(false)}
-        onCreateTable={handleCreateTable}
-        products={products}
-        isLoading={stockLoading}
-      />
+      {restaurantEnabled && (
+        <>
+          <AddTablePanel
+            isOpen={showAddPanel}
+            onClose={() => setShowAddPanel(false)}
+            onCreateTable={handleCreateTable}
+            products={products}
+            isLoading={stockLoading}
+          />
 
-      <AddTablePanel
-        isOpen={!!addProductsTarget}
-        onClose={() => setAddProductsTarget(null)}
-        onCreateTable={handleAddItemsToTable}
-        products={products}
-        isLoading={stockLoading}
-        title={`Agregar a Mesa ${addProductsTarget?.tableNumber || ''}`}
-        submitLabel="Agregar Productos"
-      />
+          <AddTablePanel
+            isOpen={!!addProductsTarget}
+            onClose={() => setAddProductsTarget(null)}
+            onCreateTable={handleAddItemsToTable}
+            products={products}
+            isLoading={stockLoading}
+            title={`Agregar a Mesa ${addProductsTarget?.tableNumber || ''}`}
+            submitLabel="Agregar Productos"
+          />
 
-      <InvoicePanel
-        isOpen={!!invoiceTarget}
-        onClose={() => setInvoiceTarget(null)}
-        onConfirm={handleInvoice}
-        table={invoiceTarget}
-      />
+          <InvoicePanel
+            isOpen={!!invoiceTarget}
+            onClose={() => setInvoiceTarget(null)}
+            onConfirm={handleInvoice}
+            table={invoiceTarget}
+          />
+        </>
+      )}
 
-      <OpenCashRegisterModal
-        isOpen={showOpenCash}
-        onClose={() => setShowOpenCash(false)}
-        onConfirm={handleOpenCash}
-      />
+      {cashEnabled && (
+        <>
+          <OpenCashRegisterModal
+            isOpen={showOpenCash}
+            onClose={() => setShowOpenCash(false)}
+            onConfirm={handleOpenCash}
+          />
 
-      <CloseCashRegisterModal
-        isOpen={showCloseCash}
-        onClose={() => setShowCloseCash(false)}
-        onConfirm={handleCloseCash}
-        register={activeRegister}
-      />
+          <CloseCashRegisterModal
+            isOpen={showCloseCash}
+            onClose={() => setShowCloseCash(false)}
+            onConfirm={handleCloseCash}
+            register={activeRegister}
+          />
 
-      <CashMovementModal
-        isOpen={!!cashMovementType}
-        onClose={() => setCashMovementType(null)}
-        onConfirm={handleCashMovement}
-        registerId={activeRegister?.id}
-        type={cashMovementType || 'in'}
-      />
+          <CashMovementModal
+            isOpen={!!cashMovementType}
+            onClose={() => setCashMovementType(null)}
+            onConfirm={handleCashMovement}
+            registerId={activeRegister?.id}
+            type={cashMovementType || 'in'}
+          />
 
-      <CashRegisterHistory
-        isOpen={showCashHistory}
-        onClose={() => setShowCashHistory(false)}
-      />
+          <CashRegisterHistory
+            isOpen={showCashHistory}
+            onClose={() => setShowCashHistory(false)}
+          />
+        </>
+      )}
     </div>
   );
 };

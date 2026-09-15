@@ -10,6 +10,7 @@ import { Package, AlertCircle, TrendingUp, PlusCircle, FileSpreadsheet } from 'l
 import toast from 'react-hot-toast';
 import inventoryService from '../../services/inventoryService';
 import useAuthStore from '../../stores/authStore';
+import { canWriteInventory } from '../../config/companyFeatures';
 import StockTable from './components/StockTable';
 import ProductFormModal from './components/ProductFormModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
@@ -17,7 +18,8 @@ import AddStockModal from './components/AddStockModal';
 import ImportProductsModal from './components/ImportProductsModal';
 
 const InventoryPage = () => {
-  const { branchId } = useAuthStore();
+  const { branchId, user } = useAuthStore();
+  const inventoryWriteAllowed = canWriteInventory(user);
   const queryClient = useQueryClient();
 
   const [showProductModal, setShowProductModal] = useState(false);
@@ -168,7 +170,7 @@ const InventoryPage = () => {
             Gestiona tu inventario con asistencia de IA
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {inventoryWriteAllowed && <div className="flex items-center gap-2">
           <button
             onClick={() => setShowImportModal(true)}
             className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
@@ -183,7 +185,7 @@ const InventoryPage = () => {
             <PlusCircle className="h-4 w-4" />
             Agregar Producto
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* Stats */}
@@ -246,38 +248,38 @@ const InventoryPage = () => {
       <StockTable
         stock={filteredStock}
         isLoading={stockLoading}
-        onEdit={openEdit}
-        onDelete={(item) => setDeleteTarget(item)}
-        onAddStock={(item) => setAddStockTarget(item)}
+        onEdit={inventoryWriteAllowed ? openEdit : undefined}
+        onDelete={inventoryWriteAllowed ? (item) => setDeleteTarget(item) : undefined}
+        onAddStock={inventoryWriteAllowed ? (item) => setAddStockTarget(item) : undefined}
       />
 
       {/* Modals */}
-      <ImportProductsModal
+      {inventoryWriteAllowed && <ImportProductsModal
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
         onImported={refetchAll}
-      />
+      />}
 
-      <ProductFormModal
+      {inventoryWriteAllowed && <ProductFormModal
         isOpen={showProductModal}
         onClose={() => { setShowProductModal(false); setEditProduct(null); }}
         onSave={editProduct ? handleEditProduct : handleCreateProduct}
         product={editProduct}
-      />
+      />}
 
-      <DeleteConfirmModal
+      {inventoryWriteAllowed && <DeleteConfirmModal
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDeleteProduct}
         productName={deleteTarget?.productName}
-      />
+      />}
 
-      <AddStockModal
+      {inventoryWriteAllowed && <AddStockModal
         isOpen={!!addStockTarget}
         onClose={() => setAddStockTarget(null)}
         onConfirm={handleAddStock}
         product={addStockTarget}
-      />
+      />}
     </div>
   );
 };

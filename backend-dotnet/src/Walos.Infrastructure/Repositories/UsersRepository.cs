@@ -122,10 +122,15 @@ public class UsersRepository : IUsersRepository
     {
         using var conn = await _db.CreateConnectionAsync();
         const string sql = @"
-            UPDATE core.users
+            UPDATE core.users u
             SET first_name = @FirstName, last_name = @LastName, phone = @Phone,
                 role_id = @RoleId, branch_id = @BranchId, updated_at = NOW()
-            WHERE id = @Id AND company_id = @CompanyId AND deleted_at IS NULL
+            WHERE u.id = @Id AND u.company_id = @CompanyId AND u.deleted_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM core.roles r
+                  WHERE r.id = u.role_id AND r.company_id = u.company_id
+                    AND r.code = 'dev'
+              )
               AND EXISTS (
                   SELECT 1 FROM core.roles r
                   WHERE r.id = @RoleId AND r.company_id = @CompanyId
@@ -149,8 +154,13 @@ public class UsersRepository : IUsersRepository
     {
         using var conn = await _db.CreateConnectionAsync();
         const string sql = @"
-            UPDATE core.users SET is_active = @IsActive, updated_at = NOW()
-            WHERE id = @UserId AND company_id = @CompanyId AND deleted_at IS NULL";
+            UPDATE core.users u SET is_active = @IsActive, updated_at = NOW()
+            WHERE u.id = @UserId AND u.company_id = @CompanyId AND u.deleted_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM core.roles r
+                  WHERE r.id = u.role_id AND r.company_id = u.company_id
+                    AND r.code = 'dev'
+              )";
         return await conn.ExecuteAsync(sql, new { UserId = userId, CompanyId = companyId, IsActive = isActive }) > 0;
     }
 
@@ -158,8 +168,13 @@ public class UsersRepository : IUsersRepository
     {
         using var conn = await _db.CreateConnectionAsync();
         const string sql = @"
-            UPDATE core.users SET deleted_at = NOW(), is_active = FALSE, updated_at = NOW()
-            WHERE id = @UserId AND company_id = @CompanyId AND deleted_at IS NULL";
+            UPDATE core.users u SET deleted_at = NOW(), is_active = FALSE, updated_at = NOW()
+            WHERE u.id = @UserId AND u.company_id = @CompanyId AND u.deleted_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM core.roles r
+                  WHERE r.id = u.role_id AND r.company_id = u.company_id
+                    AND r.code = 'dev'
+              )";
         return await conn.ExecuteAsync(sql, new { UserId = userId, CompanyId = companyId }) > 0;
     }
 
@@ -177,8 +192,13 @@ public class UsersRepository : IUsersRepository
     {
         using var conn = await _db.CreateConnectionAsync();
         const string sql = @"
-            UPDATE core.users SET password_hash = @Hash, updated_at = NOW()
-            WHERE id = @UserId AND company_id = @CompanyId AND deleted_at IS NULL";
+            UPDATE core.users u SET password_hash = @Hash, updated_at = NOW()
+            WHERE u.id = @UserId AND u.company_id = @CompanyId AND u.deleted_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM core.roles r
+                  WHERE r.id = u.role_id AND r.company_id = u.company_id
+                    AND r.code = 'dev'
+              )";
         return await conn.ExecuteAsync(sql, new { Hash = newPasswordHash, UserId = userId, CompanyId = companyId }) > 0;
     }
 

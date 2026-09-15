@@ -17,8 +17,9 @@ public class TenantContextMiddlewareTests
             new Claim("companyId", "10"),
             new Claim("userId", "20"),
             new Claim("branchId", "30"),
-            new Claim(ClaimTypes.Role, "admin"),
-            new Claim(ClaimTypes.Email, "admin@walos.dev"),
+            new Claim(ClaimTypes.Role, "manager"),
+            new Claim(ClaimTypes.Email, "manager@walos.dev"),
+            new Claim("platformAdmin", "true"),
         ], authenticationType: "Bearer"));
 
         var tenant = new TenantContext();
@@ -30,8 +31,9 @@ public class TenantContextMiddlewareTests
         Assert.Equal(10, tenant.CompanyId);
         Assert.Equal(20, tenant.UserId);
         Assert.Equal(30, tenant.BranchId);
-        Assert.Equal("admin", tenant.Role);
-        Assert.Equal("admin@walos.dev", tenant.Email);
+        Assert.Equal("manager", tenant.Role);
+        Assert.Equal("manager@walos.dev", tenant.Email);
+        Assert.True(tenant.IsPlatformAdmin);
     }
 
     [Fact]
@@ -51,14 +53,15 @@ public class TenantContextMiddlewareTests
         Assert.Null(tenant.BranchId);
         Assert.Equal(string.Empty, tenant.Role);
         Assert.Equal(string.Empty, tenant.Email);
+        Assert.False(tenant.IsPlatformAdmin);
     }
 
     [Theory]
-    [InlineData(null, "20", "admin", "30")]
-    [InlineData("0", "20", "admin", "30")]
-    [InlineData("10", "bad", "admin", "30")]
+    [InlineData(null, "20", "manager", "30")]
+    [InlineData("0", "20", "manager", "30")]
+    [InlineData("10", "bad", "manager", "30")]
     [InlineData("10", "20", "", "30")]
-    [InlineData("10", "20", "admin", "bad")]
+    [InlineData("10", "20", "manager", "bad")]
     public async Task InvokeAsync_Should_Reject_Authenticated_Principal_With_Malformed_Tenant_Claims(
         string? companyId,
         string userId,

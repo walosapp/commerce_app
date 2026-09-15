@@ -23,4 +23,9 @@
     <ProjectReference Include="..\Walos.Infrastructure\Walos.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\walos-default.png"
+                      LogicalName="Walos.API.Assets.walos-default.png" />
+  </ItemGroup>
+
 </Project>

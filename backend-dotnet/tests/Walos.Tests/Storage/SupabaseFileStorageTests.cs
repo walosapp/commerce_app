@@ -139,6 +139,24 @@ public class SupabaseFileStorageTests
             $"{ProjectUrl}/storage/v1/object/public/another-bucket/{objectKey}"));
     }
 
+    [Fact]
+    public void TryGetManagedObjectKey_ResolvesOnlyConfiguredHostBucketAndCanonicalKey()
+    {
+        var storage = CreateStorage(new StubHttpMessageHandler(_ =>
+            throw new InvalidOperationException("HTTP should not be called")));
+        const string objectKey = "companies/16/branding/logo-0123456789abcdef0123456789abcdef.webp";
+
+        Assert.True(storage.TryGetManagedObjectKey(storage.GetPublicUrl(objectKey), out var resolved));
+        Assert.Equal(objectKey, resolved);
+        Assert.False(storage.TryGetManagedObjectKey(
+            $"https://attacker.example/storage/v1/object/public/{Bucket}/{objectKey}", out _));
+        Assert.False(storage.TryGetManagedObjectKey(
+            $"{ProjectUrl}/storage/v1/object/public/another-bucket/{objectKey}", out _));
+        Assert.False(storage.TryGetManagedObjectKey(
+            $"{ProjectUrl}/storage/v1/object/public/{Bucket}/companies/16/branding/%2E%2E/secret.webp",
+            out _));
+    }
+
     private static SupabaseFileStorage CreateStorage(HttpMessageHandler handler) =>
         new(
             new HttpClient(handler),

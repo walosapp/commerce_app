@@ -5,12 +5,15 @@ using Walos.Application.DTOs.Sales;
 using Walos.Application.Services;
 using Walos.Application.Security;
 using Walos.Domain.Interfaces;
+using Walos.API.Authorization;
+using Walos.Domain.Features;
 
 namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/sales/credits")]
 [Authorize(Policy = WalosPolicies.CashOperator)]
+[RequireAnyFeature(WalosFeatures.Restaurant, WalosFeatures.Pos)]
 public class CreditController : ControllerBase
 {
     private readonly ICreditService _creditService;

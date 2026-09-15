@@ -10,6 +10,7 @@ import { LogIn, Loader2, Eye, EyeOff } from 'lucide-react';
 import useAuthStore from '../../stores/authStore';
 import authService from '../../services/authService';
 import toast from 'react-hot-toast';
+import { getDefaultRouteForUser } from '../../config/companyFeatures';
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -33,13 +34,19 @@ const LoginPage = () => {
       const result = await authService.login(username, password);
 
       if (result.success) {
-        setAuth({
+        const accepted = setAuth({
           token: result.data.token,
           user: result.data.user,
         });
 
+        if (!accepted) {
+          toast.error('La sesión no tiene un rol válido para Walos');
+          return;
+        }
+
         toast.success(`Bienvenido, ${result.data.user.name}`);
-        navigate('/');
+        const loggedUser = result.data.user;
+        navigate(getDefaultRouteForUser(loggedUser));
       }
     } catch (error) {
       const msg = error.response?.data?.message || 'Error al iniciar sesión';
@@ -125,11 +132,6 @@ const LoginPage = () => {
             </button>
           </form>
 
-          {/* Dev hint */}
-          <div className="mt-6 rounded-lg bg-gray-50 p-3 text-center text-xs text-gray-400">
-            <p className="font-medium text-gray-500">Credenciales de desarrollo</p>
-            <p className="mt-1">Usuario: <span className="font-mono text-gray-600">admin@mibar.com</span> | Contraseña: <span className="font-mono text-gray-600">admin123</span></p>
-          </div>
         </div>
       </div>
     </div>

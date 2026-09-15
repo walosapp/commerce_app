@@ -1,95 +1,78 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import LoginPage from '../../../modules/auth/LoginPage'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import LoginPage from '../../../modules/auth/LoginPage';
 
-// Override global mocks for this test file
-vi.mock('../../../stores/authStore', () => ({
-  default: vi.fn(() => ({
-    setAuth: vi.fn(),
-  })),
-}))
+const { login, setAuth, navigate } = vi.hoisted(() => ({ login: vi.fn(), setAuth: vi.fn(), navigate: vi.fn() }));
 
-vi.mock('../../../services/authService', () => ({
-  default: {
-    login: vi.fn(),
-  },
-}))
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useNavigate: () => navigate,
+}));
+vi.mock('../../../stores/authStore', () => ({ default: () => ({ setAuth }) }));
+vi.mock('../../../services/authService', () => ({ default: { login } }));
+vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }));
 
-vi.mock('react-hot-toast', () => ({
-  default: {
-    success: vi.fn(),
-    error: vi.fn(),
-  },
-}))
+const renderLogin = () => render(<MemoryRouter><LoginPage /></MemoryRouter>);
 
-const renderLogin = () =>
-  render(
-    <MemoryRouter>
-      <LoginPage />
-    </MemoryRouter>
-  )
+const submitCredentials = (username = 'dev@walos.app') => {
+  fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: username } });
+  fireEvent.change(document.getElementById('password'), { target: { value: 'secreto' } });
+  fireEvent.submit(document.querySelector('form'));
+};
 
 describe('LoginPage', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-  })
+    vi.clearAllMocks();
+    setAuth.mockReturnValue(true);
+  });
 
-  it('renders login form with username and password fields', () => {
-    renderLogin()
+  it('renders login form without development credentials', () => {
+    renderLogin();
+    expect(screen.getByLabelText(/usuario/i)).toBeInTheDocument();
+    expect(document.getElementById('password')).toBeInTheDocument();
+    expect(screen.getByText('Walos')).toBeInTheDocument();
+    expect(screen.queryByText(/Credenciales de desarrollo/i)).not.toBeInTheDocument();
+  });
 
-    expect(screen.getByLabelText(/usuario/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/contraseña/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeInTheDocument()
-  })
+  it('updates inputs and toggles password visibility', () => {
+    renderLogin();
+    const username = screen.getByLabelText(/usuario/i);
+    const password = document.getElementById('password');
+    fireEvent.change(username, { target: { value: 'usuario@example.test' } });
+    fireEvent.change(password, { target: { value: 'clave-segura' } });
+    expect(username).toHaveValue('usuario@example.test');
+    expect(password).toHaveAttribute('type', 'password');
+    fireEvent.click(screen.getAllByRole('button').find((button) => button.type === 'button'));
+    expect(password).toHaveAttribute('type', 'text');
+  });
 
-  it('renders app title', () => {
-    renderLogin()
+  it('rejects an empty form before calling the backend', async () => {
+    const toast = (await import('react-hot-toast')).default;
+    renderLogin();
+    fireEvent.submit(document.querySelector('form'));
+    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/^Ingresa usuario y/));
+    expect(login).not.toHaveBeenCalled();
+  });
 
-    expect(screen.getByText('Walos')).toBeInTheDocument()
-    expect(screen.getByText(/sistema de gestión/i)).toBeInTheDocument()
-  })
+  it('consumes trusted dev isPlatformAdmin but enters the operational shell', async () => {
+    const user = { id: 1, name: 'Dev', role: 'dev', companyId: 1, branchId: 1, isPlatformAdmin: true };
+    login.mockResolvedValue({ success: true, data: { token: 'jwt', user } });
+    renderLogin();
+    submitCredentials();
 
-  it('updates input values on change', () => {
-    renderLogin()
+    await waitFor(() => expect(setAuth).toHaveBeenCalledWith({ token: 'jwt', user }));
+    expect(navigate).toHaveBeenCalledWith('/');
+  });
 
-    const usernameInput = screen.getByLabelText(/usuario/i)
-    const passwordInput = screen.getByLabelText(/contraseña/i)
+  it('uses isPlatformAdmin to keep platform_admin in the platform shell', async () => {
+    const user = { id: 2, name: 'Plataforma', role: 'platform_admin', companyId: 1, branchId: 1, isPlatformAdmin: true };
+    login.mockResolvedValue({ success: true, data: { token: 'jwt-platform', user } });
+    renderLogin();
+    submitCredentials('platform@walos.app');
 
-    fireEvent.change(usernameInput, { target: { value: 'admin@mibar.com' } })
-    fireEvent.change(passwordInput, { target: { value: 'admin123' } })
+    await waitFor(() => expect(setAuth).toHaveBeenCalledWith({ token: 'jwt-platform', user }));
+    expect(navigate).toHaveBeenCalledWith('/admin/tenants');
+  });
 
-    expect(usernameInput.value).toBe('admin@mibar.com')
-    expect(passwordInput.value).toBe('admin123')
-  })
-
-  it('shows dev credentials hint', () => {
-    renderLogin()
-
-    expect(screen.getByText(/admin@mibar.com/)).toBeInTheDocument()
-  })
-
-  it('toggles password visibility', () => {
-    renderLogin()
-
-    const passwordInput = screen.getByLabelText(/contraseña/i)
-    expect(passwordInput.type).toBe('password')
-
-    // Find and click the eye toggle button
-    const toggleButtons = screen.getAllByRole('button')
-    const eyeButton = toggleButtons.find(b => b.type === 'button')
-    fireEvent.click(eyeButton)
-
-    expect(passwordInput.type).toBe('text')
-  })
-
-  it('calls toast.error when submitting empty form', async () => {
-    const toast = (await import('react-hot-toast')).default
-    renderLogin()
-
-    const submitButton = screen.getByRole('button', { name: /iniciar sesión/i })
-    fireEvent.click(submitButton)
-
-    expect(toast.error).toHaveBeenCalledWith('Ingresa usuario y contraseña')
-  })
-})
+});

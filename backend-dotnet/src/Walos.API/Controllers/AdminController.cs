@@ -130,6 +130,13 @@ public class AdminController : ControllerBase
     [HttpPatch("users/{id:long}/status")]
     public async Task<IActionResult> SetUserStatus(long id, [FromQuery] long companyId, [FromBody] bool isActive)
     {
+        var target = await _usersRepo.GetByIdAsync(id, companyId);
+        if (target is null)
+            return NotFound(ApiResponse.Fail("Usuario no encontrado"));
+        if (string.Equals(target.RoleCode, WalosRoles.Dev, StringComparison.OrdinalIgnoreCase))
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse.Fail("La cuenta tecnica dev esta protegida", "protected_technical_account"));
+
         var ok = await _usersRepo.SetActiveAsync(id, companyId, isActive);
         if (!ok) return NotFound(ApiResponse.Fail("Usuario no encontrado"));
         return Ok(ApiResponse.Ok(isActive ? "Usuario activado" : "Usuario desactivado"));
@@ -140,6 +147,13 @@ public class AdminController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
             return BadRequest(ApiResponse.Fail("La contraseña debe tener al menos 6 caracteres"));
+
+        var target = await _usersRepo.GetByIdAsync(id, companyId);
+        if (target is null)
+            return NotFound(ApiResponse.Fail("Usuario no encontrado"));
+        if (string.Equals(target.RoleCode, WalosRoles.Dev, StringComparison.OrdinalIgnoreCase))
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse.Fail("La cuenta tecnica dev esta protegida", "protected_technical_account"));
 
         var hash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
         var ok = await _usersRepo.ResetPasswordAsync(id, companyId, hash);

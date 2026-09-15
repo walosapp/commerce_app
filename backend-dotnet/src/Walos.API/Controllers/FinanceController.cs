@@ -1,17 +1,19 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Walos.API.Authorization;
 using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Finance;
 using Walos.Application.Security;
 using Walos.Application.Services;
 using Walos.Domain.Entities;
+using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/finance")]
-[Authorize(Policy = WalosPolicies.Finance)]
+[Authorize]
 public class FinanceController : ControllerBase
 {
     private readonly IFinanceService _financeService;
@@ -23,6 +25,8 @@ public class FinanceController : ControllerBase
         _tenant = tenant;
     }
 
+    [RequireFeature(WalosFeatures.Finance)]
+    [Authorize(Policy = WalosPolicies.Finance)]
     [HttpGet("categories")]
     public async Task<IActionResult> GetCategories([FromQuery] string? type)
     {
@@ -31,6 +35,8 @@ public class FinanceController : ControllerBase
         return Ok(ApiResponse<List<FinancialCategory>>.Ok(categories, count: categories.Count));
     }
 
+    [RequireFeature(WalosFeatures.Finance)]
+    [Authorize(Policy = WalosPolicies.Finance)]
     [HttpPost("categories")]
     public async Task<IActionResult> CreateCategory([FromBody] CreateFinancialCategoryRequest request)
     {
@@ -39,6 +45,8 @@ public class FinanceController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, ApiResponse<FinancialCategory>.Ok(created, "Item financiero creado exitosamente"));
     }
 
+    [RequireFeature(WalosFeatures.Finance)]
+    [Authorize(Policy = WalosPolicies.Finance)]
     [HttpPut("categories/{id:long}")]
     public async Task<IActionResult> UpdateCategory(long id, [FromBody] UpdateFinancialCategoryRequest request)
     {
@@ -47,6 +55,8 @@ public class FinanceController : ControllerBase
         return Ok(ApiResponse<FinancialCategory>.Ok(updated, "Item financiero actualizado exitosamente"));
     }
 
+    [RequireFeature(WalosFeatures.Finance)]
+    [Authorize(Policy = WalosPolicies.Finance)]
     [HttpDelete("categories/{id:long}")]
     public async Task<IActionResult> DeleteCategory(long id)
     {
@@ -55,6 +65,8 @@ public class FinanceController : ControllerBase
         return Ok(ApiResponse.Ok("Item financiero eliminado exitosamente"));
     }
 
+    [RequireFeature(WalosFeatures.Finance)]
+    [Authorize(Policy = WalosPolicies.Finance)]
     [HttpPost("month/init")]
     public async Task<IActionResult> InitMonth([FromBody] InitFinanceMonthRequest request)
     {
@@ -63,6 +75,8 @@ public class FinanceController : ControllerBase
         return Ok(ApiResponse<int>.Ok(inserted, "Mes iniciado exitosamente"));
     }
 
+    [RequireFeature(WalosFeatures.Finance)]
+    [Authorize(Policy = WalosPolicies.Finance)]
     [HttpGet("entries")]
     public async Task<IActionResult> GetEntries([FromQuery] long? branchId, [FromQuery] string? type, [FromQuery] long? categoryId, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
     {
@@ -71,6 +85,8 @@ public class FinanceController : ControllerBase
         return Ok(ApiResponse<List<FinancialEntry>>.Ok(entries, count: entries.Count));
     }
 
+    [RequireFeature(WalosFeatures.Finance)]
+    [Authorize(Policy = WalosPolicies.Finance)]
     [HttpPost("entries")]
     public async Task<IActionResult> CreateEntry([FromBody] CreateFinancialEntryRequest request)
     {
@@ -79,6 +95,8 @@ public class FinanceController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, ApiResponse<FinancialEntry>.Ok(created, "Movimiento creado exitosamente"));
     }
 
+    [RequireFeature(WalosFeatures.Finance)]
+    [Authorize(Policy = WalosPolicies.Finance)]
     [HttpPut("entries/{id:long}")]
     public async Task<IActionResult> UpdateEntry(long id, [FromBody] UpdateFinancialEntryRequest request)
     {
@@ -87,6 +105,8 @@ public class FinanceController : ControllerBase
         return Ok(ApiResponse<FinancialEntry>.Ok(updated, "Movimiento actualizado exitosamente"));
     }
 
+    [RequireFeature(WalosFeatures.Finance)]
+    [Authorize(Policy = WalosPolicies.Finance)]
     [HttpDelete("entries/{id:long}")]
     public async Task<IActionResult> DeleteEntry(long id)
     {
@@ -96,6 +116,7 @@ public class FinanceController : ControllerBase
     }
 
     [HttpGet("summary")]
+    [Authorize(Policy = WalosPolicies.Dashboard)]
     public async Task<IActionResult> GetSummary([FromQuery] long? branchId, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
     {
         var branch = await _financeService.ResolveBranchAsync(_tenant.CompanyId, _tenant.BranchId, branchId);

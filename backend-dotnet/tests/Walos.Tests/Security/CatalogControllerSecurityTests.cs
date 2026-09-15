@@ -6,15 +6,15 @@ namespace Walos.Tests.Security;
 public class CatalogControllerSecurityTests
 {
     [Theory]
-    [InlineData("CreateCategory", "dev,super_admin,admin,manager")]
-    [InlineData("UpdateCategory", "dev,super_admin,admin,manager")]
-    [InlineData("SetCategoryStatus", "dev,super_admin,admin,manager")]
-    [InlineData("DeleteCategory", "dev,super_admin,admin")]
-    [InlineData("CreateUnit", "dev,super_admin,admin,manager")]
-    [InlineData("UpdateUnit", "dev,super_admin,admin,manager")]
-    [InlineData("SetUnitStatus", "dev,super_admin,admin,manager")]
-    [InlineData("DeleteUnit", "dev,super_admin,admin")]
-    public void Catalog_Write_Endpoints_Should_Allow_Expected_Roles(string methodName, string expectedRoles)
+    [InlineData("CreateCategory", Walos.Application.Security.WalosPolicies.CatalogWrite)]
+    [InlineData("UpdateCategory", Walos.Application.Security.WalosPolicies.CatalogWrite)]
+    [InlineData("SetCategoryStatus", Walos.Application.Security.WalosPolicies.CatalogWrite)]
+    [InlineData("DeleteCategory", Walos.Application.Security.WalosPolicies.CatalogDelete)]
+    [InlineData("CreateUnit", Walos.Application.Security.WalosPolicies.CatalogWrite)]
+    [InlineData("UpdateUnit", Walos.Application.Security.WalosPolicies.CatalogWrite)]
+    [InlineData("SetUnitStatus", Walos.Application.Security.WalosPolicies.CatalogWrite)]
+    [InlineData("DeleteUnit", Walos.Application.Security.WalosPolicies.CatalogDelete)]
+    public void Catalog_Write_Endpoints_Should_Use_Safe_Centralized_Policy(string methodName, string expectedPolicy)
     {
         var method = typeof(CatalogController).GetMethod(methodName);
 
@@ -26,6 +26,7 @@ public class CatalogControllerSecurityTests
             .FirstOrDefault();
 
         Assert.NotNull(authorize);
-        Assert.Equal(expectedRoles, authorize!.Roles);
+        Assert.Equal(expectedPolicy, authorize!.Policy);
+        Assert.Null(authorize.Roles);
     }
 }

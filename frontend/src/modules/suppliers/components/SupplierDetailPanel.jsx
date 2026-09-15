@@ -17,7 +17,7 @@ const STATUS = {
   cancelled: { label: 'Cancelado', cls: 'bg-red-100 text-red-700',       icon: XCircle },
 };
 
-const SupplierDetailPanel = ({ supplierId, onClose, onEdit, onDelete, onOpenOrderDetail, onNewOrder }) => {
+const SupplierDetailPanel = ({ supplierId, onClose, onEdit, onDelete, onOpenOrderDetail, onNewOrder, purchasesEnabled = true }) => {
   const { data, isLoading } = useQuery({
     queryKey: ['supplier', supplierId],
     queryFn: () => supplierService.getById(supplierId),
@@ -27,7 +27,7 @@ const SupplierDetailPanel = ({ supplierId, onClose, onEdit, onDelete, onOpenOrde
   const { data: ordersData } = useQuery({
     queryKey: ['purchase-orders-supplier', supplierId],
     queryFn:  () => purchaseOrderService.getAll(supplierId),
-    enabled:  !!supplierId,
+    enabled:  !!supplierId && purchasesEnabled,
   });
 
   const supplier = data?.data;
@@ -111,19 +111,19 @@ const SupplierDetailPanel = ({ supplierId, onClose, onEdit, onDelete, onOpenOrde
                 <ContactActions supplier={supplier} />
               </div>
 
-              <SuggestedOrderPanel supplier={supplier} onNewOrder={onNewOrder} />
+              {purchasesEnabled && <SuggestedOrderPanel supplier={supplier} onNewOrder={onNewOrder} />}
 
               <SupplierProductsManager
                 supplierId={supplierId}
                 products={supplier.products ?? []}
-                onNewOrder={onNewOrder}
+                onNewOrder={purchasesEnabled ? onNewOrder : undefined}
                 supplier={supplier}
               />
             </div>
           </div>
 
           {/* ── Columna derecha: pedidos del proveedor ── */}
-          <div className="w-72 flex-shrink-0 flex flex-col bg-gray-50">
+          {purchasesEnabled && <div className="w-72 flex-shrink-0 flex flex-col bg-gray-50">
             <div className="flex items-center justify-between px-4 py-3 border-b bg-white">
               <div className="flex items-center gap-2">
                 <ShoppingCart size={15} className="text-primary-600" />
@@ -184,7 +184,7 @@ const SupplierDetailPanel = ({ supplierId, onClose, onEdit, onDelete, onOpenOrde
                 </div>
               )}
             </div>
-          </div>
+          </div>}
 
         </div>
       )}

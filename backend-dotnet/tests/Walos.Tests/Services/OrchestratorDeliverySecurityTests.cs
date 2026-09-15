@@ -16,9 +16,18 @@ public class OrchestratorDeliverySecurityTests
         var inventory = new Mock<IInventoryRepository>();
         var delivery = new Mock<IDeliveryRepository>();
         var suppliers = new Mock<ISuppliersRepository>();
+        var capabilities = new Mock<IAiCapabilityGuard>();
+        var snapshot = new AiCapabilitySnapshot(new Dictionary<string, bool>
+        {
+            [Walos.Domain.Features.WalosFeatures.Ai] = true,
+            [Walos.Domain.Features.WalosFeatures.Delivery] = true
+        }, "test");
+        capabilities.Setup(guard => guard.GetSnapshotAsync(10, false)).ReturnsAsync(snapshot);
+        sessions.Setup(repository => repository.AcquireConversationLockAsync(10, 20))
+            .ReturnsAsync(new NoopAsyncDisposable());
         sessions.Setup(repository => repository.GetOrCreateSessionAsync(10, 20))
             .ReturnsAsync(new AiSession { Id = 30, CompanyId = 10, UserId = 20, Context = "{}" });
-        sessions.Setup(repository => repository.GetMessagesAsync(30, It.IsAny<int>()))
+        sessions.Setup(repository => repository.GetMessagesAsync(30, 10, 20, It.IsAny<int>()))
             .ReturnsAsync([]);
         ai.Setup(service => service.ClassifyAsync(It.IsAny<string>())).ReturnsAsync("delivery");
         ai.Setup(service => service.ChatAsync(
@@ -42,6 +51,7 @@ public class OrchestratorDeliverySecurityTests
             inventory.Object,
             delivery.Object,
             suppliers.Object,
+            capabilities.Object,
             NullLogger<OrchestratorService>.Instance);
 
         var response = await orchestrator.ChatAsync(10, 20, 40, "Walos", "marca el pedido listo", null);
@@ -53,5 +63,11 @@ public class OrchestratorDeliverySecurityTests
                 It.IsAny<long>(), It.IsAny<long>(), It.IsAny<long>(), It.IsAny<string>(),
                 It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<long?>(),
                 It.IsAny<Dictionary<string, DateTime?>>()), Times.Never);
+    }
+
+
+    private sealed class NoopAsyncDisposable : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

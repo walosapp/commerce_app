@@ -9,4 +9,5 @@ public interface ITenantContext
     string Email { get; }
     bool IsAuthenticated { get; }
     bool IsDev { get; }
+    bool IsPlatformAdmin { get; }
 }
