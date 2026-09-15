@@ -40,6 +40,7 @@ public sealed class ApiSecurityTests : IAsyncLifetime
     [Theory]
     [InlineData("null")]
     [InlineData("https://evil.test")]
+    [InlineData("http://remote-walos.test")]
     public async Task InvalidOrigin_IsRejected(string origin)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/v1/health");
@@ -48,6 +49,146 @@ public sealed class ApiSecurityTests : IAsyncLifetime
         using var response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("https://evil.test")]
+    [InlineData("http://remote-walos.test")]
+    public async Task InvalidOrigin_PreflightIsRejectedWithoutCorsHeader(string origin)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/v1/printers");
+        request.Headers.Add("Origin", origin);
+        request.Headers.Add("Access-Control-Request-Method", "GET");
+
+        using var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
+    [Theory]
+    [InlineData("https://commerce-app-red.vercel.app")]
+    [InlineData("http://localhost:5173")]
+    [InlineData("http://127.0.0.1:5173")]
+    public async Task CanonicalOrigin_GetHealthSucceedsWithExactCorsHeader(string origin)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/v1/health");
+        request.Headers.Add("Origin", origin);
+
+        using var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(origin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+    }
+
+    [Theory]
+    [InlineData("https://commerce-app-red.vercel.app")]
+    [InlineData("http://localhost:5173")]
+    [InlineData("http://127.0.0.1:5173")]
+    public async Task CanonicalOrigin_PreflightSucceedsWithExactCorsHeader(string origin)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/v1/printers");
+        request.Headers.Add("Origin", origin);
+        request.Headers.Add("Access-Control-Request-Method", "GET");
+
+        using var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(origin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+    }
+
+    [Fact]
+    public async Task OfficialOrigin_ProtectedGetPreflightAllowsAuthorizationHeader()
+    {
+        const string origin = "https://commerce-app-red.vercel.app";
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/v1/printers");
+        request.Headers.Add("Origin", origin);
+        request.Headers.Add("Access-Control-Request-Method", "GET");
+        request.Headers.Add("Access-Control-Request-Headers", "Authorization");
+
+        using var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(origin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+        Assert.Contains(
+            response.Headers.GetValues("Access-Control-Allow-Headers"),
+            value => value.Split(',').Any(header =>
+                header.Trim().Equals("Authorization", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public async Task OfficialOrigin_PairPostPreflightAllowsContentTypeHeader()
+    {
+        const string origin = "https://commerce-app-red.vercel.app";
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/v1/pair");
+        request.Headers.Add("Origin", origin);
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+        request.Headers.Add("Access-Control-Request-Headers", "Content-Type");
+
+        using var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(origin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+        Assert.Contains(
+            response.Headers.GetValues("Access-Control-Allow-Headers"),
+            value => value.Split(',').Any(header =>
+                header.Trim().Equals("Content-Type", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public async Task ConfiguredOrigin_IsAdditiveAndDoesNotReplaceCanonicalOrigins()
+    {
+        foreach (var origin in new[] { "https://walos.test", "https://commerce-app-red.vercel.app" })
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/v1/health");
+            request.Headers.Add("Origin", origin);
+
+            using var response = await _client.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(origin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+        }
+    }
+
+    [Fact]
+    public async Task CanonicalOrigins_AreAllowedWhenNoAdditionalOriginsAreConfigured()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "walos-print-agent-tests", Guid.NewGuid().ToString("N"));
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        PrintAgentApi.ConfigureServices(builder.Services, builder.Configuration, directory);
+        var application = builder.Build();
+        PrintAgentApi.ConfigurePipeline(application);
+        await application.StartAsync();
+        using var client = application.GetTestClient();
+
+        try
+        {
+            foreach (var origin in new[]
+                     {
+                         "https://commerce-app-red.vercel.app",
+                         "http://localhost:5173",
+                         "http://127.0.0.1:5173"
+                     })
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, "/v1/health");
+                request.Headers.Add("Origin", origin);
+                using var response = await client.SendAsync(request);
+
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                Assert.Equal(origin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+            }
+        }
+        finally
+        {
+            await application.DisposeAsync();
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, true);
+            }
+        }
     }
 
     [Fact]
@@ -63,13 +204,25 @@ public sealed class ApiSecurityTests : IAsyncLifetime
     }
 
     [Fact]
+    public void WildcardAllowedOrigin_IsRejectedAtStartup()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Configuration["WALOS_PRINT_AGENT_ALLOWED_ORIGINS"] = "*";
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            PrintAgentApi.ConfigureServices(builder.Services, builder.Configuration, _directory));
+
+        Assert.Contains("origen", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Health_ReportsSemanticProductVersion()
     {
         using var response = await _client.GetAsync("/v1/health");
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("1.0.0", body.GetProperty("version").GetString());
+        Assert.Equal("1.0.1", body.GetProperty("version").GetString());
     }
 
     [Fact]

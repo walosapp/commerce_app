@@ -332,12 +332,11 @@ La distribución conserva el agente WinForms/tray validado: no lo convierte en s
 
 El pairing del navegador es configuración de la estación, no una sesión de usuario Walos, y se conserva en `localStorage` para sobrevivir al cierre del navegador y al reinicio. La copia del agente continúa protegida con DPAPI `CurrentUser`. Esta persistencia aumenta el impacto potencial de un XSS en el origen Walos; se mitiga manteniendo la lista de orígenes cerrada, el binding loopback y la validación Bearer, y debe reevaluarse si Walos adopta un mecanismo de credenciales HttpOnly para localhost.
 
-El build usa Inno Setup 6.4.3 desde el paquete comunitario NuGet `Tools.InnoSetup`, fijado además por SHA-256; cada ejecución vuelve a extraer el compilador desde el paquete verificado y nunca confía ciegamente en un binario cacheado. Tanto `.toolchain` como `artifacts` están ignorados y no se versionan. `AllowedOrigins` es obligatorio para construir: release acepta HTTPS; HTTP se limita a loopback y requiere `-DevelopmentOrigins`. El archivo generado `appsettings.json` conserva la misma lista cerrada de orígenes del agente.
+El build usa Inno Setup 6.4.3 desde el paquete comunitario NuGet `Tools.InnoSetup`, fijado además por SHA-256; cada ejecución vuelve a extraer el compilador desde el paquete verificado y nunca confía ciegamente en un binario cacheado. Tanto `.toolchain` como `artifacts` están ignorados y no se versionan. El agente 1.0.1 siempre autoriza explícitamente `https://commerce-app-red.vercel.app`, `http://localhost:5173` y `http://127.0.0.1:5173`; no usa wildcard ni requiere configuración manual del comercio. `AllowedOrigins` es opcional y únicamente agrega orígenes HTTPS, sin reemplazar los canónicos. El archivo generado `appsettings.json` incorpora esa misma lista cerrada.
 
 ```powershell
 .\tools\Walos.PrintAgent.Installer\Build-Installer.ps1 `
-  -Version 1.0.0 `
-  -AllowedOrigins 'https://ORIGEN-REAL-DE-WALOS'
+  -Version 1.0.1
 ```
 
 El frontend obtiene el enlace público desde `VITE_WALOS_AGENT_DOWNLOAD_URL`; el instalador debe publicarse como asset HTTPS estable. H3.1 no agrega backend, updater ni infraestructura de releases nueva.
@@ -354,7 +353,7 @@ La UAT elevada en VM limpia debe verificar por separado: instalación normal en 
 
 | Gate | Resultado |
 |---|---:|
-| Print Agent tests Release | 57/57 verdes |
+| Print Agent tests Release | 72/72 verdes; CORS/origin focal 27/27 |
 | Publish Print Agent | Verde: .NET 10, `win-x64`, self-contained y single-file |
 | Frontend suite completa | 151/151 en 22/22 archivos |
 | Frontend build | Verde; conserva warnings preexistentes de CSS, Browserslist y tamaño de chunk |
@@ -364,10 +363,10 @@ La UAT elevada en VM limpia debe verificar por separado: instalación normal en 
 | Logoff/reinicio real | Pendiente en VM/cuenta descartable |
 | Authenticode | `NotSigned` |
 
-Artefacto interno generado: `tools/Walos.PrintAgent.Installer/artifacts/installer/Walos-Agent-Setup.exe`, 42.274.932 bytes, SHA-256 `54793F6C7AEF34FB36DD7ED9E3B3AAAFA3ECFFB20EC8A0E5C2C381EE2EBE9E47`. La versión de producto del instalador, binario y `health` es `1.0.0` (Windows representa `FileVersion` del agente como `1.0.0.0`).
+Artefacto interno regenerado tras la corrección CORS: `tools/Walos.PrintAgent.Installer/artifacts/installer/Walos-Agent-Setup.exe`, 42.274.478 bytes, SHA-256 `EF7AB79E4C4969FBEB319E2921E9EB54C7CDBE6667B2D5AB1B7B74CF6F066AA3`. La versión de producto del instalador, binario y `health` es `1.0.1` (Windows representa `FileVersion` del agente como `1.0.1.0`). Su configuración embebida contiene el origin oficial y los dos origins locales, sin `*` ni el origin nominal obsoleto.
 
 No se ejecutó el smoke contra el perfil operativo: `%LOCALAPPDATA%\Walos\PrintAgent\agent-state.json` ya contiene pairing/configuración real y la sesión no tiene privilegios para validar Program Files/HKLM. El estado se inspeccionó únicamente mediante hash y permaneció sin cambios. Tampoco se simuló un logoff/reinicio real.
 
 El artefacto local queda `NotSigned`. Antes de distribución pública es obligatorio firmarlo con Authenticode y comprobar `Get-AuthenticodeSignature` con estado `Valid`. Hasta completar firma y UAT elevada real en una cuenta/VM limpia, el instalador sirve únicamente para validación interna.
 
-**Estado: H3.1 implementado; NO APROBABLE todavía para distribución pública.**
+**Estado: H3.1 implementado para corte de prueba; UAT del instalador en segundo equipo en curso y validación comercial final pendiente.**

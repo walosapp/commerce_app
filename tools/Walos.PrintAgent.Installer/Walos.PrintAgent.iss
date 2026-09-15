@@ -5,7 +5,7 @@
   #error OutputDir must point to the installer artifact directory.
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.0.1"
 #endif
 
 #define AppName "Walos Agent"

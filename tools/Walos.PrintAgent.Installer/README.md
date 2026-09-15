@@ -8,11 +8,10 @@ Desde la raíz del repositorio:
 
 ```powershell
 .\tools\Walos.PrintAgent.Installer\Build-Installer.ps1 `
-  -Version 1.0.0 `
-  -AllowedOrigins 'https://ORIGEN-REAL-DE-WALOS'
+  -Version 1.0.1
 ```
 
-`AllowedOrigins` es obligatorio y acepta orígenes HTTPS separados por `;`, sin rutas. No se debe copiar literalmente el placeholder del ejemplo. Para una compilación local de desarrollo se permite exclusivamente loopback HTTP indicando además `-DevelopmentOrigins`.
+El instalador siempre incluye de forma explícita el origen oficial `https://commerce-app-red.vercel.app` y los orígenes locales `http://localhost:5173` y `http://127.0.0.1:5173`. No requiere configuración manual del comercio. `-AllowedOrigins` es opcional y solo agrega orígenes HTTPS separados por `;`; nunca reemplaza los orígenes canónicos.
 
 Artefacto no versionado:
 
@@ -39,7 +38,7 @@ Cerrá manualmente cualquier agente que ya esté escuchando en el puerto 17831. 
 
 ```powershell
 .\tools\Walos.PrintAgent.Installer\Smoke-Test-Installer.ps1 `
-  -Version 1.0.0 `
+  -Version 1.0.1 `
   -ConfirmDisposableUserProfile
 ```
 

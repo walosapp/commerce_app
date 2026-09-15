@@ -10,6 +10,13 @@ namespace Walos.PrintAgent.Api;
 
 public static class PrintAgentApi
 {
+    private static readonly string[] CanonicalAllowedOrigins =
+    [
+        "https://commerce-app-red.vercel.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+    ];
+
     public const int Port = 17831;
     public const long DefaultMaxPayloadBytes = 8 * 1024;
     public const long PrintReceiptMaxPayloadBytes = 128 * 1024;
@@ -276,29 +283,55 @@ public static class PrintAgentApi
     private static string[] ReadAllowedOrigins(IConfiguration configuration)
     {
         var configured = configuration["WALOS_PRINT_AGENT_ALLOWED_ORIGINS"];
-        var origins = (configured ?? "http://localhost:5173;http://127.0.0.1:5173")
-            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var additionalOrigins = string.IsNullOrWhiteSpace(configured)
+            ? []
+            : configured.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        if (origins.Length == 0 || origins.Any(origin =>
-                !Uri.TryCreate(origin, UriKind.Absolute, out var uri) ||
-                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
-                (uri.Scheme == Uri.UriSchemeHttp && !uri.IsLoopback) ||
-                origin == "*" ||
-                uri.AbsolutePath != "/" ||
-                !string.IsNullOrEmpty(uri.Query) ||
-                !string.IsNullOrEmpty(uri.Fragment)))
+        if (!string.IsNullOrWhiteSpace(configured) && additionalOrigins.Length == 0)
         {
             throw new InvalidOperationException("WALOS_PRINT_AGENT_ALLOWED_ORIGINS contiene un origen inválido.");
         }
 
-        return origins;
+        var normalizedAdditionalOrigins = additionalOrigins.Select(NormalizeConfiguredOrigin).ToArray();
+        return CanonicalAllowedOrigins
+            .Concat(normalizedAdditionalOrigins)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string NormalizeConfiguredOrigin(string origin)
+    {
+        if (origin == "*" ||
+            !Uri.TryCreate(origin, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
+            string.IsNullOrEmpty(uri.Host) ||
+            !string.IsNullOrEmpty(uri.UserInfo) ||
+            uri.AbsolutePath != "/" ||
+            !string.IsNullOrEmpty(uri.Query) ||
+            !string.IsNullOrEmpty(uri.Fragment))
+        {
+            throw new InvalidOperationException("WALOS_PRINT_AGENT_ALLOWED_ORIGINS contiene un origen inválido.");
+        }
+
+        var normalized = uri.GetLeftPart(UriPartial.Authority);
+        if (uri.Scheme == Uri.UriSchemeHttp &&
+            !CanonicalAllowedOrigins.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("WALOS_PRINT_AGENT_ALLOWED_ORIGINS contiene un origen inválido.");
+        }
+
+        if (!origin.Equals(normalized, StringComparison.OrdinalIgnoreCase) &&
+            !origin.Equals(normalized + "/", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("WALOS_PRINT_AGENT_ALLOWED_ORIGINS contiene un origen inválido.");
+        }
+
+        return normalized;
     }
 
     private static string GetSemanticVersion()
     {
         var version = typeof(PrintAgentApi).Assembly.GetName().Version;
-        return version is null ? "1.0.0" : version.ToString(3);
+        return version is null ? "1.0.1" : version.ToString(3);
     }
 }

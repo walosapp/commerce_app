@@ -1,11 +1,9 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.0',
+    [string]$Version = '1.0.1',
 
     [string]$AllowedOrigins,
-
-    [switch]$DevelopmentOrigins,
 
     [switch]$SkipAgentTests
 )
@@ -46,29 +44,33 @@ function Reset-Directory([string]$Path) {
     New-Item -ItemType Directory -Path $Path -Force | Out-Null
 }
 
-function Assert-AllowedOrigins([string]$Value, [bool]$AllowDevelopmentHttp) {
+function Get-EffectiveAllowedOrigins([string]$Value) {
+    $canonicalOrigins = @(
+        'https://commerce-app-red.vercel.app',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173'
+    )
+
     if ([string]::IsNullOrWhiteSpace($Value)) {
-        throw 'AllowedOrigins es obligatorio. Indicá los orígenes HTTPS reales de Walos; para loopback local usá además -DevelopmentOrigins.'
+        return $canonicalOrigins -join ';'
     }
     $origins = @($Value.Split(';', [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { $_.Trim() })
     if ($origins.Count -eq 0) { throw 'AllowedOrigins debe contener al menos un origen.' }
     foreach ($origin in $origins) {
         $uri = $null
         if (-not [Uri]::TryCreate($origin, [UriKind]::Absolute, [ref]$uri) -or
-            @('http', 'https') -notcontains $uri.Scheme -or
+            $uri.Scheme -ne 'https' -or
             $origin -eq '*' -or
+            [string]::IsNullOrEmpty($uri.Host) -or
+            -not [string]::IsNullOrEmpty($uri.UserInfo) -or
             $uri.AbsolutePath -ne '/' -or
             $uri.Query -or
             $uri.Fragment) {
-            throw "Origen no válido: '$origin'. Usá solo scheme + host + puerto opcional."
-        }
-        if ($uri.Scheme -ne 'https') {
-            $isLoopback = $uri.Host -in @('localhost', '127.0.0.1', '::1')
-            if (-not ($AllowDevelopmentHttp -and $isLoopback)) {
-                throw "Origen inseguro '$origin'. Los releases exigen HTTPS; solo loopback de desarrollo admite HTTP con -DevelopmentOrigins."
-            }
+            throw "Origen no válido: '$origin'. Los orígenes adicionales deben usar HTTPS y contener solo scheme + host + puerto opcional."
         }
     }
+
+    return @(($canonicalOrigins + $origins) | Select-Object -Unique) -join ';'
 }
 
 function Install-LocalInnoToolchain {
@@ -97,7 +99,7 @@ function Install-LocalInnoToolchain {
     }
 }
 
-Assert-AllowedOrigins $AllowedOrigins $DevelopmentOrigins.IsPresent
+$effectiveAllowedOrigins = Get-EffectiveAllowedOrigins $AllowedOrigins
 Reset-Directory $publishDirectory
 Reset-Directory $installerDirectory
 Reset-Directory $smokeInstallerDirectory
@@ -124,7 +126,7 @@ Write-Host 'Publicando Walos Agent self-contained/single-file para win-x64...'
 if ($LASTEXITCODE -ne 0) { throw 'Falló dotnet publish.' }
 
 $agentConfiguration = @{
-    WALOS_PRINT_AGENT_ALLOWED_ORIGINS = $AllowedOrigins
+    WALOS_PRINT_AGENT_ALLOWED_ORIGINS = $effectiveAllowedOrigins
 } | ConvertTo-Json
 [IO.File]::WriteAllText(
     (Join-Path $publishDirectory 'appsettings.json'),
