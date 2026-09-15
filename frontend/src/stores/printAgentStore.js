@@ -28,8 +28,24 @@ const isDeterministicClientError = (error) => {
   const status = Number(error?.status);
   return Number.isInteger(status) && status >= 400 && status < 500;
 };
+const receiptCommandMetadata = (command) => command ? ({
+  documentVersion: command.documentVersion,
+  jobId: command.jobId,
+  companyId: command.companyId,
+  branchId: command.branchId,
+  orderId: command.orderId,
+  fingerprint: command.fingerprint,
+}) : null;
 
-export const createPrintAgentState = (service = printAgentService) => (set, get) => ({
+export const createPrintAgentState = (service = printAgentService) => {
+  let physicalQueue = Promise.resolve();
+  const enqueuePhysical = (operation) => {
+    const task = physicalQueue.then(operation, operation);
+    physicalQueue = task.catch(() => undefined);
+    return task;
+  };
+
+  return (set, get) => ({
   status: 'unknown',
   isChecking: false,
   isPairing: false,
@@ -204,22 +220,33 @@ export const createPrintAgentState = (service = printAgentService) => (set, get)
     }
   },
 
-  executeCommand: async (command) => {
-    const { token, configurationSaved } = get();
+  executeCommand: (command, {
+    jobId: requestedJobId,
+    companyId: requestedCompanyId,
+    branchId: requestedBranchId,
+  } = {}) => enqueuePhysical(async () => {
+    const { token, configurationSaved, activeCommand, config } = get();
     if (!token) throw new Error('El agente no esta vinculado.');
     if (!configurationSaved) throw new Error('Guarda la configuracion antes de ejecutar comandos fisicos.');
+    if (activeCommand) throw new Error('Ya hay un comando de impresion en proceso.');
 
-    const jobId = createJobId();
-    const execute = command === 'test-print' ? service.testPrint : service.openDrawer;
+    const jobId = requestedJobId || createJobId();
+    const execute = command === 'test-print'
+      ? () => service.testPrint(token, jobId)
+      : () => service.openDrawer(token, {
+        jobId,
+        companyId: Number(requestedCompanyId ?? config.companyId),
+        branchId: Number(requestedBranchId ?? config.branchId),
+      });
     set({ activeCommand: command, error: null, lastCommand: { command, jobId, status: 'pending' } });
 
     try {
       let result;
       try {
-        result = await execute(token, jobId);
+        result = await execute();
       } catch (firstError) {
         if (firstError?.status) throw firstError;
-        result = await execute(token, jobId);
+        result = await execute();
       }
 
       set({ activeCommand: null, lastCommand: { command, jobId, ...result } });
@@ -240,15 +267,15 @@ export const createPrintAgentState = (service = printAgentService) => (set, get)
       });
       throw error;
     }
-  },
+  }),
 
-  printReceipt: async (receipt) => {
+  printReceipt: (receipt, { jobId: requestedJobId } = {}) => enqueuePhysical(async () => {
     const { token, configurationSaved, activeCommand } = get();
     if (!token) throw new Error('Vincula este navegador con el agente antes de imprimir.');
     if (!configurationSaved) throw new Error('Guarda la configuracion de impresora antes de imprimir.');
     if (activeCommand) throw new Error('Ya hay un comando de impresion en proceso.');
 
-    const jobId = createJobId();
+    const jobId = requestedJobId || createJobId();
     set({
       activeCommand: 'print-receipt',
       error: null,
@@ -260,7 +287,7 @@ export const createPrintAgentState = (service = printAgentService) => (set, get)
       command = await createPrintReceiptCommand(receipt, jobId);
       set({
         lastCommand: { command: 'print-receipt', jobId, fingerprint: command.fingerprint, status: 'pending' },
-        pendingReceiptCommand: command,
+        pendingReceiptCommand: receiptCommandMetadata(command),
       });
 
       let result;
@@ -277,7 +304,7 @@ export const createPrintAgentState = (service = printAgentService) => (set, get)
         lastCommand: { command: 'print-receipt', jobId, fingerprint: command.fingerprint, ...result },
         pendingReceiptCommand: result?.status === 'completed' || result?.status === 'replayed'
           ? null
-          : command,
+          : receiptCommandMetadata(command),
       });
       return result;
     } catch (error) {
@@ -292,7 +319,7 @@ export const createPrintAgentState = (service = printAgentService) => (set, get)
         },
         // Un 5xx puede ocurrir despues de que el spooler haya recibido el trabajo.
         // Solo un 4xx de preflight confirma que el agente no lo ejecuto.
-        pendingReceiptCommand: isDeterministicClientError(error) ? null : command,
+        pendingReceiptCommand: isDeterministicClientError(error) ? null : receiptCommandMetadata(command),
         ...(error?.status === 401 ? {
           token: null,
           agentId: null,
@@ -304,9 +331,47 @@ export const createPrintAgentState = (service = printAgentService) => (set, get)
       });
       throw error;
     }
-  },
+  }),
 
-  retryReceipt: async (currentReceipt) => {
+  // H3 usa un canal de estado separado del pendiente manual de H2. El caller
+  // persiste solamente metadata del intent postventa y puede reconsultar el
+  // ReceiptData canónico con el mismo jobId determinístico.
+  printPostSaleReceipt: (receipt, { jobId } = {}) => enqueuePhysical(async () => {
+    const { token, configurationSaved, activeCommand } = get();
+    if (!token) throw new Error('Vincula este navegador con el agente antes de imprimir.');
+    if (!configurationSaved) throw new Error('Guarda la configuracion de impresora antes de imprimir.');
+    if (activeCommand) throw new Error('Ya hay un comando fisico en proceso.');
+    if (!jobId) throw new Error('jobId es obligatorio para la impresion postventa.');
+
+    set({ activeCommand: 'post-sale-print-receipt' });
+    try {
+      const command = await createPrintReceiptCommand(receipt, jobId);
+      let result;
+      try {
+        result = await service.printReceipt(token, command);
+      } catch (firstError) {
+        if (firstError?.status) throw firstError;
+        result = await service.printReceipt(token, command);
+      }
+      set({ activeCommand: null });
+      return result;
+    } catch (error) {
+      set({
+        activeCommand: null,
+        ...(error?.status === 401 ? {
+          token: null,
+          agentId: null,
+          agentPaired: false,
+          pairedContext: null,
+          printers: [],
+          configurationSaved: false,
+        } : {}),
+      });
+      throw error;
+    }
+  }),
+
+  retryReceipt: (currentReceipt) => enqueuePhysical(async () => {
     const { token, configurationSaved, activeCommand, pendingReceiptCommand } = get();
     if (!token) throw new Error('Vincula este navegador con el agente antes de reintentar.');
     if (!configurationSaved) throw new Error('Guarda la configuracion de impresora antes de reintentar.');
@@ -345,7 +410,7 @@ export const createPrintAgentState = (service = printAgentService) => (set, get)
         lastCommand: { command: 'print-receipt', jobId, fingerprint, ...result },
         pendingReceiptCommand: result?.status === 'completed' || result?.status === 'replayed'
           ? null
-          : currentCommand,
+          : receiptCommandMetadata(currentCommand),
       });
       return result;
     } catch (error) {
@@ -358,7 +423,7 @@ export const createPrintAgentState = (service = printAgentService) => (set, get)
           fingerprint,
           status: error?.status ? 'failed' : 'uncertain',
         },
-        pendingReceiptCommand: isDeterministicClientError(error) ? null : currentCommand,
+        pendingReceiptCommand: isDeterministicClientError(error) ? null : receiptCommandMetadata(currentCommand),
         ...(error?.status === 401 ? {
           token: null,
           agentId: null,
@@ -370,7 +435,7 @@ export const createPrintAgentState = (service = printAgentService) => (set, get)
       });
       throw error;
     }
-  },
+  }),
 
   acknowledgeReceiptAttempt: () => set((state) => {
     if (!state.pendingReceiptCommand) return state;
@@ -384,9 +449,10 @@ export const createPrintAgentState = (service = printAgentService) => (set, get)
     };
   }),
 
-  testPrint: () => get().executeCommand('test-print'),
-  openDrawer: () => get().executeCommand('open-drawer'),
-});
+  testPrint: (options) => get().executeCommand('test-print', options),
+  openDrawer: (options) => get().executeCommand('open-drawer', options),
+  });
+};
 
 export const selectPersistedPrintAgentState = (state) => ({
   token: state.token,
@@ -401,7 +467,10 @@ export const selectPersistedPrintAgentState = (state) => ({
 const usePrintAgentStore = create(
   persist(createPrintAgentState(), {
     name: 'walos-print-agent',
-    storage: createJSONStorage(() => sessionStorage),
+    // This is workstation pairing, not the Walos user session. Persist it
+    // across browser/Windows restarts so the installed agent can reconnect
+    // without asking the commerce to pair after every reboot.
+    storage: createJSONStorage(() => localStorage),
     partialize: selectPersistedPrintAgentState,
   })
 );

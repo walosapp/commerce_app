@@ -11,6 +11,12 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        using var singleInstance = TryAcquireSingleInstance();
+        if (singleInstance is null)
+        {
+            return;
+        }
+
         ApplicationConfiguration.Initialize();
 
         var stateDirectory = AgentPaths.GetStateDirectory();
@@ -43,6 +49,26 @@ internal static class Program
         {
             app.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
             app.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static Mutex? TryAcquireSingleInstance()
+    {
+        try
+        {
+            var mutex = new Mutex(true, @"Global\Walos.PrintAgent.SingleInstance.v1", out var createdNew);
+            if (createdNew)
+            {
+                return mutex;
+            }
+
+            mutex.Dispose();
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Fail closed if another Windows session owns the global name.
+            return null;
         }
     }
 }

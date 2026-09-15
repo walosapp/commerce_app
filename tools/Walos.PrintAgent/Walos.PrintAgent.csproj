@@ -9,6 +9,11 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>Walos.PrintAgent</AssemblyName>
     <RootNamespace>Walos.PrintAgent</RootNamespace>
+    <Version>1.0.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Product>Walos Agent</Product>
+    <Company>Walos</Company>
+    <Description>Walos Agent</Description>
   </PropertyGroup>
 
 </Project>

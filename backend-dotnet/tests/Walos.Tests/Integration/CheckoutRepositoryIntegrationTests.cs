@@ -12,6 +12,7 @@ public class CheckoutRepositoryIntegrationTests : IntegrationTestBase
         var ctx = await SeedCheckoutAsync("Cash");
         var result = await CheckoutRepository.ProcessAsync(Command(ctx, [new("cash", 100m, null)]));
 
+        Assert.Equal(ctx.Order, result.OrderId);
         Assert.False(result.IsReplay);
         Assert.Equal(9m, await StockAsync(ctx.Branch, ctx.Product));
         Assert.Equal(1, await CountAsync("inventory.movements", "reference_id", ctx.Order));
@@ -193,6 +194,8 @@ public class CheckoutRepositoryIntegrationTests : IntegrationTestBase
 
         Assert.False(first.IsReplay);
         Assert.True(replay.IsReplay);
+        Assert.Equal(ctx.Order, first.OrderId);
+        Assert.Equal(first.OrderId, replay.OrderId);
         await Assert.ThrowsAsync<BusinessException>(() => CheckoutRepository.ProcessAsync(
             Command(ctx, [new("card", 100m, null)])));
         Assert.Equal(1, await CountAsync("inventory.movements", "reference_id", ctx.Order));

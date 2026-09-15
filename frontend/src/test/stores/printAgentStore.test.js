@@ -117,7 +117,11 @@ describe('printAgentStore', () => {
       .mockRejectedValueOnce(transientError)
       .mockResolvedValueOnce({ jobId: 'server-echo', status: 'replayed', executed: false });
 
-    store.setState({ token: 'agent-token', configurationSaved: true });
+    store.setState({
+      token: 'agent-token',
+      configurationSaved: true,
+      config: { ...store.getState().config, companyId: 25, branchId: 7 },
+    });
     await store.getState().testPrint();
 
     expect(service.testPrint).toHaveBeenCalledTimes(2);
@@ -225,7 +229,10 @@ describe('printAgentStore', () => {
 
     await rehydrated.getState().retryReceipt(persistedReceipt);
 
-    expect(rehydratedService.printReceipt).toHaveBeenCalledWith('agent-token', pending);
+    expect(rehydratedService.printReceipt).toHaveBeenCalledWith(
+      'agent-token',
+      expect.objectContaining(pending)
+    );
     expect(rehydrated.getState().pendingReceiptCommand).toBeNull();
     expect(rehydratedService.openDrawer).not.toHaveBeenCalled();
   });
@@ -342,7 +349,10 @@ describe('printAgentStore', () => {
 
     await rehydrated.getState().retryReceipt(persistedReceipt);
 
-    expect(rehydratedService.printReceipt).toHaveBeenCalledWith('agent-token', pending);
+    expect(rehydratedService.printReceipt).toHaveBeenCalledWith(
+      'agent-token',
+      expect.objectContaining(pending)
+    );
     expect(rehydrated.getState().pendingReceiptCommand).toBeNull();
     expect(rehydrated.getState().lastCommand).toMatchObject({
       jobId: pending.jobId,
@@ -351,5 +361,103 @@ describe('printAgentStore', () => {
       executed: false,
     });
     expect(rehydratedService.openDrawer).not.toHaveBeenCalled();
+  });
+
+  it('acepta jobIds H3 explicitos sin cambiar los IDs aleatorios de comandos manuales', async () => {
+    service.printReceipt.mockResolvedValue({ status: 'completed', executed: true });
+    service.openDrawer.mockResolvedValue({ status: 'completed', executed: true });
+    store.setState({
+      token: 'agent-token',
+      configurationSaved: true,
+      config: { ...store.getState().config, companyId: 25, branchId: 7 },
+    });
+
+    await store.getState().printReceipt(persistedReceipt, { jobId: 'post-sale.v1.c25.b7.o123.receipt' });
+    await store.getState().openDrawer({ jobId: 'post-sale.v1.c25.b7.o123.drawer' });
+
+    expect(service.printReceipt).toHaveBeenCalledWith(
+      'agent-token',
+      expect.objectContaining({ jobId: 'post-sale.v1.c25.b7.o123.receipt' })
+    );
+    expect(service.openDrawer).toHaveBeenCalledWith('agent-token', {
+      jobId: 'post-sale.v1.c25.b7.o123.drawer',
+      companyId: 25,
+      branchId: 7,
+    });
+  });
+
+  it('persiste solo metadata del recibo incierto y no datos de cliente o items', async () => {
+    service.printReceipt.mockRejectedValue(Object.assign(new Error('spooler'), { status: 503 }));
+    store.setState({ token: 'agent-token', configurationSaved: true });
+
+    await expect(store.getState().printReceipt(persistedReceipt)).rejects.toThrow('spooler');
+
+    const persisted = JSON.stringify(selectPersistedPrintAgentState(store.getState()));
+    expect(persisted).not.toContain('Comercio');
+    expect(persisted).not.toContain('Cafe');
+    expect(persisted).not.toContain('payments');
+    expect(store.getState().pendingReceiptCommand).toEqual({
+      documentVersion: 1,
+      jobId: expect.any(String),
+      companyId: 25,
+      branchId: 7,
+      orderId: 123,
+      fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+  });
+
+  it('un intento H3 no sobrescribe ni libera el pendiente manual H2', async () => {
+    const spoolerError = Object.assign(new Error('spooler'), { status: 503 });
+    service.printReceipt
+      .mockRejectedValueOnce(spoolerError)
+      .mockResolvedValueOnce({ status: 'completed', executed: true });
+    store.setState({ token: 'agent-token', configurationSaved: true });
+
+    await expect(store.getState().printReceipt(persistedReceipt)).rejects.toBe(spoolerError);
+    const manualPending = store.getState().pendingReceiptCommand;
+
+    await store.getState().printPostSaleReceipt(
+      { ...persistedReceipt, orderId: 124, orderNumber: 'ORD-124' },
+      { jobId: 'post-sale.v1.c25.b7.o124.receipt' }
+    );
+
+    expect(store.getState().pendingReceiptCommand).toEqual(manualPending);
+    expect(store.getState().pendingReceiptCommand.orderId).toBe(123);
+    expect(service.printReceipt).toHaveBeenLastCalledWith(
+      'agent-token',
+      expect.objectContaining({ orderId: 124, jobId: 'post-sale.v1.c25.b7.o124.receipt' })
+    );
+  });
+
+  it('serializa globalmente impresion manual H2 y postventa H3', async () => {
+    let releaseManual;
+    const manualGate = new Promise((resolve) => { releaseManual = resolve; });
+    const executionOrder = [];
+    service.printReceipt
+      .mockImplementationOnce(async (_token, command) => {
+        executionOrder.push(`start-${command.orderId}`);
+        await manualGate;
+        executionOrder.push(`end-${command.orderId}`);
+        return { status: 'completed', executed: true };
+      })
+      .mockImplementationOnce(async (_token, command) => {
+        executionOrder.push(`start-${command.orderId}`);
+        return { status: 'completed', executed: true };
+      });
+    store.setState({ token: 'agent-token', configurationSaved: true });
+
+    const manual = store.getState().printReceipt(persistedReceipt);
+    await vi.waitFor(() => expect(service.printReceipt).toHaveBeenCalledTimes(1));
+    const automatic = store.getState().printPostSaleReceipt(
+      { ...persistedReceipt, orderId: 124, orderNumber: 'ORD-124' },
+      { jobId: 'post-sale.v1.c25.b7.o124.receipt' }
+    );
+    await Promise.resolve();
+    expect(service.printReceipt).toHaveBeenCalledTimes(1);
+
+    releaseManual();
+    await Promise.all([manual, automatic]);
+
+    expect(executionOrder).toEqual(['start-123', 'end-123', 'start-124']);
   });
 });

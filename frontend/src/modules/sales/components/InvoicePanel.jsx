@@ -304,12 +304,13 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
     ).join('');
 
     printWindow.document.write(`
-      <html><head><title>Factura Mesa ${table.tableNumber}</title>
+      <html><head><title>Borrador Mesa ${table.tableNumber}</title>
       <style>body{font-family:monospace;padding:20px;max-width:380px;margin:0 auto}
       table{width:100%;border-collapse:collapse}th,td{padding:6px 4px;font-size:13px}
       th{border-bottom:1px dashed #333;text-align:left}
       .total{font-size:18px;font-weight:bold;border-top:2px solid #333;padding-top:8px;margin-top:8px}</style></head>
       <body>
+        <p style="text-align:center;font-weight:bold;border:2px solid #111;padding:8px">BORRADOR - NO VÁLIDO COMO RECIBO</p>
         <h2 style="text-align:center;margin-bottom:4px">WALOS</h2>
         <p style="text-align:center;font-size:12px;color:#666">Mesa ${table.tableNumber}${table.name && table.name !== `Mesa ${table.tableNumber}` ? ' - ' + table.name : ''}</p>
         <hr/>
@@ -581,7 +582,7 @@ const InvoicePanel = ({ isOpen, onClose, onConfirm, table }) => {
           <button onClick={handlePrint}
             className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
             <Printer className="h-4 w-4" />
-            Imprimir Factura
+            Imprimir borrador con navegador
           </button>
         </div>
 

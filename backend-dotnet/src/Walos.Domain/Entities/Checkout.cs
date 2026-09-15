@@ -40,6 +40,7 @@ public sealed record CheckoutPayment
 
 public sealed class CheckoutResult
 {
+    public long OrderId { get; init; }
     public int TableNumber { get; init; }
     public string OrderNumber { get; init; } = string.Empty;
     public decimal Subtotal { get; init; }

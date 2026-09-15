@@ -68,4 +68,20 @@ describe('printAgentService H2', () => {
     expect(sent).not.toHaveProperty('bytes');
     expect(sent.receipt.items[0]).not.toHaveProperty('bytes');
   });
+
+  it('envia contexto vinculado en open-drawer y no acepta un payload jobId-only', async () => {
+    await printAgentService.openDrawer('agent-token', {
+      jobId: 'drawer-job-1',
+      companyId: 25,
+      branchId: 7,
+    });
+
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe('http://127.0.0.1:17831/v1/commands/open-drawer');
+    expect(JSON.parse(options.body)).toEqual({
+      jobId: 'drawer-job-1',
+      companyId: 25,
+      branchId: 7,
+    });
+  });
 });

@@ -36,6 +36,7 @@ public class CreateTableResult
 
 public class InvoiceResult
 {
+    public long OrderId { get; set; }
     public int TableNumber { get; set; }
     public string OrderNumber { get; set; } = string.Empty;
     public decimal Subtotal { get; set; }
@@ -51,4 +52,5 @@ public class InvoiceResult
     public DateTime InvoicedAt { get; set; }
     public long? CreditId { get; set; }
     public decimal? CreditAmount { get; set; }
+    public bool IsReplay { get; set; }
 }

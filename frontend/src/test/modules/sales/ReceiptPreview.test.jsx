@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ReceiptPreview from '../../../modules/sales/components/ReceiptPreview';
 
-const { agent, persistedReceipt, getReceipt, openPrintWindow } = vi.hoisted(() => ({
+const { agent, postSale, persistedReceipt, getReceipt, openPrintWindow } = vi.hoisted(() => ({
   persistedReceipt: {
     companyId: 25,
     branchId: 7,
@@ -52,6 +52,14 @@ const { agent, persistedReceipt, getReceipt, openPrintWindow } = vi.hoisted(() =
     pendingReceiptCommand: null,
     openDrawer: vi.fn(),
   },
+  postSale: {
+    intent: null,
+    persistenceFailed: false,
+    storageWarning: null,
+    getIntent: vi.fn(() => postSale.intent),
+    retryPostSalePrint: vi.fn(),
+    acknowledgePostSalePrint: vi.fn(),
+  },
 }));
 
 vi.mock('../../../services/printService', () => ({
@@ -64,6 +72,19 @@ vi.mock('../../../stores/authStore', () => ({
 
 vi.mock('../../../stores/printAgentStore', () => ({
   default: () => agent,
+}));
+
+vi.mock('../../../stores/postSaleHardwareStore', () => ({
+  default: () => postSale,
+  isUnresolvedPostSalePrint: (intent) => Boolean(
+    intent && ['failed', 'uncertain', 'stale'].includes(intent.printStatus) && !intent.printReviewed
+  ),
+  isBlockingPostSalePrint: (intent) => Boolean(
+    intent && (
+      (['failed', 'uncertain', 'stale'].includes(intent.printStatus) && !intent.printReviewed) ||
+      ['pending_policy', 'queued', 'retrying'].includes(intent.printStatus)
+    )
+  ),
 }));
 
 vi.mock('../../../modules/sales/components/printStyles', () => ({
@@ -88,10 +109,14 @@ describe('ReceiptPreview impresion H2', () => {
     agent.status = 'connected';
     agent.activeCommand = null;
     agent.pendingReceiptCommand = null;
+    postSale.intent = null;
+    postSale.persistenceFailed = false;
+    postSale.storageWarning = null;
     getReceipt.mockResolvedValue({ data: persistedReceipt });
     agent.checkHealth.mockResolvedValue({ status: 'ok', paired: true });
     agent.printReceipt.mockResolvedValue({ status: 'completed', executed: true });
     agent.retryReceipt.mockResolvedValue({ status: 'replayed', executed: false });
+    postSale.retryPostSalePrint.mockResolvedValue({ status: 'replayed', executed: false });
     globalThis.confirm = vi.fn(() => true);
   });
 
@@ -292,6 +317,126 @@ describe('ReceiptPreview impresion H2', () => {
     expect(globalThis.confirm).toHaveBeenCalledOnce();
     expect(agent.acknowledgeReceiptAttempt).toHaveBeenCalledOnce();
     expect(agent.retryReceipt).not.toHaveBeenCalled();
+    expect(agent.openDrawer).not.toHaveBeenCalled();
+  });
+
+  it('bloquea job H2 nuevo y fallback cuando H3 quedo incierto', async () => {
+    postSale.intent = {
+      companyId: 25,
+      branchId: 7,
+      orderId: 123,
+      receiptJobId: 'post-sale.v1.c25.b7.o123.receipt',
+      printFingerprint: 'a'.repeat(64),
+      printStatus: 'uncertain',
+    };
+    renderPreview();
+
+    expect(await screen.findByText(/impresión automática postventa quedó sin reconciliar/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Imprimir con Walos' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Imprimir con dialogo' })).toBeDisabled();
+    expect(agent.printReceipt).not.toHaveBeenCalled();
+    expect(openPrintWindow).not.toHaveBeenCalled();
+  });
+
+  it('bloquea H2 y navegador cuando la persistencia postventa no es confiable', async () => {
+    postSale.persistenceFailed = true;
+    postSale.storageWarning = 'El almacenamiento local no esta disponible.';
+    renderPreview();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/almacenamiento local no esta disponible/i);
+    expect(screen.getByRole('button', { name: 'Imprimir con Walos' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Imprimir con dialogo' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Imprimir con Walos' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Imprimir con dialogo' }));
+    expect(agent.printReceipt).not.toHaveBeenCalled();
+    expect(openPrintWindow).not.toHaveBeenCalled();
+  });
+
+  it('reintenta H3 por su mismo intent y nunca abre cajon', async () => {
+    postSale.intent = {
+      companyId: 25,
+      branchId: 7,
+      orderId: 123,
+      receiptJobId: 'post-sale.v1.c25.b7.o123.receipt',
+      printFingerprint: 'a'.repeat(64),
+      printStatus: 'uncertain',
+    };
+    renderPreview();
+    await screen.findByText('Tienda Persistida');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar impresión postventa' }));
+
+    await waitFor(() => expect(postSale.retryPostSalePrint).toHaveBeenCalledWith({
+      companyId: 25,
+      branchId: 7,
+      orderId: 123,
+    }));
+    expect(agent.printReceipt).not.toHaveBeenCalled();
+    expect(agent.openDrawer).not.toHaveBeenCalled();
+  });
+
+  it('mantiene bloqueado H3 si el recibo cambio durante la reconciliacion', async () => {
+    postSale.intent = {
+      companyId: 25,
+      branchId: 7,
+      orderId: 123,
+      receiptJobId: 'post-sale.v1.c25.b7.o123.receipt',
+      printFingerprint: 'a'.repeat(64),
+      printStatus: 'uncertain',
+    };
+    postSale.retryPostSalePrint.mockRejectedValue(Object.assign(
+      new Error('El recibo persistido cambió.'),
+      { code: 'receipt_changed' }
+    ));
+    renderPreview();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reintentar impresión postventa' }));
+
+    expect(await screen.findByText(/recibo persistido cambió/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Imprimir con Walos' })).toBeDisabled();
+    expect(openPrintWindow).not.toHaveBeenCalled();
+    expect(agent.openDrawer).not.toHaveBeenCalled();
+  });
+
+  it('un intent H3 revisado permite crear una reimpresion H2 nueva sin cajon', async () => {
+    postSale.intent = {
+      companyId: 25,
+      branchId: 7,
+      orderId: 123,
+      receiptJobId: 'post-sale.v1.c25.b7.o123.receipt',
+      printFingerprint: 'a'.repeat(64),
+      printStatus: 'uncertain',
+      printReviewed: true,
+    };
+    renderPreview();
+    await screen.findByText('Tienda Persistida');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Imprimir con Walos' }));
+
+    await waitFor(() => expect(agent.printReceipt).toHaveBeenCalledWith(persistedReceipt));
+    expect(agent.openDrawer).not.toHaveBeenCalled();
+  });
+
+  it('exige confirmacion explicita para revisar el intento H3', async () => {
+    postSale.intent = {
+      companyId: 25,
+      branchId: 7,
+      orderId: 123,
+      receiptJobId: 'post-sale.v1.c25.b7.o123.receipt',
+      printFingerprint: 'a'.repeat(64),
+      printStatus: 'failed',
+    };
+    renderPreview();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcar intento postventa como revisado' }));
+
+    expect(globalThis.confirm).toHaveBeenCalledOnce();
+    expect(postSale.acknowledgePostSalePrint).toHaveBeenCalledWith({
+      companyId: 25,
+      branchId: 7,
+      orderId: 123,
+    });
     expect(agent.openDrawer).not.toHaveBeenCalled();
   });
 });

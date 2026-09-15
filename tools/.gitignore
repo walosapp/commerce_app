@@ -4,3 +4,5 @@
 **/agent-state.json
 **/agent-state.json.tmp
 **/publish/
+**/artifacts/
+**/.toolchain/

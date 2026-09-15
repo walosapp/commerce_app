@@ -75,6 +75,39 @@ public sealed class PrintReceiptApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task DrawerRequiresPairedCompanyAndBranchBeforeSpooling()
+    {
+        using var message = CreateDrawerMessage(new DrawerCommandRequest("drawer-other-tenant", 99, 20));
+
+        using var response = await _client.SendAsync(message);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("pairing_context_mismatch", body.GetProperty("code").GetString());
+        Assert.Equal(0, _rawPrinter.CallCount);
+    }
+
+    [Fact]
+    public async Task DrawerSameJob_ReplaysWithoutSecondPulse()
+    {
+        var request = new DrawerCommandRequest("drawer-same-sale", 10, 20);
+
+        using var first = await _client.SendAsync(CreateDrawerMessage(request));
+        using var second = await _client.SendAsync(CreateDrawerMessage(request));
+        var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>();
+        var secondBody = await second.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal("completed", firstBody.GetProperty("status").GetString());
+        Assert.True(firstBody.GetProperty("executed").GetBoolean());
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Equal("replayed", secondBody.GetProperty("status").GetString());
+        Assert.False(secondBody.GetProperty("executed").GetBoolean());
+        Assert.Equal(1, _rawPrinter.CallCount);
+        Assert.True(Contains(_rawPrinter.LastData, [0x1B, 0x70]));
+    }
+
+    [Fact]
     public async Task SameJobWithDifferentDocument_ReturnsConflictWithoutSecondSpool()
     {
         var request = ReceiptTestData.CreateRequest("conflict-job");
@@ -342,6 +375,15 @@ public sealed class PrintReceiptApiTests : IAsyncLifetime
         message.Headers.Add("Origin", "https://walos.test");
         message.Headers.Authorization = new("Bearer", Token);
         message.Content = content;
+        return message;
+    }
+
+    private static HttpRequestMessage CreateDrawerMessage(DrawerCommandRequest request)
+    {
+        var message = new HttpRequestMessage(HttpMethod.Post, "/v1/commands/open-drawer");
+        message.Headers.Add("Origin", "https://walos.test");
+        message.Headers.Authorization = new("Bearer", Token);
+        message.Content = JsonContent.Create(request);
         return message;
     }
 

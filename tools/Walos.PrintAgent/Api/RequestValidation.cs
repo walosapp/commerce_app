@@ -48,6 +48,19 @@ internal static partial class RequestValidation
             : "jobId debe tener entre 1 y 100 caracteres seguros.";
     }
 
+    public static string? Validate(DrawerCommandRequest request)
+    {
+        var jobError = Validate(new JobCommandRequest(request.JobId));
+        if (jobError is not null)
+        {
+            return jobError;
+        }
+
+        return request.CompanyId > 0 && request.BranchId > 0
+            ? null
+            : "companyId y branchId deben ser mayores que cero.";
+    }
+
     public static string? Validate(PrintReceiptRequest request)
     {
         if (request.DocumentVersion != 1)

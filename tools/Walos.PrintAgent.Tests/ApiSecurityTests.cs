@@ -51,6 +51,28 @@ public sealed class ApiSecurityTests : IAsyncLifetime
     }
 
     [Fact]
+    public void RemoteHttpAllowedOrigin_IsRejectedAtStartup()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Configuration["WALOS_PRINT_AGENT_ALLOWED_ORIGINS"] = "http://walos.test";
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            PrintAgentApi.ConfigureServices(builder.Services, builder.Configuration, _directory));
+
+        Assert.Contains("origen", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Health_ReportsSemanticProductVersion()
+    {
+        using var response = await _client.GetAsync("/v1/health");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("1.0.0", body.GetProperty("version").GetString());
+    }
+
+    [Fact]
     public async Task InvalidToken_IsRejected()
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/v1/printers");

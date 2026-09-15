@@ -161,6 +161,7 @@ public class SalesService : ISalesService
 
         return new InvoiceResult
         {
+            OrderId = result.OrderId,
             TableNumber = result.TableNumber,
             OrderNumber = result.OrderNumber,
             Subtotal = result.Subtotal,
@@ -177,7 +178,8 @@ public class SalesService : ISalesService
                 .ToList(),
             InvoicedAt = result.InvoicedAt,
             CreditId = result.CreditId,
-            CreditAmount = result.CreditAmount
+            CreditAmount = result.CreditAmount,
+            IsReplay = result.IsReplay
         };
     }
     public async Task CancelTableAsync(long companyId, long tableId)

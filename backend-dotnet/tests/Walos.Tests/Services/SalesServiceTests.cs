@@ -665,6 +665,7 @@ public class SalesServiceTests
         _checkoutRepoMock.Setup(repository => repository.ProcessAsync(It.IsAny<CheckoutCommand>()))
             .ReturnsAsync(new CheckoutResult
             {
+                OrderId = 10,
                 TableNumber = 5,
                 OrderNumber = "ORD-10",
                 Subtotal = 100m,
@@ -672,7 +673,8 @@ public class SalesServiceTests
                 AmountPaid = 100m,
                 SplitCount = 1,
                 InvoicedAt = DateTime.UtcNow,
-                Payments = [new CheckoutPayment("cash", 100m, null)]
+                Payments = [new CheckoutPayment("cash", 100m, null)],
+                IsReplay = true
             });
 
         var result = await _service.InvoiceTableAsync(CompanyId, BranchId, UserId, 1,
@@ -682,7 +684,9 @@ public class SalesServiceTests
             });
 
         Assert.Equal("ORD-10", result.OrderNumber);
+        Assert.Equal(10, result.OrderId);
         Assert.Equal(100m, result.FinalTotalPaid);
+        Assert.True(result.IsReplay);
         _checkoutRepoMock.Verify(repository => repository.ProcessAsync(It.Is<CheckoutCommand>(command =>
             command.CompanyId == CompanyId &&
             command.BranchId == BranchId &&

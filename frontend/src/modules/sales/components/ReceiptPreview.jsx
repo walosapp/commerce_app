@@ -4,6 +4,10 @@ import { X, Printer, Loader2 } from 'lucide-react';
 import printService from '../../../services/printService';
 import useAuthStore from '../../../stores/authStore';
 import usePrintAgentStore from '../../../stores/printAgentStore';
+import usePostSaleHardwareStore, {
+  isBlockingPostSalePrint,
+  isUnresolvedPostSalePrint,
+} from '../../../stores/postSaleHardwareStore';
 import { thermalReceiptStyles, openPrintWindow } from './printStyles';
 
 const fmt = (v, currency) => {
@@ -44,6 +48,13 @@ export default function ReceiptPreview({ orderId, onClose }) {
     acknowledgeReceiptAttempt,
     pendingReceiptCommand,
   } = usePrintAgentStore();
+  const {
+    getIntent: getPostSaleIntent,
+    retryPostSalePrint,
+    acknowledgePostSalePrint,
+    persistenceFailed: postSalePersistenceFailed,
+    storageWarning: postSaleStorageWarning,
+  } = usePostSaleHardwareStore();
   const [directPrintResult, setDirectPrintResult] = useState(null);
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -53,6 +64,12 @@ export default function ReceiptPreview({ orderId, onClose }) {
   });
 
   const receipt = data?.data;
+  const postSaleIntent = getPostSaleIntent(companyId, branchId, orderId);
+  const unresolvedPostSalePrint = isUnresolvedPostSalePrint(postSaleIntent);
+  const blockingPostSalePrint = isBlockingPostSalePrint(postSaleIntent);
+  const canRetryPostSalePrint = unresolvedPostSalePrint &&
+    Boolean(postSaleIntent?.receiptJobId) &&
+    Boolean(postSaleIntent?.printFingerprint);
   const directPrintEligible = receipt?.status === 'completed' && !receipt?.refundStatus;
   const pendingMatchesReceipt = pendingReceiptCommand?.orderId === receipt?.orderId;
   const creditTitle = receipt?.creditStatus === 'cancelled'
@@ -132,7 +149,7 @@ export default function ReceiptPreview({ orderId, onClose }) {
   };
 
   const handleBrowserPrint = () => {
-    if (!receipt || !directPrintEligible || pendingReceiptCommand) return;
+    if (!receipt || !directPrintEligible || pendingReceiptCommand || blockingPostSalePrint || postSalePersistenceFailed) return;
     openPrintWindow(buildReceiptHtml(), thermalReceiptStyles);
   };
 
@@ -189,7 +206,7 @@ export default function ReceiptPreview({ orderId, onClose }) {
   };
 
   const handleDirectPrint = async () => {
-    if (!receipt || !directPrintEligible || pendingReceiptCommand) return;
+    if (!receipt || !directPrintEligible || pendingReceiptCommand || blockingPostSalePrint || postSalePersistenceFailed) return;
     if (!await validateAgentAvailability()) return;
 
     try {
@@ -219,6 +236,23 @@ export default function ReceiptPreview({ orderId, onClose }) {
       'Solo marcá este intento como revisado si verificaste físicamente la impresora. Esto no vuelve a imprimir.'
     );
     if (confirmed) acknowledgeReceiptAttempt();
+  };
+
+  const handleRetryPostSalePrint = async () => {
+    if (postSalePersistenceFailed || !unresolvedPostSalePrint || !await validateAgentAvailability()) return;
+    try {
+      showAgentResult(await retryPostSalePrint({ companyId, branchId, orderId }));
+    } catch (printError) {
+      showAgentError(printError);
+    }
+  };
+
+  const handleAcknowledgePostSalePrint = () => {
+    if (!unresolvedPostSalePrint) return;
+    const confirmed = globalThis.confirm(
+      'Solo marcá este intento postventa como revisado si verificaste físicamente la impresora. Esto no vuelve a imprimir.'
+    );
+    if (confirmed) acknowledgePostSalePrint({ companyId, branchId, orderId });
   };
 
   return (
@@ -406,9 +440,43 @@ export default function ReceiptPreview({ orderId, onClose }) {
               </button>
             </div>
           )}
+          {unresolvedPostSalePrint && (
+            <div className="space-y-2 rounded-lg bg-amber-50 px-3 py-2">
+              <p role="status" className="text-xs text-amber-800">
+                La impresión automática postventa quedó sin reconciliar. No crees un trabajo nuevo ni uses impresión del navegador.
+              </p>
+              {canRetryPostSalePrint && (
+                <button
+                  onClick={handleRetryPostSalePrint}
+                  disabled={Boolean(activeCommand)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 text-sm font-medium"
+                >
+                  {activeCommand ? <Loader2 className="animate-spin" size={16} /> : <Printer size={16} />}
+                  Reintentar impresión postventa
+                </button>
+              )}
+              <button
+                onClick={handleAcknowledgePostSalePrint}
+                disabled={Boolean(activeCommand)}
+                className="w-full px-4 py-2 border border-amber-400 text-amber-900 rounded-lg hover:bg-amber-100 disabled:opacity-50 text-sm font-medium"
+              >
+                Marcar intento postventa como revisado
+              </button>
+            </div>
+          )}
+          {postSalePersistenceFailed && (
+            <p role="alert" className="text-xs rounded-lg px-3 py-2 bg-red-50 text-red-800">
+              {postSaleStorageWarning || 'El almacenamiento local no esta disponible. La impresion permanece bloqueada por seguridad.'}
+            </p>
+          )}
+          {blockingPostSalePrint && !unresolvedPostSalePrint && (
+            <p role="status" className="text-xs rounded-lg px-3 py-2 bg-amber-50 text-amber-700">
+              La impresión automática postventa está en proceso. Esperá su resultado antes de reimprimir.
+            </p>
+          )}
           <button
             onClick={handleDirectPrint}
-            disabled={!receipt || !directPrintEligible || Boolean(pendingReceiptCommand) || activeCommand === 'print-receipt' || directPrintResult?.type === 'pending'}
+            disabled={!receipt || !directPrintEligible || Boolean(pendingReceiptCommand) || blockingPostSalePrint || postSalePersistenceFailed || Boolean(activeCommand) || directPrintResult?.type === 'pending'}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 text-sm font-medium"
           >
             {activeCommand === 'print-receipt' ? <Loader2 className="animate-spin" size={16} /> : <Printer size={16} />}
@@ -423,7 +491,7 @@ export default function ReceiptPreview({ orderId, onClose }) {
             </button>
             <button
               onClick={handleBrowserPrint}
-              disabled={!receipt || !directPrintEligible || Boolean(pendingReceiptCommand)}
+              disabled={!receipt || !directPrintEligible || Boolean(pendingReceiptCommand) || blockingPostSalePrint || postSalePersistenceFailed}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-primary-300 text-primary-700 rounded-lg hover:bg-primary-50 disabled:opacity-50 text-sm font-medium"
             >
               <Printer size={16} /> Imprimir con dialogo

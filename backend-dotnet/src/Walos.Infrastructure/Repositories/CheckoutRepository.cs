@@ -750,6 +750,7 @@ public sealed class CheckoutRepository : ICheckoutRepository
         CheckoutCreditRow? credit,
         bool isReplay) => new()
         {
+            OrderId = order.Id,
             TableNumber = table.TableNumber,
             OrderNumber = order.OrderNumber,
             Subtotal = order.Subtotal,

@@ -1,14 +1,30 @@
 import { useEffect, useState } from 'react';
-import { CircleDot, Link, Loader2, Printer, RefreshCw, Save, Unlock } from 'lucide-react';
+import { CircleDot, Download, Link, Loader2, Printer, RefreshCw, Save, Unlock } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { resolvePrintAgentDownloadUrl } from '../../../config/printAgent';
 import useAuthStore from '../../../stores/authStore';
 import usePrintAgentStore from '../../../stores/printAgentStore';
+import usePostSaleHardwareStore, { isUnresolvedPostSaleDrawer } from '../../../stores/postSaleHardwareStore';
+
+const DRAWER_STATUS_LABELS = Object.freeze({
+  failed: 'Fallida',
+  uncertain: 'Resultado incierto',
+  stale: 'Requiere revision',
+});
 
 const PrinterSettings = () => {
   const companyId = useAuthStore((state) => state.tenantId);
   const branchId = useAuthStore((state) => state.branchId);
   const store = usePrintAgentStore();
+  const postSalePolicy = usePostSaleHardwareStore((state) => state.getPolicy(companyId, branchId));
+  const updatePostSalePolicy = usePostSaleHardwareStore((state) => state.updatePolicy);
+  const postSaleStorageWarning = usePostSaleHardwareStore((state) => state.storageWarning);
+  const postSaleIntents = usePostSaleHardwareStore((state) => state.intents);
+  const retryPostSaleDrawer = usePostSaleHardwareStore((state) => state.retryPostSaleDrawer);
+  const acknowledgePostSaleDrawer = usePostSaleHardwareStore((state) => state.acknowledgePostSaleDrawer);
   const [pairingCode, setPairingCode] = useState('');
+  const [drawerActionKey, setDrawerActionKey] = useState(null);
+  const downloadUrl = resolvePrintAgentDownloadUrl();
 
   useEffect(() => {
     store.initializeContext({ companyId, branchId });
@@ -20,6 +36,13 @@ const PrinterSettings = () => {
   const isConnected = store.status === 'connected';
   const canUseAgent = isConnected && Boolean(store.token);
   const canRunCommands = canUseAgent && store.configurationSaved && Boolean(store.config.printerName);
+  const unresolvedDrawerIntents = Object.values(postSaleIntents || {})
+    .filter((intent) => (
+      Number(intent.companyId) === Number(companyId) &&
+      Number(intent.branchId) === Number(branchId) &&
+      isUnresolvedPostSaleDrawer(intent)
+    ))
+    .sort((left, right) => Number(right.orderId) - Number(left.orderId));
 
   const pair = async () => {
     if (!/^\d{6}$/.test(pairingCode)) {
@@ -63,29 +86,92 @@ const PrinterSettings = () => {
     } catch {}
   };
 
+  const retryDrawer = async (intent) => {
+    const actionKey = `${intent.companyId}:${intent.branchId}:${intent.orderId}`;
+    setDrawerActionKey(actionKey);
+    try {
+      const result = await retryPostSaleDrawer({
+        companyId: intent.companyId,
+        branchId: intent.branchId,
+        orderId: intent.orderId,
+      });
+      toast.success(result?.status === 'replayed'
+        ? 'La apertura ya habia sido procesada; no se repitio.'
+        : 'Cajon abierto.');
+    } catch {
+      toast.error('No fue posible reconciliar la apertura. Verifica el cajon antes de volver a intentar.');
+    } finally {
+      setDrawerActionKey(null);
+    }
+  };
+
+  const acknowledgeDrawer = (intent) => {
+    acknowledgePostSaleDrawer({
+      companyId: intent.companyId,
+      branchId: intent.branchId,
+      orderId: intent.orderId,
+    });
+    toast.success('Apertura marcada como resuelta.');
+  };
+
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-        <div className="flex items-center gap-3">
-          <span className={`h-3 w-3 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-          <div>
-            <p className="text-sm font-semibold text-gray-900">
-              {store.isChecking ? 'Detectando agente...' : isConnected ? 'Walos Print Agent conectado' : 'Walos Print Agent desconectado'}
-            </p>
-            <p className="text-xs text-gray-500">
-              {store.version ? `Version ${store.version} · 127.0.0.1:17831` : 'Agente local en 127.0.0.1:17831'}
-            </p>
+      <section aria-labelledby="walos-agent-title" className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+        <h3 id="walos-agent-title" className="mb-3 text-base font-semibold text-gray-900">Walos Agent</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className={`h-3 w-3 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+            <div>
+              <p className="text-sm font-semibold text-gray-900">
+                {store.isChecking ? 'Detectando agente...' : isConnected ? 'Agente conectado' : 'Agente no detectado'}
+              </p>
+              <p className="text-xs text-gray-500">
+                Versión instalada: {store.version || 'No disponible'}
+              </p>
+            </div>
           </div>
+          <button type="button" className="btn-secondary inline-flex items-center gap-2" onClick={store.checkHealth} disabled={store.isChecking}>
+            {store.isChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Detectar agente
+          </button>
         </div>
-        <button type="button" className="btn-secondary inline-flex items-center gap-2" onClick={store.checkHealth} disabled={store.isChecking}>
-          {store.isChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Detectar agente
-        </button>
-      </div>
+
+        {!store.isChecking && !isConnected && (
+          <div className="mt-4 border-t border-gray-200 pt-4">
+            {downloadUrl ? (
+              <a
+                href={downloadUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-primary inline-flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Descargar Walos Agent
+              </a>
+            ) : (
+              <div>
+                <button type="button" className="btn-secondary inline-flex items-center gap-2" disabled>
+                  <Download className="h-4 w-4" />
+                  Descargar Walos Agent
+                </button>
+                <p className="mt-2 text-xs text-amber-700">
+                  La descarga no está configurada para este entorno. Contactá al administrador.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {store.error && (
         <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
           {store.error}
+        </div>
+      )}
+
+      {postSaleStorageWarning && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          {postSaleStorageWarning}
         </div>
       )}
 
@@ -171,7 +257,98 @@ const PrinterSettings = () => {
             <Unlock className="h-4 w-4" /> Abrir cajon
           </button>
         </div>
+
       </fieldset>
+
+      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+        <h4 className="text-sm font-semibold text-gray-900">Acciones automaticas despues de la venta</h4>
+        <p className="mt-1 text-xs text-gray-500">
+          Son preferencias locales de este navegador. La venta se guarda antes de ejecutar cualquier accion fisica.
+        </p>
+        <div className="mt-3 space-y-3">
+          <label className="flex items-start gap-3 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4"
+              checked={postSalePolicy.autoPrintReceipt}
+              disabled={!postSalePolicy.autoPrintReceipt && !canRunCommands}
+              onChange={(event) => updatePostSalePolicy(
+                { companyId, branchId },
+                { autoPrintReceipt: event.target.checked }
+              )}
+            />
+            <span>
+              <strong className="block font-medium text-gray-900">Imprimir recibo automaticamente</strong>
+              Usa exclusivamente el comprobante persistido del backend.
+            </span>
+          </label>
+          <label className="flex items-start gap-3 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4"
+              checked={postSalePolicy.autoOpenCashDrawer}
+              disabled={!postSalePolicy.autoOpenCashDrawer && !canRunCommands}
+              onChange={(event) => updatePostSalePolicy(
+                { companyId, branchId },
+                { autoOpenCashDrawer: event.target.checked }
+              )}
+            />
+            <span>
+              <strong className="block font-medium text-gray-900">Abrir cajon con pagos en efectivo</strong>
+              Solo se activa si el recibo persistido contiene un pago con metodo exacto cash y monto positivo.
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {unresolvedDrawerIntents.length > 0 && (
+        <section aria-labelledby="drawer-reconciliation-title" className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <h4 id="drawer-reconciliation-title" className="text-sm font-semibold text-gray-900">
+            Aperturas de cajon por reconciliar
+          </h4>
+          <p className="mt-1 text-xs text-gray-600">
+            Verifica fisicamente el cajon. Reintentar conserva el mismo trabajo idempotente y nunca imprime el recibo.
+          </p>
+          <div className="mt-3 space-y-3">
+            {unresolvedDrawerIntents.map((intent) => {
+              const actionKey = `${intent.companyId}:${intent.branchId}:${intent.orderId}`;
+              const isRetrying = drawerActionKey === actionKey;
+              return (
+                <article key={actionKey} className="rounded-xl border border-amber-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        Comercio {intent.companyId} · Sede {intent.branchId} · Orden {intent.orderId}
+                      </p>
+                      <p className="text-xs text-amber-800">
+                        Estado: {DRAWER_STATUS_LABELS[intent.drawerStatus] || intent.drawerStatus}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        disabled={!canRunCommands || isRetrying}
+                        onClick={() => retryDrawer(intent)}
+                      >
+                        {isRetrying ? 'Reintentando...' : 'Reintentar apertura'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        disabled={isRetrying}
+                        onClick={() => acknowledgeDrawer(intent)}
+                      >
+                        Marcar como resuelto
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-2 text-xs text-gray-500 md:grid-cols-3">
         <span className="inline-flex items-center gap-1"><CircleDot className="h-3 w-3" /> Comercio: {store.config.companyId || 'sin contexto'}</span>

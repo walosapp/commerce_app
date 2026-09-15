@@ -12,6 +12,7 @@ import salesService from '../../services/salesService';
 import { cashRegisterService } from '../../services/cashRegisterService';
 import inventoryService from '../../services/inventoryService';
 import useAuthStore from '../../stores/authStore';
+import usePostSaleHardwareStore from '../../stores/postSaleHardwareStore';
 import AddTablePanel from './components/AddTablePanel';
 import TableCard from './components/TableCard';
 import InvoicePanel from './components/InvoicePanel';
@@ -82,6 +83,7 @@ const CashSummaryView = ({ register }) => {
 
 const SalesPage = () => {
   const { branchId } = useAuthStore();
+  const enqueuePostSale = usePostSaleHardwareStore((state) => state.enqueuePostSale);
   const queryClient = useQueryClient();
   const areaRef = useRef(null);
   const quantitySyncTimeoutsRef = useRef(new Map());
@@ -253,9 +255,18 @@ const SalesPage = () => {
   };
 
   const handleInvoice = async (tableId, payload) => {
-    await salesService.invoiceTable(tableId, payload);
-    toast.success('Mesa facturada exitosamente');
+    const response = await salesService.invoiceTable(tableId, payload);
+    const invoice = response?.data;
+
+    toast.success('Venta registrada');
     refetchTables();
+
+    // La venta ya quedo confirmada en backend. Hardware es un efecto posterior:
+    // nunca se espera ni se propaga su resultado al checkout/modal.
+    void Promise.resolve()
+      .then(() => enqueuePostSale({ orderId: invoice?.orderId }))
+      .catch(() => {});
+    return invoice;
   };
 
   const handleCancel = async (table) => {

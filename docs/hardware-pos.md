@@ -35,7 +35,7 @@ Base URL fija: `http://127.0.0.1:17831` (`frontend/src/services/printAgentServic
 | `GET /v1/printers` | Lista colas Windows e impresora seleccionada. | Origin permitido y Bearer. |
 | `PUT /v1/config/printer` | Guarda impresora, identidad y pulso del cajon. | Origin permitido, Bearer, JSON tipado e identidad vinculada. |
 | `POST /v1/commands/test-print` | Envia el ticket H1. | Origin permitido, Bearer y `jobId`. |
-| `POST /v1/commands/open-drawer` | Envia el pulso del cajon. | Origin permitido, Bearer y `jobId`. |
+| `POST /v1/commands/open-drawer` | Envia el pulso del cajon. | Origin permitido, Bearer, `jobId`, `companyId` y `branchId` coincidentes con el pairing. |
 | `POST /v1/commands/print-receipt` | Imprime un comprobante persistido tipado; nunca abre el cajon. | Origin permitido, Bearer, contexto vinculado, fingerprint e idempotencia durable. |
 
 Las rutas estan mapeadas en `tools/Walos.PrintAgent/Api/PrintAgentApi.cs`. El agente rechaza Origin ausente en rutas sensibles, `Origin: null` y origen no autorizado (`SecurityMiddleware.cs`); aplica Bearer a todas salvo health/pair, 60 solicitudes/minuto globales y 10 pairings/minuto. H1 conserva JSON estricto de hasta 8192 bytes; solo `print-receipt` admite hasta 128 KiB por sus 100 lineas tipadas y texto UTF-8. Los contratos no permiten HTML, comandos ESC/POS ni bytes arbitrarios.
@@ -45,7 +45,7 @@ Las rutas estan mapeadas en `tools/Walos.PrintAgent/Api/PrintAgentApi.cs`. El ag
 1. El tray muestra un codigo aleatorio de seis digitos, valido cinco minutos (`PairingService.cs:8-19,120-134`; `PrintAgentTrayContext.cs:17-37`).
 2. `POST /v1/pair` lo consume una sola vez y entrega un Bearer aleatorio de 32 bytes (`PairingService.cs:55-82`).
 3. La vinculacion queda asociada a `companyId`, `branchId` y `workstationId`; cambiar la identidad elimina la seleccion de impresora previa (`AgentStateStore.cs:57-64,69-93`).
-4. El token se cifra con DPAPI, alcance `CurrentUser`, antes de persistirse (`TokenProtector.cs:12-35`). El navegador conserva su copia solo en `sessionStorage` (`printAgentStore.js:237-247`).
+4. El token se cifra con DPAPI, alcance `CurrentUser`, antes de persistirse en el agente (`TokenProtector.cs:12-35`). El navegador conserva su copia en `localStorage` como configuración de la estación (`printAgentStore.js:457-475`), para sobrevivir al cierre del navegador y al reinicio de Windows. Esto aumenta la exposición ante XSS porque cualquier JavaScript ejecutado en el origen Walos podría leer el Bearer persistido.
 
 ### Idempotencia y resultado fisico incierto
 
@@ -121,7 +121,7 @@ Con esos resultados, el estado funcional es **H1 APROBADO**.
 
 ### Riesgos tecnicos abiertos de H1
 
-1. **Reconciliacion entre pestañas (medio):** el estado vive en `sessionStorage` por pestaña y no hay sincronizacion de un fingerprint completo de configuracion contra el agente (`printAgentStore.js:237-247`). Dos pestañas pueden mostrar estados locales diferentes.
+1. **Reconciliacion entre pestañas y XSS (medio):** `localStorage` comparte el estado persistido entre pestañas, pero las instancias ya abiertas no reconcilian automáticamente todo su estado en memoria ni un fingerprint completo de configuración contra el agente (`printAgentStore.js:457-475`). Dos pestañas pueden mostrar temporalmente estados diferentes; además, un XSS en cualquier pestaña del origen Walos podría leer el Bearer persistido.
 2. **Ledger sin retencion y persistencia O(n) (medio):** cada job queda indefinidamente en `AgentState.Jobs`; cada cambio clona y vuelve a serializar toda la lista (`AgentStateStore.cs:23-30,110-169,188-214`). Debe incorporarse una politica de retencion/compactacion sin borrar jobs recientes o inciertos.
 
 ---
@@ -207,7 +207,7 @@ Frontend y agente calculan SHA-256 sobre UTF-8 de JSON canonico del documento ve
 - mismo `jobId` + otro fingerprint/comando: `409 job_id_conflict`;
 - reserva durable antes del spooler;
 - reimpresion humana confirmada usa ID nuevo;
-- ante transporte incierto o cualquier 5xx, el comando completo queda en `sessionStorage`; **Reintentar mismo trabajo** vuelve a consultar el recibo persistido y solo conserva el mismo job si company/branch/order y fingerprint siguen idénticos;
+- ante transporte incierto o cualquier 5xx, queda en `localStorage` únicamente la metadata del intento (`documentVersion`, `jobId`, contexto, `orderId` y fingerprint), nunca el recibo completo; **Reintentar mismo trabajo** vuelve a consultar el recibo persistido y solo conserva el mismo job si company/branch/order y fingerprint siguen idénticos;
 - si cambió estado, devolución, crédito, contenido o contexto, el payload viejo no se envía y el pendiente exige **Marcar intento como revisado**;
 - solo un 4xx deterministico de preflight libera automaticamente el pendiente;
 - respuestas `failed`/`uncertain` permanecen pendientes hasta replay seguro o la accion explicita **Marcar intento como revisado**, precedida por advertencia y confirmacion;
@@ -253,3 +253,121 @@ Queda pendiente como comprobacion manual menor y **no bloqueante** repetir desde
 H2 requiere gates verdes, impresion fisica del recibo persistido y cero aperturas de cajon durante impresion/reimpresion manual. El replay con el mismo `jobId` debe estar cubierto automaticamente; su repeticion manual desde DevTools se conserva como evidencia adicional no bloqueante.
 
 **Estado actual: H2 APROBADO funcionalmente.**
+
+---
+
+## Bloque H3: impresión postventa y apertura automática de cajón
+
+**Estado: H3 APROBADO físicamente.** La aprobación fue confirmada por el usuario después de ejecutar la UAT real; los escenarios de abajo quedan como guía de regresión.
+
+### Flujo y límites
+
+Restaurante y POS-Deli confirman primero la venta en backend. Solo después de recibir el `orderId` persistido cierran la captura, muestran **Venta registrada** y encolan acciones no bloqueantes. La cola vuelve a consultar exclusivamente `GET /api/v1/sales/orders/{id}/receipt`; no deriva productos, pagos ni decisión de efectivo desde carrito o estado temporal. Un fallo de consulta, impresión, almacenamiento local o cajón no relanza checkout ni revierte orden, pagos o inventario.
+
+Las preferencias son opt-in, comienzan en `false` y se guardan localmente por la combinacion `companyId + branchId`. La politica aplicable se resuelve con esos IDs del `ReceiptData` canonico, no con una preferencia global. La cola serializa ventas rapidas. Cada intent confirmado usa clave `companyId + branchId + orderId` y persiste solamente job IDs, fingerprint y estados necesarios para reconciliarlo despues de recargar la pagina. La retencion limita a 100 solamente los intents terminales (`completed`, `replayed`, `skipped` o revisados): todos los pendientes, fallidos, inciertos o desactualizados sin revisar se conservan siempre. Si superan 100, la configuracion muestra una alerta y continua fail-closed; nunca los expulsa para recuperar espacio. Un replay de la misma orden tampoco puede sobrescribir un intent bloqueante aunque la politica local haya cambiado. Un fallo del probe, lectura o escritura de `localStorage` activa una barrera global fail-closed: no se encolan nuevas acciones H3 y `ReceiptPreview` bloquea tanto un job H2 nuevo como la impresion del navegador. La alerta queda visible en Configuracion -> Dispositivos y no se limpia durante la sesion; una recarga con storage todavia inaccesible vuelve a iniciar bloqueada. Tanto el alta `queued` como la transicion de retry a `retrying` vuelven a comprobar la barrera inmediatamente despues de persistir y abortan antes de consultar el recibo o ejecutar hardware si esa escritura fue la que fallo.
+
+Antes de cualquier efecto se exige `status=completed` y ausencia de `refundStatus`. El cajón abre solo si `ReceiptData.payments` contiene una línea con `method` exactamente `cash` y `amount` numérico positivo. Tarjeta, transferencia, crédito sin efectivo, estado no elegible y recibo no disponible fallan cerrado.
+
+### Acciones e idempotencia
+
+- Impresión: `post-sale.v1.c{companyId}.b{branchId}.o{orderId}.receipt`.
+- Cajón: `post-sale.v1.c{companyId}.b{branchId}.o{orderId}.drawer`.
+- Ambos IDs son determinísticos, distintos y menores de 100 caracteres.
+- Impresión y cajón son efectos independientes: un fallo de impresión no bloquea una apertura legítima por efectivo.
+- Si la impresión responde `replayed`, H3 no solicita apertura de cajón.
+- El endpoint `open-drawer` ya no admite un body inseguro con solo `jobId`: exige además `companyId` y `branchId`, y el agente los valida contra el pairing antes de preparar o enviar `ESC p`.
+- La garantía at-most-once es durable **por agente/usuario Windows**. No existe coordinación cloud entre dos estaciones físicas distintas.
+
+La reimpresión humana desde `ReceiptPreview` continúa siendo H2: usa un job nuevo y nunca abre cajón. H2 manual y H3 automático mantienen canales de estado separados, pero comparten una barrera de seguridad: mientras el print H3 esté pendiente o permanezca `failed`, `uncertain` o `stale` sin revisión, `ReceiptPreview` bloquea tanto un nuevo job Walos como `window.print()`. Un trabajo activo al recargar se rehidrata como `uncertain`, nunca como disponible. **Reintentar impresión postventa** vuelve a consultar el recibo canónico, compara contexto y fingerprint, y envía exclusivamente el mismo `receiptJobId`; nunca llama al cajón. Si el documento cambió, permanece bloqueado. Solo **Marcar intento postventa como revisado**, con confirmación humana, habilita una reimpresión H2 nueva. Los comandos físicos manuales y automáticos se serializan dentro de `printAgentStore`. El botón legacy de `InvoicePanel` permanece solamente como **Imprimir borrador con navegador** y marca el documento `BORRADOR - NO VÁLIDO COMO RECIBO`; no es el comprobante oficial postventa.
+
+### Estados UX
+
+La venta exitosa se informa antes del hardware. Después se notifican, sin bloquear el flujo, los resultados equivalentes a: **Recibo impreso**, **No fue posible imprimir**, **Cajón abierto** y **No fue posible abrir el cajón**. `completed` significa que el spooler aceptó el trabajo; no demuestra por sí solo que salió papel o que el cajón se movió físicamente.
+
+### Gates H3 (2026-09-14)
+
+| Gate | Resultado |
+|---|---:|
+| Print Agent tests Release | 55/55 verdes |
+| Frontend suite completa | 143/143 en 20/20 archivos |
+| Backend Release | Verde, 0 errores; 18 warnings preexistentes de nulabilidad/ocultamiento |
+| Frontend build | Verde; conserva warnings preexistentes de CSS, Browserslist y tamaño de chunk |
+| `git diff --check` | Verde; solo avisos informativos LF/CRLF |
+
+### UAT física y guía de regresión
+
+Precondición: recompilar y reiniciar Walos Print Agent H3, vincularlo con la empresa/sucursal correcta, seleccionar `POS-58` y habilitar en `Configuración -> Dispositivos` las dos opciones postventa.
+
+1. **Restaurante + efectivo:** abrir una mesa, agregar un producto y facturar con una línea `cash` positiva. Confirmar que la venta aparece una sola vez en historial, el ticket H2 sale automáticamente sin diálogo y DIG-4101 abre una vez.
+2. **Restaurante + tarjeta:** repetir con una venta diferente pagada solo con `card`. Confirmar un ticket automático y cero apertura del cajón.
+3. **POS-Deli + efectivo:** registrar una venta nueva en efectivo. Confirmar una sola orden, un solo descuento de stock, un ticket automático y una sola apertura.
+4. **Reimpresión desde historial:** abrir `ReceiptPreview` de cualquiera de las órdenes y pulsar **Imprimir con Walos**. Confirmar el mismo formato H2, un nuevo ticket y ninguna apertura de cajón.
+
+Registrar por escenario: `orderId`, método(s) persistido(s), estados print/drawer, cantidad de tickets físicos y cantidad de aperturas. No usar ventas nuevas para simular replay.
+
+### Criterio de aprobación H3
+
+La UAT real confirmó los criterios funcionales de H3. Para futuras versiones se deben repetir impresión automática H2 en Restaurante y POS-Deli, efectivo abre una vez, tarjeta no abre, reimpresión manual nunca abre y los fallos de hardware no deben afectar la venta persistida ni duplicar ticket o apertura.
+
+**H3 APROBADO físicamente.**
+
+---
+
+## Bloque H3.1: distribución mínima Windows V1
+
+La distribución conserva el agente WinForms/tray validado: no lo convierte en servicio, no agrega puertos ni altera contratos H1/H2/H3. `Walos.PrintAgent` sigue escuchando exclusivamente en `127.0.0.1:17831` y guarda pairing, configuración e idempotencia en `%LOCALAPPDATA%\Walos\PrintAgent`.
+
+### Instalador y actualización
+
+- Proyecto: `tools/Walos.PrintAgent.Installer`.
+- Instalador Inno Setup `.exe`, con `AppId` estable y registro en Agregar o quitar programas.
+- Instalación normal elevada en `%ProgramFiles%\Walos\PrintAgent`.
+- Publicación .NET 10 `win-x64`, Release, self-contained y single-file; el comercio no instala .NET ni usa PowerShell.
+- Autoarranque machine-wide en `HKLM\Software\Microsoft\Windows\CurrentVersion\Run\WalosPrintAgent`.
+- El tray inicia al finalizar mediante `runasoriginaluser`.
+- Un mutex global impide instancias simultáneas; el instalador solicita cerrar solamente `Walos.PrintAgent.exe` mediante Restart Manager.
+- Reinstalar o actualizar no toca `%LOCALAPPDATA%`; desinstalar conserva el estado por defecto.
+- La desinstalación interactiva ofrece borrar explícitamente el estado del usuario actual. En modo silencioso únicamente `/CLEANCONFIG` solicita esa limpieza.
+- V1 está diseñada para una terminal POS Windows monousuario. RDS/múltiples sesiones interactivas quedan fuera del alcance.
+
+El pairing del navegador es configuración de la estación, no una sesión de usuario Walos, y se conserva en `localStorage` para sobrevivir al cierre del navegador y al reinicio. La copia del agente continúa protegida con DPAPI `CurrentUser`. Esta persistencia aumenta el impacto potencial de un XSS en el origen Walos; se mitiga manteniendo la lista de orígenes cerrada, el binding loopback y la validación Bearer, y debe reevaluarse si Walos adopta un mecanismo de credenciales HttpOnly para localhost.
+
+El build usa Inno Setup 6.4.3 desde el paquete comunitario NuGet `Tools.InnoSetup`, fijado además por SHA-256; cada ejecución vuelve a extraer el compilador desde el paquete verificado y nunca confía ciegamente en un binario cacheado. Tanto `.toolchain` como `artifacts` están ignorados y no se versionan. `AllowedOrigins` es obligatorio para construir: release acepta HTTPS; HTTP se limita a loopback y requiere `-DevelopmentOrigins`. El archivo generado `appsettings.json` conserva la misma lista cerrada de orígenes del agente.
+
+```powershell
+.\tools\Walos.PrintAgent.Installer\Build-Installer.ps1 `
+  -Version 1.0.0 `
+  -AllowedOrigins 'https://ORIGEN-REAL-DE-WALOS'
+```
+
+El frontend obtiene el enlace público desde `VITE_WALOS_AGENT_DOWNLOAD_URL`; el instalador debe publicarse como asset HTTPS estable. H3.1 no agrega backend, updater ni infraestructura de releases nueva.
+
+La estrategia V1 usa el repositorio existente `walosapp/commerce_app`: cada release publica el artefacto con el nombre estable `Walos-Agent-Setup.exe`, de modo que el frontend pueda apuntar a `https://github.com/walosapp/commerce_app/releases/latest/download/Walos-Agent-Setup.exe` sin incorporar una versión ni un backend nuevos.
+
+### Validación de distribución
+
+El smoke automatizado tiene una variante per-user separada y **no distribuible**. Se niega a correr si ya existe estado o autoarranque y debe usarse solo en cuenta/VM descartable. Valida instalación silenciosa y arranque postinstall, versión, `health`, binding loopback, reinstalación, preservación de estado centinela, comando de inicio registrado y desinstalación normal, pero no pretende demostrar UAC/Program Files/HKLM ni un logoff real.
+
+La UAT elevada en VM limpia debe verificar por separado: instalación normal en Program Files; tray; detección desde Walos; preservación de pairing/configuración al reinstalar y al desinstalar sin limpieza; arranque después de logoff/login o reinicio; impresión; cajón; y limpieza únicamente cuando el usuario la elige.
+
+### Gates H3.1 (2026-09-14)
+
+| Gate | Resultado |
+|---|---:|
+| Print Agent tests Release | 57/57 verdes |
+| Publish Print Agent | Verde: .NET 10, `win-x64`, self-contained y single-file |
+| Frontend suite completa | 151/151 en 22/22 archivos |
+| Frontend build | Verde; conserva warnings preexistentes de CSS, Browserslist y tamaño de chunk |
+| Build del instalador | Verde con Inno Setup 6.4.3 verificado por SHA-256 |
+| Parser PowerShell 5.1 | Verde para build y smoke |
+| Instalación/reinstalación/desinstalación real | No ejecutada: la sesión no está elevada y el perfil contiene estado operativo |
+| Logoff/reinicio real | Pendiente en VM/cuenta descartable |
+| Authenticode | `NotSigned` |
+
+Artefacto interno generado: `tools/Walos.PrintAgent.Installer/artifacts/installer/Walos-Agent-Setup.exe`, 42.274.932 bytes, SHA-256 `54793F6C7AEF34FB36DD7ED9E3B3AAAFA3ECFFB20EC8A0E5C2C381EE2EBE9E47`. La versión de producto del instalador, binario y `health` es `1.0.0` (Windows representa `FileVersion` del agente como `1.0.0.0`).
+
+No se ejecutó el smoke contra el perfil operativo: `%LOCALAPPDATA%\Walos\PrintAgent\agent-state.json` ya contiene pairing/configuración real y la sesión no tiene privilegios para validar Program Files/HKLM. El estado se inspeccionó únicamente mediante hash y permaneció sin cambios. Tampoco se simuló un logoff/reinicio real.
+
+El artefacto local queda `NotSigned`. Antes de distribución pública es obligatorio firmarlo con Authenticode y comprobar `Get-AuthenticodeSignature` con estado `Valid`. Hasta completar firma y UAT elevada real en una cuenta/VM limpia, el instalador sirve únicamente para validación interna.
+
+**Estado: H3.1 implementado; NO APROBABLE todavía para distribución pública.**

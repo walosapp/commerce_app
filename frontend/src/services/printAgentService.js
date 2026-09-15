@@ -147,11 +147,15 @@ export const printAgentService = {
       timeoutMs: 10000,
     }),
 
-  openDrawer: (token, jobId) =>
+  openDrawer: (token, command) =>
     request('/v1/commands/open-drawer', {
       method: 'POST',
       token,
-      body: { jobId: String(jobId) },
+      body: {
+        jobId: String(command.jobId),
+        companyId: Number(command.companyId),
+        branchId: Number(command.branchId),
+      },
       timeoutMs: 10000,
     }),
 

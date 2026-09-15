@@ -10,6 +10,7 @@ import WeightInputModal from './components/WeightInputModal';
 import useScale from './hooks/useScale';
 import useBarcodeScanner from './hooks/useBarcodeScanner';
 import usePosDeliStore from './stores/posDeliStore';
+import usePostSaleHardwareStore from '../../stores/postSaleHardwareStore';
 import posDeliService from '../../services/posDeliService';
 
 const isWeighedProduct = (product) => {
@@ -43,6 +44,7 @@ const PosDeliPage = () => {
     setSelectedItemId,
     clearTicket,
   } = usePosDeliStore();
+  const enqueuePostSale = usePostSaleHardwareStore((state) => state.enqueuePostSale);
 
   const total = getTotal();
 
@@ -145,6 +147,8 @@ const PosDeliPage = () => {
   }, [items.length, removeItem, selectedItemId]);
 
   const handleConfirmSale = async ({ method, cashReceived, reference }) => {
+    let persistedSale = null;
+
     try {
       setSavingSale(true);
       const payload = {
@@ -165,35 +169,26 @@ const PosDeliPage = () => {
       };
 
       const response = await posDeliService.createSale(payload);
-      const sale = response.data;
-
-      clearTicket();
-      setCheckoutOpen(false);
-      await refetch();
-
-      toast.success(`Venta ${sale.ticketNumber} registrada`);
-
-      if (typeof window !== 'undefined') {
-        const receipt = window.open('', '_blank', 'width=420,height=640');
-        if (receipt) {
-          receipt.document.write(`
-            <html><head><title>Ticket ${sale.ticketNumber}</title></head>
-            <body style="font-family: sans-serif; padding: 16px;">
-              <h2>POS-Deli</h2>
-              <p>Ticket: ${sale.ticketNumber}</p>
-              <p>Total: ${sale.total}</p>
-              <p>Cambio: ${sale.change}</p>
-            </body></html>
-          `);
-          receipt.document.close();
-          receipt.print();
-        }
-      }
+      persistedSale = response.data;
     } catch (saleError) {
       toast.error(saleError?.response?.data?.message || 'No se pudo registrar la venta');
     } finally {
       setSavingSale(false);
     }
+
+    if (!persistedSale) return;
+
+    clearTicket();
+    setCheckoutOpen(false);
+    toast.success(`Venta ${persistedSale.ticketNumber} registrada`);
+
+    // Desde este punto la venta ya fue confirmada por el backend. Refresco y
+    // hardware son efectos postventa independientes: nunca deben volver a
+    // ejecutar checkout ni convertir una venta exitosa en un error de venta.
+    void refetch().catch(() => undefined);
+    void Promise.resolve()
+      .then(() => enqueuePostSale({ orderId: persistedSale.saleId }))
+      .catch(() => undefined);
   };
 
   return (

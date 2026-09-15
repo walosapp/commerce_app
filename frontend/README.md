@@ -27,6 +27,21 @@ cp .env.example .env
 # Editar .env con la URL del backend
 ```
 
+### Descarga de Walos Agent
+
+Configurá `VITE_WALOS_AGENT_DOWNLOAD_URL` en cada entorno con la URL HTTPS
+estable del instalador `.exe`. Mientras no exista infraestructura definitiva,
+la opción mínima es publicar el instalador como asset de una release del
+repositorio y usar una URL estable como:
+
+```text
+https://github.com/walosapp/commerce_app/releases/latest/download/Walos-Agent-Setup.exe
+```
+
+La URL queda incorporada al build de Vite. Producción exige HTTPS; HTTP se
+acepta únicamente para loopback durante desarrollo. Si falta o es insegura, la
+interfaz mantiene la descarga deshabilitada y no redirige a una ubicación implícita.
+
 ## 🏃 Ejecución
 
 ```bash

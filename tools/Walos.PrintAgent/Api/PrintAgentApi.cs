@@ -79,7 +79,7 @@ public static class PrintAgentApi
         app.MapGet("/v1/health", (AgentStateStore store) => Results.Ok(new
         {
             status = "ok",
-            version = typeof(PrintAgentApi).Assembly.GetName().Version?.ToString() ?? "1.0.0",
+            version = GetSemanticVersion(),
             paired = store.IsPaired
         }));
 
@@ -142,16 +142,33 @@ public static class PrintAgentApi
                 ct));
 
         app.MapPost("/v1/commands/open-drawer", async (
-            JobCommandRequest request,
+            DrawerCommandRequest request,
+            AgentStateStore store,
             IdempotentJobExecutor jobs,
             PrintCommandService commands,
-            CancellationToken ct) => await ExecuteCommandAsync(
-                request,
+            CancellationToken ct) =>
+        {
+            var error = RequestValidation.Validate(request);
+            if (error is not null)
+            {
+                return Results.BadRequest(new ErrorResponse("invalid_request", error));
+            }
+
+            if (!store.MatchesPairedCompanyAndBranch(request.CompanyId, request.BranchId))
+            {
+                return Results.Conflict(new ErrorResponse(
+                    "pairing_context_mismatch",
+                    "La apertura no pertenece a la empresa y sucursal vinculadas."));
+            }
+
+            return await ExecuteCommandAsync(
+                new JobCommandRequest(request.JobId),
                 "open-drawer",
                 jobs,
                 commands.PrepareDrawerPulse,
                 commands.SendAsync,
-                ct));
+                ct);
+        });
 
         app.MapPost("/v1/commands/print-receipt", async (
             PrintReceiptRequest request,
@@ -267,6 +284,7 @@ public static class PrintAgentApi
         if (origins.Length == 0 || origins.Any(origin =>
                 !Uri.TryCreate(origin, UriKind.Absolute, out var uri) ||
                 (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
+                (uri.Scheme == Uri.UriSchemeHttp && !uri.IsLoopback) ||
                 origin == "*" ||
                 uri.AbsolutePath != "/" ||
                 !string.IsNullOrEmpty(uri.Query) ||
@@ -276,5 +294,11 @@ public static class PrintAgentApi
         }
 
         return origins;
+    }
+
+    private static string GetSemanticVersion()
+    {
+        var version = typeof(PrintAgentApi).Assembly.GetName().Version;
+        return version is null ? "1.0.0" : version.ToString(3);
     }
 }

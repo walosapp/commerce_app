@@ -24,6 +24,11 @@ public sealed record PrinterConfiguration(
 
 public sealed record JobCommandRequest(string JobId);
 
+public sealed record DrawerCommandRequest(
+    string JobId,
+    long CompanyId,
+    long BranchId);
+
 public sealed record JobCommandResponse(string JobId, string Status, bool Executed);
 
 public sealed record PrintReceiptRequest(
