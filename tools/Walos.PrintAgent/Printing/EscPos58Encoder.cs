@@ -188,6 +188,48 @@ public sealed class EscPos58Encoder
         return output.ToArray();
     }
 
+    public byte[] EncodeCashClose(CashCloseDocument document)
+    {
+        using var output = new MemoryStream();
+        output.Write([0x1B, 0x40]);
+        output.Write([0x1B, 0x74, 0x13]);
+        output.Write([0x1B, 0x61, 0x01]);
+        WriteWrapped(output, document.CompanyName);
+        WriteLine(output, "CIERRE DE CAJA");
+        output.Write([0x1B, 0x61, 0x00]);
+        WriteSeparator(output);
+        WriteWrapped(output, $"Sucursal: {document.BranchName}");
+        WriteWrapped(output, $"Caja: {document.CashRegisterId}");
+        WriteWrapped(output, $"Usuario: {document.UserName}");
+        WriteWrapped(output, $"Apertura: {FormatLocalDate(document.OpenedAt, document.Timezone)}");
+        WriteWrapped(output, $"Cierre: {FormatLocalDate(document.ClosedAt, document.Timezone)}");
+        WriteSeparator(output);
+        WriteLeftRight(output, "Saldo inicial", FormatMoney(document.OpeningAmount, document.Currency));
+        WriteLeftRight(output, "Cantidad ventas", document.OrderCount.ToString(CultureInfo.InvariantCulture));
+        WriteLeftRight(output, "Total ventas", FormatMoney(document.TotalSales, document.Currency));
+        WriteLeftRight(output, "Efectivo", FormatMoney(document.CashSales, document.Currency));
+        WriteLeftRight(output, "Tarjeta", FormatMoney(document.CardSales, document.Currency));
+        WriteLeftRight(output, "Transferencia", FormatMoney(document.TransferSales, document.Currency));
+        WriteLeftRight(output, "Otros", FormatMoney(document.OtherSales, document.Currency));
+        WriteLeftRight(output, "Devoluciones", FormatMoney(document.RefundTotal, document.Currency));
+        WriteLeftRight(output, "Entradas", FormatMoney(document.CashIn, document.Currency));
+        WriteLeftRight(output, "Salidas", FormatMoney(document.CashOut, document.Currency));
+        WriteSeparator(output);
+        WriteLeftRight(output, "Efectivo esperado", FormatMoney(document.ExpectedCash, document.Currency));
+        WriteLeftRight(output, "Efectivo contado", FormatMoney(document.CountedCash, document.Currency));
+        WriteLeftRight(output, "Diferencia", FormatMoney(document.Difference, document.Currency));
+        if (!string.IsNullOrWhiteSpace(document.Notes))
+        {
+            WriteSeparator(output);
+            WriteWrapped(output, $"Observaciones: {document.Notes}");
+        }
+        WriteLine(output, string.Empty);
+        WriteLine(output, string.Empty);
+        WriteLine(output, string.Empty);
+        output.Write([0x1D, 0x56, 0x00]);
+        return output.ToArray();
+    }
+
     public static string Sanitize(string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -276,6 +318,17 @@ public sealed class EscPos58Encoder
 
     public static string FormatQuantity(decimal quantity) =>
         quantity.ToString("0.###", CultureInfo.GetCultureInfo("es-CO"));
+
+    private static string FormatLocalDate(string value, string timezone)
+    {
+        var utc = DateTimeOffset.ParseExact(
+            value,
+            "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+        return TimeZoneInfo.ConvertTime(utc, TimeZoneInfo.FindSystemTimeZoneById(timezone))
+            .ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+    }
 
     private static string FormatPaymentMethod(string method) => method switch
     {

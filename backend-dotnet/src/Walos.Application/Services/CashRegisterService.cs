@@ -136,13 +136,19 @@ public class CashRegisterService : ICashRegisterService
         var register = await _cashRegisterRepo.GetByIdAsync(id, companyId, branchId)
             ?? throw new NotFoundException("Caja no encontrada");
 
-        var movements = await _cashRegisterRepo.GetMovementsAsync(id, companyId, branchId);
+        var movements = (await _cashRegisterRepo.GetMovementsAsync(id, companyId, branchId)).ToList();
         var paymentBreakdown = await _orderPaymentRepo.GetSummaryByCashRegisterAsync(id, companyId, branchId);
+        var refundTotal = await _cashRegisterRepo.GetCompletedRefundTotalAsync(id, companyId, branchId);
+        var cashRefundTotal = movements
+            .Where(movement => movement.Type == "out" && movement.Reason == "Devolucion de venta")
+            .Sum(movement => movement.Amount);
 
         return new CashRegisterSummaryResponse(
             Register: MapToResponse(register),
             Movements: movements.Select(MapToMovementResponse).ToList(),
-            PaymentBreakdown: paymentBreakdown.Select(p => new PaymentMethodSummaryDto(p.Method, p.TotalAmount, p.TransactionCount)).ToList()
+            PaymentBreakdown: paymentBreakdown.Select(p => new PaymentMethodSummaryDto(p.Method, p.TotalAmount, p.TransactionCount)).ToList(),
+            RefundTotal: refundTotal,
+            ManualCashOut: Math.Max(0, register.CashOut - cashRefundTotal)
         );
     }
 
@@ -201,7 +207,8 @@ public class CashRegisterService : ICashRegisterService
         r.OrderCount,
         r.Notes,
         r.OpenedAt,
-        r.ClosedAt
+        r.ClosedAt,
+        r.BranchName
     );
 
     private static CashMovementResponse MapToMovementResponse(CashMovement m) => new(

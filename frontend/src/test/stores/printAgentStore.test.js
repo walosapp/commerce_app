@@ -14,6 +14,7 @@ const createService = () => ({
   testPrint: vi.fn(),
   openDrawer: vi.fn(),
   printReceipt: vi.fn(),
+  printCashClose: vi.fn(),
 });
 
 const persistedReceipt = {
@@ -459,5 +460,27 @@ describe('printAgentStore', () => {
     await Promise.all([manual, automatic]);
 
     expect(executionOrder).toEqual(['start-123', 'end-123', 'start-124']);
+  });
+
+  it('imprime cierre con retry estable y nunca invoca cajon', async () => {
+    service.printCashClose
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValueOnce({ status: 'completed', executed: true });
+    store.setState({ token: 'agent-token', configurationSaved: true });
+    const report = {
+      cashRegisterId: 15, companyId: 25, branchId: 7, companyName: 'Comercio',
+      branchName: 'Centro', currency: 'COP', timezone: 'America/Bogota',
+      openedAt: '2026-09-16T10:00:00Z', closedAt: '2026-09-16T18:00:00Z',
+      closedByName: 'Ana', openingAmount: 100, orderCount: 1, totalSales: 500,
+      totalCashSales: 500, totalCardSales: 0, totalTransferSales: 0,
+      totalOtherSales: 0, refundTotal: 0, cashIn: 0, manualCashOut: 0,
+      expectedCash: 600, closingAmount: 600, difference: 0, notes: null,
+    };
+
+    await store.getState().printCashClose(report, { jobId: 'cash-close-job' });
+
+    expect(service.printCashClose).toHaveBeenCalledTimes(2);
+    expect(service.printCashClose.mock.calls[0][1]).toEqual(service.printCashClose.mock.calls[1][1]);
+    expect(service.openDrawer).not.toHaveBeenCalled();
   });
 });

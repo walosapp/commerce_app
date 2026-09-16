@@ -116,6 +116,16 @@ const printReceiptPayload = (command) => ({
   fingerprint: command.fingerprint,
 });
 
+const printCashClosePayload = (command) => ({
+  documentVersion: command.documentVersion,
+  jobId: command.jobId,
+  companyId: command.companyId,
+  branchId: command.branchId,
+  cashRegisterId: command.cashRegisterId,
+  cashClose: command.cashClose,
+  fingerprint: command.fingerprint,
+});
+
 export const printAgentService = {
   health: () => request('/v1/health'),
 
@@ -164,6 +174,14 @@ export const printAgentService = {
       method: 'POST',
       token,
       body: printReceiptPayload(command),
+      timeoutMs: 10000,
+    }),
+
+  printCashClose: (token, command) =>
+    request('/v1/commands/print-cash-close', {
+      method: 'POST',
+      token,
+      body: printCashClosePayload(command),
       timeoutMs: 10000,
     }),
 };

@@ -46,7 +46,8 @@ public record CashRegisterResponse(
     int OrderCount,
     string? Notes,
     DateTime OpenedAt,
-    DateTime? ClosedAt
+    DateTime? ClosedAt,
+    string? BranchName = null
 );
 
 // Response: Movimiento de caja
@@ -65,7 +66,9 @@ public record CashMovementResponse(
 public record CashRegisterSummaryResponse(
     CashRegisterResponse Register,
     List<CashMovementResponse> Movements,
-    List<PaymentMethodSummaryDto> PaymentBreakdown
+    List<PaymentMethodSummaryDto> PaymentBreakdown,
+    decimal RefundTotal = 0,
+    decimal ManualCashOut = 0
 );
 
 public record PaymentMethodSummaryDto(

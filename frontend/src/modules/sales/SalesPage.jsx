@@ -10,9 +10,11 @@ import { PlusCircle, ShoppingCart, LayoutGrid, CreditCard, TableProperties, Tren
 import toast from 'react-hot-toast';
 import salesService from '../../services/salesService';
 import { cashRegisterService } from '../../services/cashRegisterService';
+import printService from '../../services/printService';
 import inventoryService from '../../services/inventoryService';
 import useAuthStore from '../../stores/authStore';
 import usePostSaleHardwareStore from '../../stores/postSaleHardwareStore';
+import usePrintAgentStore from '../../stores/printAgentStore';
 import AddTablePanel from './components/AddTablePanel';
 import TableCard from './components/TableCard';
 import InvoicePanel from './components/InvoicePanel';
@@ -94,6 +96,7 @@ const SalesPage = ({ initialTab = 'tables' }) => {
   const canCancelTable = canCancelSalesTable(user);
   const canReview = canReviewSales(user);
   const enqueuePostSale = usePostSaleHardwareStore((state) => state.enqueuePostSale);
+  const printCashClose = usePrintAgentStore((state) => state.printCashClose);
   const queryClient = useQueryClient();
   const areaRef = useRef(null);
   const quantitySyncTimeoutsRef = useRef(new Map());
@@ -178,9 +181,18 @@ const SalesPage = ({ initialTab = 'tables' }) => {
   };
 
   const handleCloseCash = async (id, data) => {
-    await cashRegisterService.close(id, data);
+    const closed = await cashRegisterService.close(id, data);
     toast.success('Caja cerrada exitosamente');
     refetchCashRegister();
+    if (window.confirm('Caja cerrada. ¿Deseas imprimir el cierre?')) {
+      try {
+        const report = await printService.getZReport(closed.data.id);
+        await printCashClose(report.data);
+        toast.success('Cierre enviado a la impresora');
+      } catch (printError) {
+        toast.error(printError?.message || 'La caja cerró, pero no fue posible imprimir el cierre');
+      }
+    }
   };
 
   const handleCashMovement = async (id, data) => {

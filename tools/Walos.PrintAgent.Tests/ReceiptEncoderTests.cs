@@ -1,4 +1,5 @@
 using System.Text;
+using Walos.PrintAgent.Api;
 using Walos.PrintAgent.Printing;
 
 namespace Walos.PrintAgent.Tests;
@@ -41,6 +42,26 @@ public sealed class ReceiptEncoderTests
     {
         var bytes = _encoder.EncodeReceipt(ReceiptTestData.CreateDocument());
 
+        Assert.False(Contains(bytes, [0x1B, 0x70]));
+    }
+
+    [Fact]
+    public void CashClose_ContainsPersistedSummaryAndNeverOpensDrawer()
+    {
+        var document = new CashCloseDocument(
+            "Comercio", "Sucursal Centro", "COP", "America/Bogota", 15,
+            "2026-09-16T10:00:00.000Z", "2026-09-16T18:00:00.000Z", "Ana",
+            100m, 4, 900m, 500m, 300m, 100m, 0m, 50m, 20m, 10m,
+            630m, 625m, -5m, "Cierre normal");
+
+        var bytes = _encoder.EncodeCashClose(document);
+        var text = DecodeText(bytes);
+
+        Assert.Contains("CIERRE DE CAJA", text);
+        Assert.Contains("Sucursal Centro", text);
+        Assert.Contains("Devoluciones", text);
+        Assert.Contains("Efectivo contado", text);
+        Assert.Contains("Cierre normal", text);
         Assert.False(Contains(bytes, [0x1B, 0x70]));
     }
 

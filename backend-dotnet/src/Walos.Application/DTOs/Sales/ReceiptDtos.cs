@@ -83,6 +83,11 @@ public record KitchenItemDto(
 // Reporte Z — cierre de caja
 public record ZReportData(
     long CashRegisterId,
+    long CompanyId,
+    long BranchId,
+    string BranchName,
+    string Currency,
+    string Timezone,
     DateTime OpenedAt,
     DateTime? ClosedAt,
     string OpenedByName,
@@ -101,8 +106,11 @@ public record ZReportData(
     decimal TotalDiscounts,
     decimal TotalCredits,
     decimal TotalTips,
+    decimal RefundTotal,
     decimal CashIn,
     decimal CashOut,
+    decimal ManualCashOut,
+    string? Notes,
     
     List<PaymentMethodSummaryDto> PaymentBreakdown,
     List<CashMovementResponse> Movements,

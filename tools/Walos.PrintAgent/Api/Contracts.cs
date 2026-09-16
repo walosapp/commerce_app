@@ -84,6 +84,39 @@ public sealed record ReceiptPaymentDocument(
     decimal Amount,
     string? Reference);
 
+public sealed record PrintCashCloseRequest(
+    int DocumentVersion,
+    string JobId,
+    long CompanyId,
+    long BranchId,
+    long CashRegisterId,
+    CashCloseDocument CashClose,
+    string Fingerprint);
+
+public sealed record CashCloseDocument(
+    string CompanyName,
+    string BranchName,
+    string Currency,
+    string Timezone,
+    long CashRegisterId,
+    string OpenedAt,
+    string ClosedAt,
+    string UserName,
+    decimal OpeningAmount,
+    int OrderCount,
+    decimal TotalSales,
+    decimal CashSales,
+    decimal CardSales,
+    decimal TransferSales,
+    decimal OtherSales,
+    decimal RefundTotal,
+    decimal CashIn,
+    decimal CashOut,
+    decimal ExpectedCash,
+    decimal CountedCash,
+    decimal Difference,
+    string? Notes);
+
 public sealed record PrintersResponse(
     IReadOnlyList<PrinterDescriptor> Printers,
     string? SelectedPrinter);

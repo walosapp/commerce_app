@@ -97,6 +97,46 @@ internal static partial class RequestValidation
         return Validate(request.Receipt);
     }
 
+    public static string? Validate(PrintCashCloseRequest request)
+    {
+        if (request.DocumentVersion != 1)
+            return "documentVersion no es compatible; se requiere la versión 1.";
+        var jobError = Validate(new JobCommandRequest(request.JobId));
+        if (jobError is not null)
+            return jobError;
+        if (request.CompanyId <= 0 || request.BranchId <= 0 || request.CashRegisterId <= 0)
+            return "companyId, branchId y cashRegisterId deben ser mayores que cero.";
+        if (!FingerprintRegex().IsMatch(request.Fingerprint ?? string.Empty))
+            return "fingerprint debe ser un SHA-256 hexadecimal en minúsculas.";
+        if (request.CashClose is null || request.CashClose.CashRegisterId != request.CashRegisterId)
+            return "cashClose es obligatorio y debe coincidir con cashRegisterId.";
+
+        var document = request.CashClose;
+        var error = ValidateRequiredText(document.CompanyName, "cashClose.companyName", 120)
+                    ?? ValidateRequiredText(document.BranchName, "cashClose.branchName", 120)
+                    ?? ValidateRequiredText(document.UserName, "cashClose.userName", 120)
+                    ?? ValidateOptionalText(document.Notes, "cashClose.notes", 500);
+        if (error is not null)
+            return error;
+        if (!CurrencyRegex().IsMatch(document.Currency) || !IsKnownTimeZone(document.Timezone))
+            return "cashClose.currency o cashClose.timezone no son válidos.";
+        if (!IsCanonicalUtc(document.OpenedAt) || !IsCanonicalUtc(document.ClosedAt))
+            return "Las fechas del cierre deben usar ISO UTC canónico yyyy-MM-ddTHH:mm:ss.fffZ.";
+        if (document.OrderCount < 0 || new[]
+            {
+                document.OpeningAmount, document.TotalSales, document.CashSales,
+                document.CardSales, document.TransferSales, document.OtherSales,
+                document.RefundTotal, document.CashIn, document.CashOut,
+                document.ExpectedCash, document.CountedCash
+            }.Any(value => !IsMoney(value)))
+            return "El cierre contiene cantidades o totales fuera del rango permitido.";
+        if (!IsMoney(Math.Abs(document.Difference)) ||
+            !MoneyEquals(document.Difference, document.CountedCash - document.ExpectedCash))
+            return "La diferencia del cierre no coincide con efectivo contado menos esperado.";
+
+        return null;
+    }
+
     private static string? Validate(ReceiptDocument receipt)
     {
         var error = ValidateRequiredText(receipt.CompanyName, "receipt.companyName", 120)
@@ -263,6 +303,13 @@ internal static partial class RequestValidation
 
     private static bool MoneyEquals(decimal left, decimal right) =>
         Math.Abs(RoundMoney(left) - RoundMoney(right)) <= 0.01m;
+
+    private static bool IsCanonicalUtc(string value) => DateTimeOffset.TryParseExact(
+        value,
+        "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+        CultureInfo.InvariantCulture,
+        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+        out _);
 
     private static bool IsKnownTimeZone(string timeZoneId)
     {

@@ -75,6 +75,22 @@ public sealed class PrintReceiptApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CashCloseSameJob_ReplaysWithoutDrawerOrSecondSpool()
+    {
+        var request = ReceiptTestData.CreateCashCloseRequest();
+
+        using var first = await _client.SendAsync(CreateCashCloseMessage(request));
+        using var second = await _client.SendAsync(CreateCashCloseMessage(request));
+        var secondBody = await second.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Equal("replayed", secondBody.GetProperty("status").GetString());
+        Assert.Equal(1, _rawPrinter.CallCount);
+        Assert.False(Contains(_rawPrinter.LastData, [0x1B, 0x70]));
+    }
+
+    [Fact]
     public async Task DrawerRequiresPairedCompanyAndBranchBeforeSpooling()
     {
         using var message = CreateDrawerMessage(new DrawerCommandRequest("drawer-other-tenant", 99, 20));
@@ -375,6 +391,15 @@ public sealed class PrintReceiptApiTests : IAsyncLifetime
         message.Headers.Add("Origin", "https://walos.test");
         message.Headers.Authorization = new("Bearer", Token);
         message.Content = content;
+        return message;
+    }
+
+    private static HttpRequestMessage CreateCashCloseMessage(PrintCashCloseRequest request)
+    {
+        var message = new HttpRequestMessage(HttpMethod.Post, "/v1/commands/print-cash-close");
+        message.Headers.Add("Origin", "https://walos.test");
+        message.Headers.Authorization = new("Bearer", Token);
+        message.Content = JsonContent.Create(request);
         return message;
     }
 

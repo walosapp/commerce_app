@@ -42,6 +42,15 @@ public sealed class PrintCommandService(
             encoder.EncodeReceipt(receipt));
     }
 
+    public PreparedPrintJob PrepareCashClose(CashCloseDocument cashClose)
+    {
+        var configuration = GetValidConfiguration();
+        return new PreparedPrintJob(
+            configuration.PrinterName,
+            $"Walos - cierre caja {cashClose.CashRegisterId}",
+            encoder.EncodeCashClose(cashClose));
+    }
+
     public Task SendAsync(PreparedPrintJob job, CancellationToken ct) =>
         rawPrinter.PrintAsync(job.PrinterName, job.DocumentName, job.Data, ct);
 

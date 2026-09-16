@@ -105,8 +105,11 @@ public class CashRegisterRepository : ICashRegisterRepository
                 cr.order_count AS OrderCount, cr.notes AS Notes,
                 cr.opened_at AS OpenedAt, cr.closed_at AS ClosedAt,
                 uo.first_name || ' ' || uo.last_name AS OpenedByName,
-                uc.first_name || ' ' || uc.last_name AS ClosedByName
+                uc.first_name || ' ' || uc.last_name AS ClosedByName,
+                b.name AS BranchName
             FROM sales.cash_registers cr
+            JOIN core.branches b
+              ON b.id = cr.branch_id AND b.company_id = cr.company_id
             LEFT JOIN core.users uo ON cr.opened_by = uo.id
             LEFT JOIN core.users uc ON cr.closed_by = uc.id
             WHERE cr.id = @Id AND cr.company_id = @CompanyId AND cr.deleted_at IS NULL";
@@ -132,8 +135,11 @@ public class CashRegisterRepository : ICashRegisterRepository
                 cr.order_count AS OrderCount, cr.notes AS Notes,
                 cr.opened_at AS OpenedAt, cr.closed_at AS ClosedAt,
                 uo.first_name || ' ' || uo.last_name AS OpenedByName,
-                uc.first_name || ' ' || uc.last_name AS ClosedByName
+                uc.first_name || ' ' || uc.last_name AS ClosedByName,
+                b.name AS BranchName
             FROM sales.cash_registers cr
+            JOIN core.branches b
+              ON b.id = cr.branch_id AND b.company_id = cr.company_id
             LEFT JOIN core.users uo
               ON cr.opened_by = uo.id AND uo.company_id = cr.company_id
             LEFT JOIN core.users uc
@@ -273,6 +279,23 @@ public class CashRegisterRepository : ICashRegisterRepository
         });
     }
 
+    public async Task<decimal> GetCompletedRefundTotalAsync(long cashRegisterId, long companyId, long branchId)
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+        return await connection.ExecuteScalarAsync<decimal>(@"
+            SELECT COALESCE(SUM(r.refund_amount), 0)
+            FROM sales.refunds r
+            JOIN sales.cash_registers cr
+              ON cr.id = r.cash_register_id
+             AND cr.company_id = r.company_id
+             AND cr.branch_id = @BranchId
+            WHERE r.cash_register_id = @CashRegisterId
+              AND r.company_id = @CompanyId
+              AND r.branch_id = @BranchId
+              AND r.status = 'completed'",
+            new { CashRegisterId = cashRegisterId, CompanyId = companyId, BranchId = branchId });
+    }
+
     public async Task UpdateTotalsAsync(long id, long companyId, decimal totalSales, decimal totalCashSales, decimal totalCardSales, decimal totalTransferSales, decimal totalOtherSales, decimal totalDiscounts, decimal totalCredits, decimal totalTips, int orderCount)
     {
         using var connection = await _connectionFactory.CreateConnectionAsync();
@@ -325,8 +348,11 @@ public class CashRegisterRepository : ICashRegisterRepository
                 cr.order_count AS OrderCount, cr.notes AS Notes,
                 cr.opened_at AS OpenedAt, cr.closed_at AS ClosedAt,
                 uo.first_name || ' ' || uo.last_name AS OpenedByName,
-                uc.first_name || ' ' || uc.last_name AS ClosedByName
+                uc.first_name || ' ' || uc.last_name AS ClosedByName,
+                b.name AS BranchName
             FROM sales.cash_registers cr
+            JOIN core.branches b
+              ON b.id = cr.branch_id AND b.company_id = cr.company_id
             LEFT JOIN core.users uo ON cr.opened_by = uo.id
             LEFT JOIN core.users uc ON cr.closed_by = uc.id
             WHERE cr.company_id = @CompanyId 

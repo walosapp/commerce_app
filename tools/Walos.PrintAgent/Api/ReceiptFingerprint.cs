@@ -19,16 +19,27 @@ public static class ReceiptFingerprint
         Indented = false
     };
 
-    public static string Compute(PrintReceiptRequest request)
+    public static string Compute(PrintReceiptRequest request) => ComputeCanonical(new
     {
-        var source = JsonSerializer.SerializeToElement(new
-        {
-            request.DocumentVersion,
-            request.CompanyId,
-            request.BranchId,
-            request.OrderId,
-            request.Receipt
-        }, SourceOptions);
+        request.DocumentVersion,
+        request.CompanyId,
+        request.BranchId,
+        request.OrderId,
+        request.Receipt
+    });
+
+    public static string Compute(PrintCashCloseRequest request) => ComputeCanonical(new
+    {
+        request.DocumentVersion,
+        request.CompanyId,
+        request.BranchId,
+        request.CashRegisterId,
+        request.CashClose
+    });
+
+    private static string ComputeCanonical(object document)
+    {
+        var source = JsonSerializer.SerializeToElement(document, SourceOptions);
 
         using var output = new MemoryStream();
         using (var writer = new Utf8JsonWriter(output, WriterOptions))

@@ -5,6 +5,7 @@ using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.Sales;
 using Walos.Application.Services;
 using Walos.Application.Security;
+using Walos.Domain.Exceptions;
 using Walos.Domain.Features;
 using Walos.Domain.Interfaces;
 
@@ -124,10 +125,18 @@ public class CashRegisterController : ControllerBase
             return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
 
         var summary = await _cashRegisterService.GetSummaryAsync(id, _tenant.CompanyId, _tenant.BranchId.Value);
-        var company = await _companyRepo.GetCompanySettingsAsync(_tenant.CompanyId);
+        if (summary.Register.Status != "closed" || !summary.Register.ClosedAt.HasValue || !summary.Register.ClosingAmount.HasValue)
+            throw new BusinessException("Solo se puede imprimir una caja cerrada", "cash_register_not_closed");
+        var company = await _companyRepo.GetCompanySettingsAsync(_tenant.CompanyId)
+            ?? throw new NotFoundException("Comercio no encontrado");
 
         var zReport = new ZReportData(
             CashRegisterId: summary.Register.Id,
+            CompanyId: _tenant.CompanyId,
+            BranchId: _tenant.BranchId.Value,
+            BranchName: summary.Register.BranchName ?? "Sucursal",
+            Currency: company.Currency,
+            Timezone: company.Timezone,
             OpenedAt: summary.Register.OpenedAt,
             ClosedAt: summary.Register.ClosedAt,
             OpenedByName: summary.Register.OpenedByName ?? "Cajero",
@@ -145,8 +154,11 @@ public class CashRegisterController : ControllerBase
             TotalDiscounts: summary.Register.TotalDiscounts,
             TotalCredits: summary.Register.TotalCredits,
             TotalTips: summary.Register.TotalTips,
+            RefundTotal: summary.RefundTotal,
             CashIn: summary.Register.CashIn,
             CashOut: summary.Register.CashOut,
+            ManualCashOut: summary.ManualCashOut,
+            Notes: summary.Register.Notes,
             PaymentBreakdown: summary.PaymentBreakdown,
             Movements: summary.Movements,
             CompanyName: company?.Name ?? "Empresa",

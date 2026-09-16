@@ -35,6 +35,7 @@ public class CashRegister : BaseEntity
     // Joined fields
     public string? OpenedByName { get; set; }
     public string? ClosedByName { get; set; }
+    public string? BranchName { get; set; }
 }
 
 public class CashMovement : BaseEntity

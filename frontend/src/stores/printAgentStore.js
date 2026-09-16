@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import printAgentService from '../services/printAgentService';
 import { createPrintReceiptCommand } from '../services/receiptDocument';
+import { createPrintCashCloseCommand } from '../services/cashCloseDocument';
 
 const createWorkstationId = () => {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -329,6 +330,31 @@ export const createPrintAgentState = (service = printAgentService) => {
           configurationSaved: false,
         } : {}),
       });
+      throw error;
+    }
+  }),
+
+  printCashClose: (report, { jobId: requestedJobId } = {}) => enqueuePhysical(async () => {
+    const { token, configurationSaved, activeCommand } = get();
+    if (!token) throw new Error('Vincula este navegador con el agente antes de imprimir.');
+    if (!configurationSaved) throw new Error('Guarda la configuracion de impresora antes de imprimir.');
+    if (activeCommand) throw new Error('Ya hay un comando de impresion en proceso.');
+
+    const jobId = requestedJobId || createJobId();
+    set({ activeCommand: 'print-cash-close', error: null });
+    try {
+      const command = await createPrintCashCloseCommand(report, jobId);
+      let result;
+      try {
+        result = await service.printCashClose(token, command);
+      } catch (firstError) {
+        if (firstError?.status) throw firstError;
+        result = await service.printCashClose(token, command);
+      }
+      set({ activeCommand: null, lastCommand: { command: 'print-cash-close', jobId, ...result } });
+      return result;
+    } catch (error) {
+      set({ activeCommand: null, error: errorMessage(error) });
       throw error;
     }
   }),

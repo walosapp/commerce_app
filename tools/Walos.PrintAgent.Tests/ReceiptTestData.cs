@@ -59,4 +59,21 @@ internal static class ReceiptTestData
         CreditAmountPaid: 14_800.90m,
         CreditAmount: 1_850m,
         CreditCustomerName: "José Pérez");
+
+    public static PrintCashCloseRequest CreateCashCloseRequest(string jobId = "cash-close-job-1")
+    {
+        var request = new PrintCashCloseRequest(
+            1,
+            jobId,
+            10,
+            20,
+            15,
+            new CashCloseDocument(
+                "Comercio", "Sucursal", "COP", "America/Bogota", 15,
+                "2026-09-16T10:00:00.000Z", "2026-09-16T18:00:00.000Z", "Ana",
+                100m, 4, 900m, 500m, 300m, 100m, 0m, 50m, 20m, 10m,
+                630m, 625m, -5m, "Cierre normal"),
+            string.Empty);
+        return request with { Fingerprint = ReceiptFingerprint.Compute(request) };
+    }
 }
