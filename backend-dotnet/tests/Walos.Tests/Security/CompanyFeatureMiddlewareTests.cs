@@ -58,6 +58,29 @@ public class CompanyFeatureMiddlewareTests
     }
 
     [Fact]
+    public async Task Sale_Catalog_Is_Denied_When_Only_Administrative_Inventory_Feature_Is_Enabled()
+    {
+        var (context, tenant, service, next) = Context(
+            new RequireAnyFeatureAttribute(
+                WalosFeatures.Inventory, WalosFeatures.Restaurant, WalosFeatures.Pos,
+                WalosFeatures.Purchases, WalosFeatures.Suppliers, WalosFeatures.Delivery),
+            new RequireAnyFeatureAttribute(
+                WalosFeatures.Restaurant, WalosFeatures.Pos, WalosFeatures.Delivery));
+        SetupStates(service, tenant.CompanyId,
+            (WalosFeatures.Inventory, true),
+            (WalosFeatures.Restaurant, false),
+            (WalosFeatures.Pos, false),
+            (WalosFeatures.Purchases, false),
+            (WalosFeatures.Suppliers, false),
+            (WalosFeatures.Delivery, false));
+
+        await new CompanyFeatureMiddleware(next.Object).InvokeAsync(context, tenant, service.Object);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
+        Assert.False(next.Invocations.Any());
+    }
+
+    [Fact]
     public async Task Trusted_Dev_Bypasses_Feature_Gates_Without_Querying_Tenant_Flags()
     {
         var (context, tenant, service, next) = Context(new RequireFeatureAttribute(WalosFeatures.Ai));

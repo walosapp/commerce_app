@@ -184,30 +184,20 @@ public class SalesService : ISalesService
     }
     public async Task CancelTableAsync(long companyId, long tableId)
     {
-        var table = await _salesRepo.GetTableByIdAsync(tableId, companyId)
-            ?? throw new NotFoundException("Mesa no encontrada");
-
-        var order = await _salesRepo.GetOrderByTableIdAsync(tableId, companyId);
-        if (order != null)
-            await _salesRepo.UpdateOrderStatusAsync(order.Id, companyId, "cancelled");
-
-        await _salesRepo.UpdateTableStatusAsync(tableId, companyId, "cancelled");
-
-        _logger.LogInformation("Mesa {TableNumber} cancelada", table.TableNumber);
+        await CancelTableAsync(companyId, null, tableId);
     }
 
     public async Task CancelTableAsync(long companyId, long? branchId, long tableId)
     {
-        var table = await _salesRepo.GetTableByIdAsync(tableId, companyId, branchId)
-            ?? throw new NotFoundException("Mesa no encontrada");
+        var cancelled = await _salesRepo.CancelActiveTableAsync(tableId, companyId, branchId);
+        if (!cancelled)
+        {
+            throw new BusinessException(
+                "Solo se puede cancelar una mesa abierta con una orden pendiente",
+                "restaurant_order_not_active");
+        }
 
-        var order = await _salesRepo.GetOrderByTableIdAsync(tableId, companyId, branchId);
-        if (order != null)
-            await _salesRepo.UpdateOrderStatusAsync(order.Id, companyId, branchId, "cancelled");
-
-        await _salesRepo.UpdateTableStatusAsync(tableId, companyId, branchId, "cancelled");
-
-        _logger.LogInformation("Mesa {TableNumber} cancelada", table.TableNumber);
+        _logger.LogInformation("Mesa {TableId} cancelada", tableId);
     }
 
     public async Task UpdateItemQuantityAsync(long companyId, long branchId, long itemId, UpdateItemQuantityRequest request)
@@ -295,6 +285,16 @@ public class SalesService : ISalesService
     {
         _ = await _salesRepo.GetOrderByIdAsync(orderId, companyId, branchId)
             ?? throw new NotFoundException("Orden no encontrada");
+
+        return await _salesRepo.GetOrderItemsAsync(orderId, companyId, branchId);
+    }
+
+    public async Task<IEnumerable<OrderItem>> GetActiveRestaurantOrderItemsAsync(
+        long companyId,
+        long? branchId,
+        long orderId)
+    {
+        _ = await GetActiveRestaurantOrderAsync(companyId, branchId, orderId);
 
         return await _salesRepo.GetOrderItemsAsync(orderId, companyId, branchId);
     }
@@ -396,8 +396,42 @@ public class SalesService : ISalesService
         var order = await _salesRepo.GetOrderByIdAsync(orderId, companyId, branchId)
             ?? throw new NotFoundException("Orden no encontrada");
 
-        var items = (await _salesRepo.GetOrderItemsAsync(orderId, companyId, branchId)).ToList();
         var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId, branchId);
+        return await BuildKitchenTicketAsync(companyId, branchId, order, table);
+    }
+
+    public async Task<KitchenTicketData> GetActiveRestaurantKitchenTicketAsync(
+        long companyId,
+        long? branchId,
+        long orderId)
+    {
+        var (order, table) = await GetActiveRestaurantOrderAsync(companyId, branchId, orderId);
+        return await BuildKitchenTicketAsync(companyId, branchId, order, table);
+    }
+
+    private async Task<(Order Order, SalesTable Table)> GetActiveRestaurantOrderAsync(
+        long companyId,
+        long? branchId,
+        long orderId)
+    {
+        var order = await _salesRepo.GetOrderByIdAsync(orderId, companyId, branchId);
+        if (order is null || !string.Equals(order.Status, "pending", StringComparison.OrdinalIgnoreCase))
+            throw new NotFoundException("Orden de restaurante activa no encontrada");
+
+        var table = await _salesRepo.GetTableByIdAsync(order.TableId, companyId, branchId);
+        if (table is null || !string.Equals(table.Status, "open", StringComparison.OrdinalIgnoreCase))
+            throw new NotFoundException("Orden de restaurante activa no encontrada");
+
+        return (order, table);
+    }
+
+    private async Task<KitchenTicketData> BuildKitchenTicketAsync(
+        long companyId,
+        long? branchId,
+        Order order,
+        SalesTable? table)
+    {
+        var items = (await _salesRepo.GetOrderItemsAsync(order.Id, companyId, branchId)).ToList();
 
         var cashierName = "Cajero";
         if (order.CreatedBy.HasValue)

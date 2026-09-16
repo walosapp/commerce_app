@@ -32,12 +32,40 @@ public class TenantIsolationSqlTests
     }
 
     [Fact]
+    public void SaleCatalogRecipeValidity_Is_TenantScoped_And_Fails_Closed()
+    {
+        var source = ReadRepositoryFile("InventoryRepository.cs");
+
+        Assert.Contains("recipe.company_id = p.company_id", source);
+        Assert.Contains("ingredient.company_id = recipe.company_id", source);
+        Assert.Contains("ingredient.is_active = FALSE", source);
+        Assert.Contains("ingredient.deleted_at IS NOT NULL", source);
+        Assert.Contains("END AS HasValidRecipe", source);
+    }
+
+    [Fact]
     public void SalesRepository_Should_Join_Products_And_Orders_By_CompanyId()
     {
         var source = ReadRepositoryFile("SalesRepository.cs");
 
         Assert.Contains("INNER JOIN sales.orders o ON oi.order_id = o.id AND o.company_id = oi.company_id", source);
         Assert.Contains("LEFT JOIN inventory.products p ON oi.product_id = p.id AND p.company_id = oi.company_id", source);
+    }
+
+    [Fact]
+    public void SalesRepository_CancelActiveTable_Is_Atomic_And_Requires_Open_Pending_Sale()
+    {
+        var source = ReadRepositoryFile("SalesRepository.cs");
+
+        Assert.Contains("public async Task<bool> CancelActiveTableAsync", source);
+        Assert.Contains("t.status = 'open'", source);
+        Assert.Contains("t.deleted_at IS NULL", source);
+        Assert.Contains("o.status = 'pending'", source);
+        Assert.Contains("o.deleted_at IS NULL", source);
+        Assert.Contains("FOR UPDATE OF t, o", source);
+        Assert.Contains("cancelled_orders AS", source);
+        Assert.Contains("cancelled_table AS", source);
+        Assert.Contains("SELECT EXISTS (SELECT 1 FROM cancelled_table)", source);
     }
 
     [Fact]

@@ -62,7 +62,15 @@ public class AiSessionRepository : IAiSessionRepository
 
         var id = await conn.QuerySingleAsync<long>(@"
             INSERT INTO core.ai_sessions (company_id, user_id, agent_type, context, last_activity_at)
-            VALUES (@CompanyId, @UserId, 'orchestrator', '{}', NOW())
+            SELECT @CompanyId, @UserId, 'orchestrator', '{}', NOW()
+            WHERE EXISTS (
+                SELECT 1
+                FROM core.users u
+                WHERE u.id = @UserId
+                  AND u.company_id = @CompanyId
+                  AND u.is_active = TRUE
+                  AND u.deleted_at IS NULL
+            )
             RETURNING id",
             new { CompanyId = companyId, UserId = userId });
 

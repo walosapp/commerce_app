@@ -14,7 +14,7 @@ namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/inventory")]
-[Authorize]
+[Authorize(Policy = WalosPolicies.CatalogRead)]
 [RequireAnyFeature(WalosFeatures.Inventory, WalosFeatures.Restaurant, WalosFeatures.Pos,
     WalosFeatures.Purchases, WalosFeatures.Suppliers, WalosFeatures.Delivery)]
 public class InventoryController : ControllerBase
@@ -43,6 +43,7 @@ public class InventoryController : ControllerBase
     /// GET /api/v1/inventory/products - Listar productos
     /// </summary>
     [HttpGet("products")]
+    [Authorize(Policy = WalosPolicies.InventoryRead)]
     public async Task<IActionResult> GetProducts(
         [FromQuery] long? categoryId,
         [FromQuery] bool? isActive,
@@ -66,6 +67,7 @@ public class InventoryController : ControllerBase
     /// GET /api/v1/inventory/products/{id} - Obtener producto
     /// </summary>
     [HttpGet("products/{id:long}")]
+    [Authorize(Policy = WalosPolicies.InventoryRead)]
     public async Task<IActionResult> GetProductById(long id)
     {
         var companyId = _tenant.CompanyId;
@@ -300,9 +302,24 @@ public class InventoryController : ControllerBase
     }
 
     /// <summary>
+    /// Catálogo operativo para ventas. Expone disponibilidad, pero no costos ni datos administrativos de inventario.
+    /// </summary>
+    [HttpGet("sale-catalog")]
+    [RequireAnyFeature(WalosFeatures.Restaurant, WalosFeatures.Pos, WalosFeatures.Delivery)]
+    public async Task<IActionResult> GetSaleCatalog([FromQuery] long? branchId)
+    {
+        var products = await _service.GetSaleCatalogAsync(
+            _tenant.CompanyId, _tenant.BranchId, branchId);
+
+        return Ok(ApiResponse<IReadOnlyList<SaleCatalogProductResponse>>.Ok(
+            products, count: products.Count));
+    }
+
+    /// <summary>
     /// GET /api/v1/inventory/stock - Obtener stock
     /// </summary>
     [HttpGet("stock")]
+    [Authorize(Policy = WalosPolicies.InventoryRead)]
     public async Task<IActionResult> GetStock([FromQuery] long? branchId)
     {
         var companyId = _tenant.CompanyId;
@@ -318,6 +335,7 @@ public class InventoryController : ControllerBase
     /// GET /api/v1/inventory/stock/low - Productos con stock bajo
     /// </summary>
     [HttpGet("stock/low")]
+    [Authorize(Policy = WalosPolicies.InventoryRead)]
     public async Task<IActionResult> GetLowStock([FromQuery] long? branchId)
     {
         var companyId = _tenant.CompanyId;
@@ -396,6 +414,7 @@ public class InventoryController : ControllerBase
     /// GET /api/v1/inventory/alerts - Obtener alertas
     /// </summary>
     [HttpGet("alerts")]
+    [Authorize(Policy = WalosPolicies.InventoryRead)]
     public async Task<IActionResult> GetAlerts([FromQuery] long? branchId)
     {
         var companyId = _tenant.CompanyId;

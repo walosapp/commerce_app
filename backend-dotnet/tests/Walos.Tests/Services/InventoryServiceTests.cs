@@ -150,11 +150,14 @@ public class InventoryServiceTests
 
         Assert.False(result.Success);
         Assert.Contains("no esta disponible en V1", result.Message);
-        _repoMock.Verify(r => r.GetAiInteractionByIdAsync(It.IsAny<long>(), It.IsAny<long>()), Times.Never);
+        _repoMock.VerifyNoOtherCalls();
     }
 
-    [Fact]
-    public async Task ProcessAiInventoryInput_Does_Not_Persist_Mutation_Proposal()
+    [Theory]
+    [InlineData("add_stock")]
+    [InlineData("create_and_stock")]
+    public async Task ProcessAiInventoryInput_Does_Not_Persist_Mutation_Proposal(
+        string action)
     {
         _repoMock.Setup(r => r.GetAllProductsAsync(1, It.Is<ProductFilter?>(f => f == null)))
             .ReturnsAsync(new List<Product> { new() { Id = 1, Name = "Ron" } });
@@ -165,7 +168,7 @@ public class InventoryServiceTests
                 It.IsAny<List<AiConversationMessage>?>()))
             .ReturnsAsync(new AiInventoryResponse
             {
-                Action = "add_stock",
+                Action = action,
                 Confidence = 95,
                 Response = "Voy a agregar 10 unidades de Ron",
                 Data = new AiInventoryData
@@ -200,6 +203,40 @@ public class InventoryServiceTests
         _repoMock.Verify(r => r.SaveAiInteractionAsync(It.IsAny<AiInteraction>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData("add_stock")]
+    [InlineData("create_and_stock")]
+    public async Task ProcessAiInventoryInput_Rejects_Direct_Stock_Mutation_ToolName_Without_Stock_Mutation(
+        string toolName)
+    {
+        _repoMock.Setup(r => r.GetAllProductsAsync(1, It.Is<ProductFilter?>(f => f == null)))
+            .ReturnsAsync([]);
+        _repoMock.Setup(r => r.GetCategoriesAsync(1)).ReturnsAsync([]);
+        _repoMock.Setup(r => r.GetUnitsAsync(1)).ReturnsAsync([]);
+        _aiMock.Setup(a => a.ProcessInventoryInputAsync(
+                It.IsAny<string>(),
+                It.IsAny<AiContext>(),
+                It.IsAny<List<AiConversationMessage>?>()))
+            .ReturnsAsync(new AiInventoryResponse
+            {
+                Action = "query",
+                ToolName = toolName,
+                Confidence = 99,
+                Response = "Stock agregado"
+            });
+
+        var result = await _service.ProcessAiInventoryInputAsync(
+            toolName,
+            new AiInputContext { CompanyId = 1, BranchId = 2, UserId = 3 });
+
+        Assert.Equal("stock_mutation_disabled", result.Action);
+        Assert.False(result.RequiresConfirmation);
+        _repoMock.Verify(r => r.UpdateStockAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<decimal>(), It.IsAny<long>()), Times.Never);
+        _repoMock.Verify(r => r.CreateMovementAsync(It.IsAny<Movement>()), Times.Never);
+        _repoMock.Verify(r => r.SaveAiInteractionAsync(It.IsAny<AiInteraction>()), Times.Never);
+    }
+
     [Fact]
     public async Task ProcessAiInventoryInput_Keeps_Read_Only_Query_And_Uses_No_Prior_History()
     {
@@ -224,8 +261,12 @@ public class InventoryServiceTests
 
         Assert.Equal("query", result.Action);
         Assert.Equal(55, result.InteractionId);
-        _repoMock.Verify(repository => repository.GetAiInteractionsBySessionAsync(
-            It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+        _repoMock.Verify(repository => repository.SaveAiInteractionAsync(
+            It.Is<AiInteraction>(interaction =>
+                interaction.CompanyId == 1
+                && interaction.UserId == 2
+                && interaction.BranchId == 3
+                && interaction.SessionId == "legacy")), Times.Once);
     }
 
     [Fact]

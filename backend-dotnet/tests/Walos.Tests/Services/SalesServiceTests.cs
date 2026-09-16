@@ -710,37 +710,42 @@ public class SalesServiceTests
     // ── CancelTableAsync ──
 
     [Fact]
-    public async Task CancelTable_ThrowsNotFound_WhenTableMissing()
+    public async Task CancelTable_Rejects_WhenAtomicActiveInvariantDoesNotMatch()
     {
-        _salesRepoMock.Setup(r => r.GetTableByIdAsync(99, CompanyId)).ReturnsAsync((SalesTable?)null);
+        _salesRepoMock.Setup(r => r.CancelActiveTableAsync(99, CompanyId, null)).ReturnsAsync(false);
 
-        await Assert.ThrowsAsync<NotFoundException>(() =>
+        var exception = await Assert.ThrowsAsync<BusinessException>(() =>
             _service.CancelTableAsync(CompanyId, 99));
+
+        Assert.Equal("restaurant_order_not_active", exception.Code);
     }
 
     [Fact]
-    public async Task CancelTable_CancelsOrderAndTable()
+    public async Task CancelTable_UsesAtomicRepositoryOperation()
     {
-        _salesRepoMock.Setup(r => r.GetTableByIdAsync(1, CompanyId))
-            .ReturnsAsync(new SalesTable { Id = 1, TableNumber = 1 });
-        _salesRepoMock.Setup(r => r.GetOrderByTableIdAsync(1, CompanyId))
-            .ReturnsAsync(new Order { Id = 10 });
+        _salesRepoMock.Setup(r => r.CancelActiveTableAsync(1, CompanyId, null)).ReturnsAsync(true);
 
         await _service.CancelTableAsync(CompanyId, 1);
 
-        _salesRepoMock.Verify(r => r.UpdateOrderStatusAsync(10, CompanyId, "cancelled"), Times.Once);
-        _salesRepoMock.Verify(r => r.UpdateTableStatusAsync(1, CompanyId, "cancelled"), Times.Once);
+        _salesRepoMock.Verify(r => r.CancelActiveTableAsync(1, CompanyId, null), Times.Once);
+        _salesRepoMock.Verify(r => r.UpdateOrderStatusAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<string>()), Times.Never);
+        _salesRepoMock.Verify(r => r.UpdateTableStatusAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
     public async Task CancelTable_ScopedBranch_DoesNotMutateTableFromAnotherBranch()
     {
-        _salesRepoMock.Setup(repository => repository.GetTableByIdAsync(1, CompanyId, BranchId))
-            .ReturnsAsync((SalesTable?)null);
+        _salesRepoMock.Setup(repository => repository.CancelActiveTableAsync(1, CompanyId, BranchId))
+            .ReturnsAsync(false);
 
-        await Assert.ThrowsAsync<NotFoundException>(() =>
+        var exception = await Assert.ThrowsAsync<BusinessException>(() =>
             _service.CancelTableAsync(CompanyId, BranchId, 1));
 
+        Assert.Equal("restaurant_order_not_active", exception.Code);
+        _salesRepoMock.Verify(repository => repository.CancelActiveTableAsync(
+            1, CompanyId, BranchId), Times.Once);
         _salesRepoMock.Verify(repository => repository.UpdateOrderStatusAsync(
             It.IsAny<long>(), It.IsAny<long>(), It.IsAny<long?>(), It.IsAny<string>()), Times.Never);
         _salesRepoMock.Verify(repository => repository.UpdateTableStatusAsync(
@@ -758,6 +763,95 @@ public class SalesServiceTests
 
         _salesRepoMock.Verify(repository => repository.GetOrderItemsAsync(
             It.IsAny<long>(), It.IsAny<long>(), It.IsAny<long?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetActiveRestaurantOrderItems_Returns_Items_Only_For_Pending_Order_On_Open_Table()
+    {
+        _salesRepoMock.Setup(repository => repository.GetOrderByIdAsync(10, CompanyId, BranchId))
+            .ReturnsAsync(new Order { Id = 10, TableId = 5, Status = "pending" });
+        _salesRepoMock.Setup(repository => repository.GetTableByIdAsync(5, CompanyId, BranchId))
+            .ReturnsAsync(new SalesTable { Id = 5, Status = "open" });
+        _salesRepoMock.Setup(repository => repository.GetOrderItemsAsync(10, CompanyId, BranchId))
+            .ReturnsAsync([new OrderItem { Id = 100, OrderId = 10 }]);
+
+        var items = (await _service.GetActiveRestaurantOrderItemsAsync(
+            CompanyId, BranchId, 10)).ToList();
+
+        Assert.Single(items);
+    }
+
+    [Theory]
+    [InlineData("completed", "invoiced")]
+    [InlineData("cancelled", "cancelled")]
+    [InlineData("pending", "invoiced")]
+    public async Task GetActiveRestaurantOrderItems_Rejects_NonActive_Order_Or_Table(
+        string orderStatus,
+        string tableStatus)
+    {
+        _salesRepoMock.Setup(repository => repository.GetOrderByIdAsync(10, CompanyId, BranchId))
+            .ReturnsAsync(new Order { Id = 10, TableId = 5, Status = orderStatus });
+        if (orderStatus == "pending")
+        {
+            _salesRepoMock.Setup(repository => repository.GetTableByIdAsync(5, CompanyId, BranchId))
+                .ReturnsAsync(new SalesTable { Id = 5, Status = tableStatus });
+        }
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            _service.GetActiveRestaurantOrderItemsAsync(CompanyId, BranchId, 10));
+
+        _salesRepoMock.Verify(repository => repository.GetOrderItemsAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<long?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetActiveRestaurantKitchenTicket_Returns_Ticket_For_Pending_Order_On_Open_Table()
+    {
+        _salesRepoMock.Setup(repository => repository.GetOrderByIdAsync(10, CompanyId, BranchId))
+            .ReturnsAsync(new Order
+            {
+                Id = 10,
+                TableId = 5,
+                Status = "pending",
+                OrderNumber = "ORD-10",
+                CreatedBy = UserId
+            });
+        _salesRepoMock.Setup(repository => repository.GetTableByIdAsync(5, CompanyId, BranchId))
+            .ReturnsAsync(new SalesTable { Id = 5, Status = "open", Name = "Patio", TableNumber = 3 });
+        _salesRepoMock.Setup(repository => repository.GetOrderItemsAsync(10, CompanyId, BranchId))
+            .ReturnsAsync([new OrderItem { OrderId = 10, ProductName = "Café", Quantity = 1 }]);
+
+        var ticket = await _service.GetActiveRestaurantKitchenTicketAsync(
+            CompanyId, BranchId, 10);
+
+        Assert.Equal("ORD-10", ticket.OrderNumber);
+        Assert.Equal("Patio", ticket.TableName);
+        Assert.Single(ticket.Items);
+    }
+
+    [Theory]
+    [InlineData("completed", "invoiced")]
+    [InlineData("cancelled", "cancelled")]
+    [InlineData("pending", "invoiced")]
+    public async Task GetActiveRestaurantKitchenTicket_Rejects_NonActive_Order_Or_Table(
+        string orderStatus,
+        string tableStatus)
+    {
+        _salesRepoMock.Setup(repository => repository.GetOrderByIdAsync(10, CompanyId, BranchId))
+            .ReturnsAsync(new Order { Id = 10, TableId = 5, Status = orderStatus });
+        if (orderStatus == "pending")
+        {
+            _salesRepoMock.Setup(repository => repository.GetTableByIdAsync(5, CompanyId, BranchId))
+                .ReturnsAsync(new SalesTable { Id = 5, Status = tableStatus });
+        }
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            _service.GetActiveRestaurantKitchenTicketAsync(CompanyId, BranchId, 10));
+
+        _salesRepoMock.Verify(repository => repository.GetOrderItemsAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<long?>()), Times.Never);
+        _usersRepoMock.Verify(repository => repository.GetByIdAsync(
+            It.IsAny<long>(), It.IsAny<long>()), Times.Never);
     }
 
     // ── UpdateItemQuantityAsync ──

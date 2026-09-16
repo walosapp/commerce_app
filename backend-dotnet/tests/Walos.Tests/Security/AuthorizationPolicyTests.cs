@@ -14,7 +14,9 @@ public class AuthorizationPolicyTests
     [InlineData(WalosPolicies.Finance)]
     [InlineData(WalosPolicies.PurchasesRead)]
     [InlineData(WalosPolicies.SuppliersRead)]
+    [InlineData(WalosPolicies.InventoryRead)]
     [InlineData(WalosPolicies.InventoryWrite)]
+    [InlineData(WalosPolicies.Recipes)]
     public async Task Cashier_Is_Denied_Administrative_Policies(string policy)
     {
         var authorization = CreateAuthorizationService();
@@ -55,14 +57,23 @@ public class AuthorizationPolicyTests
     [Theory]
     [InlineData(WalosRoles.SuperAdmin)]
     [InlineData(WalosRoles.Manager)]
-    [InlineData(WalosRoles.Cashier)]
-    [InlineData(WalosRoles.Waiter)]
-    public async Task Dashboard_Allows_Tenant_Operational_Roles(string role)
+    public async Task Dashboard_Allows_Management_Roles(string role)
     {
         var result = await CreateAuthorizationService().AuthorizeAsync(
             Principal(role), null, WalosPolicies.Dashboard);
 
         Assert.True(result.Succeeded);
+    }
+
+    [Theory]
+    [InlineData(WalosRoles.Cashier)]
+    [InlineData(WalosRoles.Waiter)]
+    public async Task Dashboard_Denies_NonManagement_Operational_Roles(string role)
+    {
+        var result = await CreateAuthorizationService().AuthorizeAsync(
+            Principal(role), null, WalosPolicies.Dashboard);
+
+        Assert.False(result.Succeeded);
     }
 
     [Fact]
@@ -81,8 +92,12 @@ public class AuthorizationPolicyTests
     [InlineData(WalosPolicies.Finance)]
     [InlineData(WalosPolicies.PurchasesRead)]
     [InlineData(WalosPolicies.SuppliersRead)]
+    [InlineData(WalosPolicies.InventoryRead)]
     [InlineData(WalosPolicies.InventoryWrite)]
-    [InlineData(WalosPolicies.SalesOperator)]
+    [InlineData(WalosPolicies.Recipes)]
+    [InlineData(WalosPolicies.CatalogRead)]
+    [InlineData(WalosPolicies.SalesTableOperator)]
+    [InlineData(WalosPolicies.SalesInvoiceOperator)]
     [InlineData(WalosPolicies.CashOperator)]
     [InlineData(WalosPolicies.DeliveryOperator)]
     [InlineData(WalosPolicies.DeliveryManage)]
@@ -96,7 +111,7 @@ public class AuthorizationPolicyTests
     }
 
     [Fact]
-    public async Task Cashier_Can_Operate_Delivery_But_Cannot_Manage_Cancellations_Or_Returns()
+    public async Task Cashier_Can_Operate_And_Manage_Delivery()
     {
         var authorization = CreateAuthorizationService();
         var cashier = Principal(WalosRoles.Cashier);
@@ -107,7 +122,7 @@ public class AuthorizationPolicyTests
             cashier, null, WalosPolicies.DeliveryManage);
 
         Assert.True(operatorResult.Succeeded);
-        Assert.False(manageResult.Succeeded);
+        Assert.True(manageResult.Succeeded);
     }
 
     [Theory]
@@ -154,8 +169,12 @@ public class AuthorizationPolicyTests
     [InlineData(WalosPolicies.Finance)]
     [InlineData(WalosPolicies.PurchasesRead)]
     [InlineData(WalosPolicies.SuppliersRead)]
+    [InlineData(WalosPolicies.InventoryRead)]
     [InlineData(WalosPolicies.InventoryWrite)]
-    [InlineData(WalosPolicies.SalesOperator)]
+    [InlineData(WalosPolicies.Recipes)]
+    [InlineData(WalosPolicies.CatalogRead)]
+    [InlineData(WalosPolicies.SalesTableOperator)]
+    [InlineData(WalosPolicies.SalesInvoiceOperator)]
     [InlineData(WalosPolicies.CashOperator)]
     [InlineData(WalosPolicies.DeliveryOperator)]
     [InlineData(WalosPolicies.DeliveryManage)]
@@ -179,8 +198,12 @@ public class AuthorizationPolicyTests
     [InlineData(WalosPolicies.Finance)]
     [InlineData(WalosPolicies.PurchasesRead)]
     [InlineData(WalosPolicies.SuppliersRead)]
+    [InlineData(WalosPolicies.InventoryRead)]
     [InlineData(WalosPolicies.InventoryWrite)]
-    [InlineData(WalosPolicies.SalesOperator)]
+    [InlineData(WalosPolicies.Recipes)]
+    [InlineData(WalosPolicies.CatalogRead)]
+    [InlineData(WalosPolicies.SalesTableOperator)]
+    [InlineData(WalosPolicies.SalesInvoiceOperator)]
     [InlineData(WalosPolicies.CashOperator)]
     [InlineData(WalosPolicies.DeliveryOperator)]
     [InlineData(WalosPolicies.DeliveryManage)]
@@ -202,8 +225,14 @@ public class AuthorizationPolicyTests
     [InlineData(WalosPolicies.Settings)]
     [InlineData(WalosPolicies.Users)]
     [InlineData(WalosPolicies.Finance)]
+    [InlineData(WalosPolicies.PurchasesRead)]
+    [InlineData(WalosPolicies.SuppliersRead)]
+    [InlineData(WalosPolicies.InventoryRead)]
     [InlineData(WalosPolicies.InventoryWrite)]
-    [InlineData(WalosPolicies.SalesOperator)]
+    [InlineData(WalosPolicies.Recipes)]
+    [InlineData(WalosPolicies.CatalogRead)]
+    [InlineData(WalosPolicies.SalesTableOperator)]
+    [InlineData(WalosPolicies.SalesInvoiceOperator)]
     [InlineData(WalosPolicies.CashOperator)]
     [InlineData(WalosPolicies.DeliveryOperator)]
     [InlineData(WalosPolicies.DeliveryManage)]
@@ -228,8 +257,12 @@ public class AuthorizationPolicyTests
     [InlineData(WalosPolicies.Finance)]
     [InlineData(WalosPolicies.PurchasesRead)]
     [InlineData(WalosPolicies.SuppliersRead)]
+    [InlineData(WalosPolicies.InventoryRead)]
     [InlineData(WalosPolicies.InventoryWrite)]
-    [InlineData(WalosPolicies.SalesOperator)]
+    [InlineData(WalosPolicies.Recipes)]
+    [InlineData(WalosPolicies.CatalogRead)]
+    [InlineData(WalosPolicies.SalesTableOperator)]
+    [InlineData(WalosPolicies.SalesInvoiceOperator)]
     [InlineData(WalosPolicies.CashOperator)]
     [InlineData(WalosPolicies.DeliveryOperator)]
     [InlineData(WalosPolicies.DeliveryManage)]

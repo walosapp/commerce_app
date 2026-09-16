@@ -75,4 +75,14 @@ describe('LoginPage', () => {
     expect(navigate).toHaveBeenCalledWith('/admin/tenants');
   });
 
+  it('resolves an operator landing against enabled tenant features after login', async () => {
+    const user = { id: 3, name: 'Caja', role: 'cashier', companyId: 1, branchId: 1, isPlatformAdmin: false };
+    login.mockResolvedValue({ success: true, data: { token: 'jwt-cashier', user } });
+    renderLogin();
+    submitCredentials('cashier@walos.app');
+
+    await waitFor(() => expect(setAuth).toHaveBeenCalledWith({ token: 'jwt-cashier', user }));
+    expect(navigate).toHaveBeenCalledWith('/landing');
+  });
+
 });

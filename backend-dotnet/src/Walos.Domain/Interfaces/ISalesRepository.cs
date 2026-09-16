@@ -21,6 +21,7 @@ public interface ISalesRepository
     Task UpdateTableStatusAsync(long tableId, long companyId, long? branchId, string status);
     Task UpdateOrderStatusAsync(long orderId, long companyId, string status);
     Task UpdateOrderStatusAsync(long orderId, long companyId, long? branchId, string status);
+    Task<bool> CancelActiveTableAsync(long tableId, long companyId, long? branchId);
     Task<int> GetNextTableNumberAsync(long companyId, long branchId);
     Task UpdateOrderItemQuantityAsync(long orderItemId, long companyId, decimal quantity);
     Task DeleteOrderItemAsync(long orderItemId, long companyId);

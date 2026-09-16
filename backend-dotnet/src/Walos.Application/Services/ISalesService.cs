@@ -17,10 +17,12 @@ public interface ISalesService
     Task RenameTableAsync(long companyId, long tableId, string name);
     Task RenameTableAsync(long companyId, long? branchId, long tableId, string name);
     Task<IEnumerable<OrderItem>> GetOrderItemsAsync(long companyId, long? branchId, long orderId);
+    Task<IEnumerable<OrderItem>> GetActiveRestaurantOrderItemsAsync(long companyId, long? branchId, long orderId);
     Task<ReceiptData> GetReceiptAsync(long companyId, long orderId);
     Task<ReceiptData> GetReceiptAsync(long companyId, long? branchId, long orderId);
     Task<KitchenTicketData> GetKitchenTicketAsync(long companyId, long orderId);
     Task<KitchenTicketData> GetKitchenTicketAsync(long companyId, long? branchId, long orderId);
+    Task<KitchenTicketData> GetActiveRestaurantKitchenTicketAsync(long companyId, long? branchId, long orderId);
     Task<(List<OrderDetailResponse> Items, int TotalCount)> SearchOrdersAsync(long companyId, OrderSearchRequest request);
     Task<byte[]> ExportOrdersCsvAsync(long companyId, OrderSearchRequest request);
     Task<OrderDetailResponse> GetOrderDetailAsync(long companyId, long orderId);

@@ -117,6 +117,7 @@ Contexto:
             return new AiInventoryResponse
             {
                 Action = aiData?.Action ?? "query",
+                ToolName = aiData?.ToolName,
                 Confidence = aiData?.Confidence ?? 0,
                 Response = aiData?.Response ?? string.Empty,
                 Data = aiData?.Data != null ? new AiInventoryData
@@ -362,6 +363,7 @@ Responde en JSON con estructura clara.";
     private class AiInventoryResponseRaw
     {
         public string? Action { get; set; }
+        public string? ToolName { get; set; }
         public int Confidence { get; set; }
         public string? Response { get; set; }
         public AiInventoryDataRaw? Data { get; set; }

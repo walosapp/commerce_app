@@ -195,7 +195,7 @@ const PosDeliPage = () => {
     <div className="flex h-full flex-col gap-4 p-4 md:p-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-gray-900">POS-Deli</h1>
+          <h1 className="text-3xl font-black text-gray-900">POS</h1>
           <p className="text-sm text-gray-500">Venta rapida para mostrador, barcode y productos por peso</p>
         </div>
       </div>

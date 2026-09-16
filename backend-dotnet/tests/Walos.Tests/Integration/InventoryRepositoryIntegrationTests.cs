@@ -4,7 +4,7 @@ using Walos.Domain.Exceptions;
 
 namespace Walos.Tests.Integration;
 
-public class InventoryRepositoryIntegrationTests : IntegrationTestBase
+public class InventoryRepositoryIntegrationTests : V1IntegrationTestBase
 {
     [SkippableFact]
     public async Task GetStockByBranchAsync_Should_Return_Only_Products_For_Requested_Company()
@@ -97,6 +97,60 @@ public class InventoryRepositoryIntegrationTests : IntegrationTestBase
         Assert.Equal(10m, stock.Quantity);
         Assert.Equal(2m, stock.ReservedQuantity);
         Assert.Equal(8m, stock.AvailableQuantity);
+    }
+
+    [SkippableFact]
+    public async Task GetStockByBranchAsync_Reports_Canonical_Recipe_Vendibility()
+    {
+        var company = await SeedCompanyAsync("Sale catalog recipe company");
+        var branch = await SeedBranchAsync(company, "Sale catalog branch");
+        var category = await SeedInventoryCategoryAsync(company, "Sale catalog category");
+        var unit = await SeedInventoryUnitAsync(company, "Sale catalog unit", "scu");
+        var freeSimple = await SeedProductAsync(
+            company, category, unit, "Free simple", $"FREE-{Guid.NewGuid():N}", 0, 0);
+        var ingredient = await SeedProductAsync(
+            company, category, unit, "Ingredient", $"ING-{Guid.NewGuid():N}", 0, 0);
+        var preparedWithoutRecipe = await SeedProductAsync(
+            company, category, unit, "Prepared no recipe", $"PNR-{Guid.NewGuid():N}", 0, 0);
+        var preparedWithRecipe = await SeedProductAsync(
+            company, category, unit, "Prepared valid", $"PVR-{Guid.NewGuid():N}", 0, 0);
+
+        using (var conn = (NpgsqlConnection)await ConnectionFactory.CreateConnectionAsync())
+        using (var cmd = new NpgsqlCommand(@"
+            UPDATE inventory.products
+            SET cost_price = 0,
+                sale_price = 0,
+                product_type = CASE
+                    WHEN id IN (@withoutRecipe, @withRecipe) THEN 'prepared'
+                    ELSE product_type
+                END,
+                track_stock = CASE
+                    WHEN id IN (@withoutRecipe, @withRecipe) THEN FALSE
+                    ELSE track_stock
+                END
+            WHERE company_id = @company
+              AND id IN (@freeSimple, @withoutRecipe, @withRecipe);
+
+            INSERT INTO inventory.recipes
+                (company_id, product_id, ingredient_id, quantity, unit_id)
+            VALUES (@company, @withRecipe, @ingredient, 1, @unit);", conn))
+        {
+            cmd.Parameters.AddWithValue("@company", company);
+            cmd.Parameters.AddWithValue("@freeSimple", freeSimple);
+            cmd.Parameters.AddWithValue("@withoutRecipe", preparedWithoutRecipe);
+            cmd.Parameters.AddWithValue("@withRecipe", preparedWithRecipe);
+            cmd.Parameters.AddWithValue("@ingredient", ingredient);
+            cmd.Parameters.AddWithValue("@unit", unit);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        var stock = (await InventoryRepository.GetStockByBranchAsync(branch, company))
+            .ToDictionary(item => item.ProductId);
+
+        Assert.True(stock[freeSimple].HasValidRecipe);
+        Assert.False(stock[preparedWithoutRecipe].HasValidRecipe);
+        Assert.True(stock[preparedWithRecipe].HasValidRecipe);
+        Assert.Equal(0, stock[freeSimple].SalePrice);
     }
 
     [SkippableFact]

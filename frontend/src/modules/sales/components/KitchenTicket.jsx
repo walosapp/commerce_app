@@ -3,10 +3,12 @@ import { X, Printer, Loader2 } from 'lucide-react';
 import printService from '../../../services/printService';
 import { thermalKitchenStyles, openPrintWindow } from './printStyles';
 
-export default function KitchenTicket({ orderId, onClose }) {
+export default function KitchenTicket({ orderId, onClose, scope = 'completed' }) {
   const { data, isLoading, error } = useQuery({
-    queryKey: ['kitchen-ticket', orderId],
-    queryFn: () => printService.getKitchenTicket(orderId),
+    queryKey: ['kitchen-ticket', scope, orderId],
+    queryFn: () => scope === 'activeRestaurant'
+      ? printService.getActiveRestaurantKitchenTicket(orderId)
+      : printService.getKitchenTicket(orderId),
     enabled: !!orderId,
   });
 

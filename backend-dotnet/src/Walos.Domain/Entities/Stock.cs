@@ -20,6 +20,7 @@ public class Stock : BaseEntity
     public string? ImageUrl { get; set; }
     public string? StockStatus { get; set; }
     public string? ProductType { get; set; }
+    public bool HasValidRecipe { get; set; } = true;
     public bool TrackStock { get; set; } = true;
     public bool IsForSale { get; set; } = true;
     public bool IsPerishable { get; set; }

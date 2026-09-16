@@ -29,6 +29,13 @@ export const inventoryService = {
     return response.data;
   },
 
+  getSaleCatalog: async (branchId) => {
+    const response = await api.get('/inventory/sale-catalog', {
+      params: { branchId },
+    });
+    return response.data;
+  },
+
   getLowStock: async (branchId) => {
     const response = await api.get('/inventory/stock/low', {
       params: { branchId },

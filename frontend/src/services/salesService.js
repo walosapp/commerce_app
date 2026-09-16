@@ -57,6 +57,11 @@ export const salesService = {
     return response.data;
   },
 
+  getActiveRestaurantOrderItems: async (orderId) => {
+    const response = await api.get(`/sales/restaurant/orders/${orderId}/items`);
+    return response.data;
+  },
+
   getSummary: async (branchId, date) => {
     const response = await api.get('/sales/summary', { params: { branchId, date } });
     return response.data;

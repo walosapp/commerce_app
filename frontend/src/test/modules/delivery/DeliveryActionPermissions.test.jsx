@@ -25,7 +25,7 @@ const order = (status) => ({
 });
 
 describe('delivery action role policy', () => {
-  it('keeps operational progression but hides reject from cashier cards', () => {
+  it('keeps operational progression but hides reject from waiter cards', () => {
     const onAction = vi.fn();
     render(<DeliveryOrderCard order={order('new')} onClick={vi.fn()} onAction={onAction} canManage={false} />);
 

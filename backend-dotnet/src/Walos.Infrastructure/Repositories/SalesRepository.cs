@@ -262,7 +262,8 @@ public class SalesRepository : ISalesRepository
                         created_by AS CreatedBy, created_at AS CreatedAt
                 FROM sales.orders
                 WHERE id = @OrderId AND company_id = @CompanyId
-                  AND (@BranchId IS NULL OR branch_id = @BranchId)";
+                  AND (@BranchId IS NULL OR branch_id = @BranchId)
+                  AND deleted_at IS NULL";
 
             return await connection.QueryFirstOrDefaultAsync<Order>(sql,
                 new { OrderId = orderId, CompanyId = companyId, BranchId = branchId });
@@ -381,6 +382,57 @@ public class SalesRepository : ISalesRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error actualizando estado de orden {OrderId}", orderId);
+            throw;
+        }
+    }
+
+    public async Task<bool> CancelActiveTableAsync(long tableId, long companyId, long? branchId)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            const string sql = @"
+                WITH active_restaurant_sale AS MATERIALIZED (
+                    SELECT t.id AS table_id, o.id AS order_id
+                    FROM sales.tables t
+                    INNER JOIN sales.orders o
+                        ON o.table_id = t.id
+                       AND o.company_id = t.company_id
+                       AND o.branch_id = t.branch_id
+                    WHERE t.id = @TableId
+                      AND t.company_id = @CompanyId
+                      AND (@BranchId IS NULL OR t.branch_id = @BranchId)
+                      AND t.status = 'open'
+                      AND t.deleted_at IS NULL
+                      AND o.status = 'pending'
+                      AND o.deleted_at IS NULL
+                    FOR UPDATE OF t, o
+                ), cancelled_orders AS (
+                    UPDATE sales.orders o
+                    SET status = 'cancelled', updated_at = NOW()
+                    FROM active_restaurant_sale active
+                    WHERE o.id = active.order_id
+                      AND o.company_id = @CompanyId
+                      AND o.status = 'pending'
+                    RETURNING active.table_id
+                ), cancelled_table AS (
+                    UPDATE sales.tables t
+                    SET status = 'cancelled', updated_at = NOW()
+                    WHERE t.id IN (SELECT table_id FROM cancelled_orders)
+                      AND t.company_id = @CompanyId
+                      AND (@BranchId IS NULL OR t.branch_id = @BranchId)
+                      AND t.status = 'open'
+                    RETURNING t.id
+                )
+                SELECT EXISTS (SELECT 1 FROM cancelled_table);";
+
+            return await connection.ExecuteScalarAsync<bool>(sql,
+                new { TableId = tableId, CompanyId = companyId, BranchId = branchId });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cancelando venta activa de mesa {TableId}", tableId);
             throw;
         }
     }

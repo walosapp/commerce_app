@@ -18,6 +18,7 @@ public class AiConversationMessage
 public class AiInventoryResponse
 {
     public string Action { get; set; } = string.Empty;
+    public string? ToolName { get; set; }
     public int Confidence { get; set; }
     public string Response { get; set; } = string.Empty;
     public AiInventoryData? Data { get; set; }

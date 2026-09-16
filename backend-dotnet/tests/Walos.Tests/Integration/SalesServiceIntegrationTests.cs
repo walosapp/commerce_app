@@ -10,8 +10,108 @@ using Walos.Domain.Interfaces;
 
 namespace Walos.Tests.Integration;
 
-public class SalesServiceIntegrationTests : IntegrationTestBase
+public class SalesServiceIntegrationTests : V1IntegrationTestBase
 {
+    [SkippableFact]
+    public async Task Active_Restaurant_Operations_Do_Not_Read_Or_Cancel_Completed_Pos_Order()
+    {
+        var companyId = await SeedCompanyAsync("Sales channel isolation");
+        var branchId = await SeedBranchAsync(companyId, "Main");
+        var productId = await SeedProductAsync(
+            companyId, branchId, "Free product", 0m, "simple", true, true, false);
+        var service = CreateService();
+
+        var restaurant = await service.CreateTableAsync(companyId, branchId, 1, new CreateTableRequest
+        {
+            Name = "Restaurant active",
+            Items = [new CreateTableItemDto { ProductId = productId, Quantity = 1 }]
+        });
+        var restaurantOrder = await SalesRepository.GetOrderByTableIdAsync(
+            restaurant.Table.Id, companyId, branchId);
+        Assert.NotNull(restaurantOrder);
+
+        long posOrderId;
+        long posTableId;
+        using (var conn = (NpgsqlConnection)await ConnectionFactory.CreateConnectionAsync())
+        using (var cmd = new NpgsqlCommand(@"
+            WITH pos_table AS (
+                INSERT INTO sales.tables
+                    (company_id, branch_id, table_number, name, status, created_by)
+                VALUES (@company, @branch, 991001, 'opaque-pos-shape', 'invoiced', 1)
+                RETURNING id
+            ), pos_order AS (
+                INSERT INTO sales.orders
+                    (company_id, branch_id, table_id, order_number, status,
+                     subtotal, tax, total, final_total_paid, created_by)
+                SELECT @company, @branch, id, 'opaque-completed-shape', 'completed',
+                       0, 0, 0, 0, 1
+                FROM pos_table
+                RETURNING id, table_id
+            ), pos_item AS (
+                INSERT INTO sales.order_items
+                    (company_id, order_id, product_id, product_name, quantity, unit_price)
+                SELECT @company, id, @product, 'Free product', 1, 0
+                FROM pos_order
+            )
+            SELECT id, table_id FROM pos_order;", conn))
+        {
+            cmd.Parameters.AddWithValue("@company", companyId);
+            cmd.Parameters.AddWithValue("@branch", branchId);
+            cmd.Parameters.AddWithValue("@product", productId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            posOrderId = reader.GetInt64(0);
+            posTableId = reader.GetInt64(1);
+        }
+
+        var restaurantItems = (await service.GetActiveRestaurantOrderItemsAsync(
+            companyId, branchId, restaurantOrder!.Id)).ToList();
+        Assert.Single(restaurantItems);
+        var restaurantTicket = await service.GetActiveRestaurantKitchenTicketAsync(
+            companyId, branchId, restaurantOrder.Id);
+        Assert.Single(restaurantTicket.Items);
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            service.GetActiveRestaurantOrderItemsAsync(companyId, branchId, posOrderId));
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            service.GetActiveRestaurantKitchenTicketAsync(companyId, branchId, posOrderId));
+
+        var cancelException = await Assert.ThrowsAsync<BusinessException>(() =>
+            service.CancelTableAsync(companyId, branchId, posTableId));
+        Assert.Equal("restaurant_order_not_active", cancelException.Code);
+
+        using (var conn = (NpgsqlConnection)await ConnectionFactory.CreateConnectionAsync())
+        using (var cmd = new NpgsqlCommand(@"
+            SELECT t.status, o.status
+            FROM sales.tables t
+            INNER JOIN sales.orders o
+                ON o.table_id = t.id
+               AND o.company_id = t.company_id
+               AND o.branch_id = t.branch_id
+            WHERE t.id = @table
+              AND t.company_id = @company
+              AND t.branch_id = @branch
+              AND o.id = @order;", conn))
+        {
+            cmd.Parameters.AddWithValue("@table", posTableId);
+            cmd.Parameters.AddWithValue("@order", posOrderId);
+            cmd.Parameters.AddWithValue("@company", companyId);
+            cmd.Parameters.AddWithValue("@branch", branchId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("invoiced", reader.GetString(0));
+            Assert.Equal("completed", reader.GetString(1));
+        }
+
+        await service.CancelTableAsync(companyId, branchId, restaurant.Table.Id);
+        var cancelledOrder = await SalesRepository.GetOrderByIdAsync(
+            restaurantOrder.Id, companyId, branchId);
+        var cancelledTable = await SalesRepository.GetTableByIdAsync(
+            restaurant.Table.Id, companyId, branchId);
+        Assert.Equal("cancelled", cancelledOrder!.Status);
+        Assert.Equal("cancelled", cancelledTable!.Status);
+    }
+
     [SkippableTheory]
     [InlineData(-1)]
     [InlineData(1)]

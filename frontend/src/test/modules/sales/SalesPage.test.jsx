@@ -2,8 +2,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SalesPage from '../../../modules/sales/SalesPage';
 
-const { invoiceTable, enqueuePostSale, invalidateQueries, toastSuccess, toastError, featureState, queryConfigs, authState } = vi.hoisted(() => ({
+const { cancelTable, invoiceTable, getSaleCatalog, enqueuePostSale, invalidateQueries, toastSuccess, toastError, featureState, queryConfigs, authState } = vi.hoisted(() => ({
+  cancelTable: vi.fn(),
   invoiceTable: vi.fn(),
+  getSaleCatalog: vi.fn(),
   enqueuePostSale: vi.fn(),
   invalidateQueries: vi.fn(),
   toastSuccess: vi.fn(),
@@ -27,7 +29,7 @@ vi.mock('@tanstack/react-query', () => ({
     queryConfigs.push(config);
     const { queryKey } = config;
     if (queryKey[0] === 'sales-tables') return { data: { data: [table] }, isLoading: false };
-    if (queryKey[0] === 'stock') return { data: { data: [] }, isLoading: false };
+    if (queryKey[0] === 'sale-catalog') return { data: { data: [] }, isLoading: false };
     return { data: { data: null }, isLoading: false };
   },
 }));
@@ -35,6 +37,7 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('../../../services/salesService', () => ({
   default: {
     getTables: vi.fn(),
+    cancelTable,
     invoiceTable,
   },
 }));
@@ -44,7 +47,7 @@ vi.mock('../../../services/cashRegisterService', () => ({
 }));
 
 vi.mock('../../../services/inventoryService', () => ({
-  default: { getStock: vi.fn() },
+  default: { getSaleCatalog },
 }));
 
 vi.mock('../../../stores/authStore', () => ({
@@ -64,8 +67,14 @@ vi.mock('react-hot-toast', () => ({
 }));
 
 vi.mock('../../../modules/sales/components/TableCard', () => ({
-  default: ({ table: target, onInvoice }) => (
-    <button onClick={() => onInvoice(target)}>Facturar mesa</button>
+  default: ({ table: target, onCancel, onInvoice, onPrintKitchen }) => (
+    <div>
+      {onInvoice
+        ? <button onClick={() => onInvoice(target)}>Facturar mesa</button>
+        : <span>Mesa operativa sin cobro</span>}
+      {onCancel && <button onClick={() => onCancel(target)}>Cancelar mesa</button>}
+      {onPrintKitchen && <button onClick={() => onPrintKitchen(target.items[0].orderId)}>Imprimir comanda</button>}
+    </div>
   ),
 }));
 
@@ -89,6 +98,9 @@ vi.mock('../../../modules/sales/components/CloseCashRegisterModal', () => ({ def
 vi.mock('../../../modules/sales/components/CashMovementModal', () => ({ default: () => null }));
 vi.mock('../../../modules/sales/components/CashRegisterHistory', () => ({ default: () => null }));
 vi.mock('../../../modules/sales/components/OrderHistoryTab', () => ({ default: () => null }));
+vi.mock('../../../modules/sales/components/KitchenTicket', () => ({
+  default: ({ orderId, scope }) => <div>Comanda {scope} {orderId}</div>,
+}));
 
 const confirmSale = async () => {
   fireEvent.click(screen.getAllByRole('button', { name: 'Facturar mesa' })[0]);
@@ -101,6 +113,8 @@ describe('SalesPage postventa restaurante H3', () => {
     queryConfigs.length = 0;
     authState.user = { role: 'manager', isPlatformAdmin: false };
     featureState.canAccess.mockReturnValue(true);
+    getSaleCatalog.mockResolvedValue({ data: [] });
+    cancelTable.mockResolvedValue({ success: true });
     invoiceTable.mockResolvedValue({
       data: {
         orderId: 987,
@@ -177,6 +191,17 @@ describe('SalesPage postventa restaurante H3', () => {
     expect(screen.queryByRole('button', { name: /Caja/i })).not.toBeInTheDocument();
   });
 
+  it('loads the sale-safe catalog instead of the inventory module stock endpoint', async () => {
+    featureState.canAccess.mockImplementation((code) => code === 'restaurant');
+
+    render(<SalesPage />);
+
+    const catalogQuery = queryConfigs.find((config) => config.queryKey[0] === 'sale-catalog');
+    expect(catalogQuery.enabled).toBe(true);
+    await catalogQuery.queryFn();
+    expect(getSaleCatalog).toHaveBeenCalledWith(7);
+  });
+
   it('permite caja sin montar queries de restaurante', () => {
     featureState.canAccess.mockImplementation((code) => code === 'cash');
 
@@ -184,7 +209,7 @@ describe('SalesPage postventa restaurante H3', () => {
 
     expect(queryConfigs.find((config) => config.queryKey[0] === 'cash-register-active')?.enabled).toBe(true);
     expect(queryConfigs.find((config) => config.queryKey[0] === 'sales-tables')?.enabled).toBe(false);
-    expect(queryConfigs.find((config) => config.queryKey[0] === 'stock')?.enabled).toBe(false);
+    expect(queryConfigs.find((config) => config.queryKey[0] === 'sale-catalog')?.enabled).toBe(false);
     expect(screen.queryByRole('button', { name: /Mesas/i })).not.toBeInTheDocument();
   });
 
@@ -196,20 +221,29 @@ describe('SalesPage postventa restaurante H3', () => {
     view.rerender(<SalesPage initialTab="cash" />);
     expect(await screen.findByText('No hay caja abierta')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Facturar mesa' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancelar mesa' })).not.toBeInTheDocument();
 
     view.rerender(<SalesPage initialTab="tables" />);
     expect((await screen.findAllByRole('button', { name: 'Facturar mesa' })).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Imprimir comanda' }).length).toBeGreaterThan(0);
   });
 
-  it('hides credits and refund actions from waiter but keeps sales read-only', () => {
+  it('keeps waiter on table operations without invoice, credits, refunds or sales history', () => {
     authState.user = { role: 'waiter', isPlatformAdmin: false };
     featureState.canAccess.mockImplementation((code) => code === 'restaurant');
 
     render(<SalesPage />);
 
     expect(screen.queryByRole('button', { name: /Créditos/i })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Ventas/i }));
-    expect(screen.getByText('Solo consulta')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Facturar mesa' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('Mesa operativa sin cobro').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /Ventas/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Historial/i })).not.toBeInTheDocument();
+    expect(invoiceTable).not.toHaveBeenCalled();
+    expect(cancelTable).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Imprimir comanda' })[0]);
+    expect(screen.getByText('Comanda activeRestaurant 44')).toBeInTheDocument();
   });
 
   it('allows cashier cash operations when the company modules are enabled', () => {
@@ -219,6 +253,8 @@ describe('SalesPage postventa restaurante H3', () => {
     render(<SalesPage />);
 
     expect(screen.getByRole('button', { name: /Créditos/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Facturar mesa' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Cancelar mesa' }).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: /Ventas/i }));
     expect(screen.getByText('Puede devolver')).toBeInTheDocument();
   });

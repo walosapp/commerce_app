@@ -101,6 +101,20 @@ public class ControllerFeatureMetadataTests
     }
 
     [Fact]
+    public void Sale_Catalog_Requires_An_Operational_Sales_Feature()
+    {
+        var requirement = typeof(InventoryController)
+            .GetMethod(nameof(InventoryController.GetSaleCatalog))!
+            .GetCustomAttributes(typeof(RequireAnyFeatureAttribute), true)
+            .Cast<RequireAnyFeatureAttribute>()
+            .Single();
+
+        Assert.Equal(
+            [WalosFeatures.Restaurant, WalosFeatures.Pos, WalosFeatures.Delivery],
+            requirement.Features);
+    }
+
+    [Fact]
     public void Sales_Shared_Reads_Allow_Restaurant_Or_Pos_But_Table_And_Kitchen_Are_Restaurant_Only()
     {
         var shared = typeof(SalesController)
@@ -116,6 +130,10 @@ public class ControllerFeatureMetadataTests
             .Cast<RequireFeatureAttribute>().Single().Feature);
         Assert.Equal(WalosFeatures.Restaurant, typeof(SalesController)
             .GetMethod(nameof(SalesController.GetKitchenTicket))!
+            .GetCustomAttributes(typeof(RequireFeatureAttribute), true)
+            .Cast<RequireFeatureAttribute>().Single().Feature);
+        Assert.Equal(WalosFeatures.Restaurant, typeof(SalesController)
+            .GetMethod(nameof(SalesController.GetActiveRestaurantKitchenTicket))!
             .GetCustomAttributes(typeof(RequireFeatureAttribute), true)
             .Cast<RequireFeatureAttribute>().Single().Feature);
     }

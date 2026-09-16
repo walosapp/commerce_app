@@ -55,6 +55,37 @@ public class InventoryService : IInventoryService
         return branchId;
     }
 
+    public async Task<IReadOnlyList<SaleCatalogProductResponse>> GetSaleCatalogAsync(
+        long companyId,
+        long? tenantBranchId,
+        long? requestedBranchId)
+    {
+        var branchId = await ResolveBranchAsync(
+            companyId, tenantBranchId, requestedBranchId, required: true)
+            ?? throw new ValidationException("ID de sucursal requerido");
+        var stock = await _repository.GetStockByBranchAsync(branchId, companyId);
+
+        return stock.Select(item => new SaleCatalogProductResponse(
+                item.ProductId,
+                item.ProductName ?? string.Empty,
+                item.Sku,
+                item.Category,
+                item.Unit,
+                item.SalePrice ?? 0,
+                item.ImageUrl,
+                item.ProductType,
+                item.HasValidRecipe,
+                item.TrackStock,
+                item.IsForSale,
+                item.IsPerishable,
+                item.AvailableQuantity,
+                item.IsForSale
+                && item.SalePrice is >= 0
+                && (!string.Equals(item.ProductType?.Trim(), "prepared", StringComparison.OrdinalIgnoreCase)
+                    || item.HasValidRecipe)))
+            .ToList();
+    }
+
     public async Task<Product> CreateProductAsync(long companyId, long userId, long? branchId, CreateProductRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -293,7 +324,8 @@ public class InventoryService : IInventoryService
                 Units = units.Select(u => $"{u.Name} ({u.Abbreviation})").ToList()
             }, history: null);
 
-            if (aiResponse.Action is "add_stock" or "create_and_stock")
+            if (IsDisabledStockMutation(aiResponse.Action)
+                || IsDisabledStockMutation(aiResponse.ToolName))
             {
                 return new AiProcessResult
                 {
@@ -359,6 +391,11 @@ public class InventoryService : IInventoryService
             Message = "Por seguridad, el ingreso de stock desde IA no esta disponible en V1. Registra la entrada desde Inventario para garantizar una operacion atomica y auditable."
         };
     }
+
+    private static bool IsDisabledStockMutation(string? operation) =>
+        operation is not null
+        && (operation.Equals("add_stock", StringComparison.OrdinalIgnoreCase)
+            || operation.Equals("create_and_stock", StringComparison.OrdinalIgnoreCase));
 
     public async Task<IEnumerable<Stock>> GetLowStockProductsAsync(long companyId, long branchId)
     {

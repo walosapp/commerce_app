@@ -29,8 +29,13 @@ public static class WalosPolicies
     public const string Finance = "Finance";
     public const string PurchasesRead = "PurchasesRead";
     public const string SuppliersRead = "SuppliersRead";
+    public const string InventoryRead = "InventoryRead";
     public const string InventoryWrite = "InventoryWrite";
-    public const string SalesOperator = "SalesOperator";
+    public const string Recipes = "Recipes";
+    public const string CatalogRead = "CatalogRead";
+    public const string SalesTableOperator = "SalesTableOperator";
+    public const string SalesInvoiceOperator = "SalesInvoiceOperator";
+    public const string SalesOperator = SalesTableOperator;
     public const string CashOperator = "CashOperator";
     public const string DeliveryOperator = "DeliveryOperator";
     public const string DeliveryManage = "DeliveryManage";

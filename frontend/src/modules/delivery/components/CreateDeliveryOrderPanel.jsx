@@ -40,16 +40,12 @@ const CreateDeliveryOrderPanel = ({ isOpen, onClose, onCreated }) => {
   const [error, setError]         = useState('');
 
   const { data: stockData, isLoading: loadingProducts } = useQuery({
-    queryKey: ['stock', branchId, tenantId],
-    queryFn: () => inventoryService.getStock(branchId),
+    queryKey: ['sale-catalog', branchId, tenantId],
+    queryFn: () => inventoryService.getSaleCatalog(branchId),
     enabled: isOpen && !!branchId,
   });
 
-  const allSellable = (stockData?.data ?? []).filter(p =>
-    p.isForSale &&
-    Number(p.costPrice ?? 0) > 0 &&
-    Number(p.salePrice ?? 0) > 0
-  );
+  const allSellable = (stockData?.data ?? []).filter(p => p.isConfiguredForSale);
 
   const products = allSellable
     .filter(p => {

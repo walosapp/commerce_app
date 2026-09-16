@@ -27,8 +27,8 @@ export const FEATURE_LABELS = Object.freeze({
 const ROLE_FEATURES = Object.freeze({
   super_admin: FEATURE_CODES,
   manager: FEATURE_CODES,
-  cashier: ['dashboard', 'inventory', 'restaurant', 'pos', 'cash', 'delivery'],
-  waiter: ['dashboard', 'inventory', 'restaurant', 'delivery'],
+  cashier: ['restaurant', 'pos', 'cash', 'delivery'],
+  waiter: ['restaurant', 'delivery'],
 });
 
 export const isTrustedDev = (user) =>
@@ -40,8 +40,26 @@ export const isPlatformOnlyUser = (user) =>
 export const canAccessPlatform = (user) =>
   isTrustedDev(user) || isPlatformOnlyUser(user);
 
-export const getDefaultRouteForUser = (user) => {
+const OPERATOR_LANDING_ROUTES = Object.freeze({
+  cashier: [
+    ['restaurant', '/sales'],
+    ['pos', '/pos-deli'],
+    ['cash', '/cash'],
+    ['delivery', '/delivery'],
+  ],
+  waiter: [
+    ['restaurant', '/sales'],
+    ['delivery', '/delivery'],
+  ],
+});
+
+export const getDefaultRouteForUser = (user, canAccess = null) => {
   if (isPlatformOnlyUser(user)) return '/admin/tenants';
+  const operatorRoutes = OPERATOR_LANDING_ROUTES[user?.role];
+  if (operatorRoutes) {
+    if (typeof canAccess !== 'function') return '/landing';
+    return operatorRoutes.find(([feature]) => canAccess(feature))?.[1] ?? null;
+  }
   return '/';
 };
 
@@ -65,12 +83,18 @@ export const canManageCatalog = (user) =>
 
 export const canDeleteCatalog = (user) =>
   !isPlatformOnlyUser(user) &&
-  (isTrustedDev(user) || user?.role === 'super_admin');
+  (isTrustedDev(user) || ['super_admin', 'manager'].includes(user?.role));
 
 export const canOperateCash = (user) =>
   !isPlatformOnlyUser(user) &&
   (isTrustedDev(user) || ['super_admin', 'manager', 'cashier'].includes(user?.role));
 
+export const canInvoiceSales = canOperateCash;
+
+export const canCancelSalesTable = canOperateCash;
+
+export const canReviewSales = canOperateCash;
+
 export const canManageDelivery = (user) =>
   !isPlatformOnlyUser(user) &&
-  (isTrustedDev(user) || ['super_admin', 'manager'].includes(user?.role));
+  (isTrustedDev(user) || ['super_admin', 'manager', 'cashier'].includes(user?.role));

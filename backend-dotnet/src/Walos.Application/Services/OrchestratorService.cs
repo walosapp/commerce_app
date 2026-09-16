@@ -60,11 +60,14 @@ public class OrchestratorService
 
         var context = ParseContext(session.Context);
         if (!context.TryGetValue("capability_fingerprint", out var storedFingerprint)
-            || !string.Equals(storedFingerprint?.ToString(), capabilities.Fingerprint, StringComparison.Ordinal))
+            || !string.Equals(storedFingerprint?.ToString(), capabilities.Fingerprint, StringComparison.Ordinal)
+            || !TryGetContextLong(context, "branch_id", out var storedBranchId)
+            || storedBranchId != branchId)
         {
             context = new Dictionary<string, object>
             {
-                ["capability_fingerprint"] = capabilities.Fingerprint
+                ["capability_fingerprint"] = capabilities.Fingerprint,
+                ["branch_id"] = branchId
             };
             await _sessions.ResetSessionAsync(
                 session.Id,
@@ -74,7 +77,7 @@ public class OrchestratorService
         }
 
         var history = (await _sessions.GetMessagesAsync(session.Id, companyId, userId))
-            .Where(aiMessage => HasCapabilityFingerprint(aiMessage.Metadata, capabilities.Fingerprint))
+            .Where(aiMessage => HasMessageScope(aiMessage.Metadata, capabilities.Fingerprint, branchId))
             .ToList();
         var lastAgent = context.TryGetValue("last_agent", out var la) ? la.ToString() : "orchestrator";
 
@@ -94,9 +97,9 @@ public class OrchestratorService
                 flow.ToString()!, context, userId, capabilities);
             flowResult.SessionId = session.Id;
             await _sessions.AddMessageAsync(
-                session.Id, companyId, userId, "user", message, BuildMessageMetadata(capabilities.Fingerprint));
+                session.Id, companyId, userId, "user", message, BuildMessageMetadata(capabilities.Fingerprint, branchId));
             await _sessions.AddMessageAsync(session.Id, companyId, userId, "assistant", flowResult.Message,
-                BuildMessageMetadata(capabilities.Fingerprint, flowResult.Payload));
+                BuildMessageMetadata(capabilities.Fingerprint, branchId, flowResult.Payload));
             return flowResult;
         }
 
@@ -139,9 +142,9 @@ public class OrchestratorService
 
         response.SessionId = session.Id;
         await _sessions.AddMessageAsync(
-            session.Id, companyId, userId, "user", message, BuildMessageMetadata(capabilities.Fingerprint));
+            session.Id, companyId, userId, "user", message, BuildMessageMetadata(capabilities.Fingerprint, branchId));
         await _sessions.AddMessageAsync(session.Id, companyId, userId, "assistant", response.Message,
-            BuildMessageMetadata(capabilities.Fingerprint, response.Payload));
+            BuildMessageMetadata(capabilities.Fingerprint, branchId, response.Payload));
 
         return response;
     }
@@ -288,7 +291,10 @@ Responde SIEMPRE en JSON válido. Idioma: español.";
         try
         {
             var parsed = JsonSerializer.Deserialize<JsonElement>(aiRaw);
-            var action = parsed.TryGetProperty("action", out var a) ? a.GetString() ?? "query" : "query";
+            if (GetDisabledStockMutationRejection(parsed, "inventory") is { } rejection)
+                return rejection;
+
+            var action = GetStringProperty(parsed, "action") ?? "query";
             var responseText = parsed.TryGetProperty("response", out var r) && r.ValueKind == JsonValueKind.String
                 ? r.GetString() ?? "No pude interpretar la respuesta del asistente."
                 : "No pude interpretar la respuesta del asistente.";
@@ -339,16 +345,6 @@ Responde SIEMPRE en JSON válido. Idioma: español.";
                         NextAction = "select_supplier",
                         Prompt = "Desmarca los productos que NO quieres pedir, luego dime el proveedor."
                     }
-                };
-            }
-
-            if (action == "add_stock")
-            {
-                return new AiChatResponse
-                {
-                    AgentType = "inventory",
-                    ResponseType = "text",
-                    Message = "Por seguridad, el ingreso de stock desde IA no esta disponible en V1. Registra la entrada desde Inventario para garantizar una operacion atomica y auditable."
                 };
             }
 
@@ -423,6 +419,9 @@ Idioma: español.";
             try
             {
                 var parsed = JsonSerializer.Deserialize<JsonElement>(aiRaw);
+                if (GetDisabledStockMutationRejection(parsed, "inventory", sessionId) is { } rejection)
+                    return rejection;
+
                 var action = parsed.TryGetProperty("action", out var a) ? a.GetString() ?? "" : "";
                 var responseText = parsed.TryGetProperty("response", out var r) && r.ValueKind == JsonValueKind.String
                     ? r.GetString() ?? "No pude interpretar la respuesta del asistente."
@@ -533,6 +532,9 @@ Idioma: español.";
         try
         {
             var parsed = JsonSerializer.Deserialize<JsonElement>(aiRaw);
+            if (GetDisabledStockMutationRejection(parsed, "delivery") is { } rejection)
+                return rejection;
+
             var action = parsed.TryGetProperty("action", out var a) ? a.GetString() ?? "query" : "query";
             var responseText = parsed.TryGetProperty("response", out var r) && r.ValueKind == JsonValueKind.String
                 ? r.GetString() ?? "No pude interpretar la respuesta del asistente."
@@ -611,13 +613,16 @@ Historial reciente:
         catch { return new(); }
     }
 
-    private static bool HasCapabilityFingerprint(string metadataJson, string fingerprint)
+    private static bool HasMessageScope(string metadataJson, string fingerprint, long branchId)
     {
         try
         {
             var metadata = JsonSerializer.Deserialize<JsonElement>(metadataJson);
             return metadata.TryGetProperty("capability_fingerprint", out var stored)
-                && string.Equals(stored.GetString(), fingerprint, StringComparison.Ordinal);
+                && string.Equals(stored.GetString(), fingerprint, StringComparison.Ordinal)
+                && metadata.TryGetProperty("branch_id", out var storedBranch)
+                && storedBranch.TryGetInt64(out var messageBranchId)
+                && messageBranchId == branchId;
         }
         catch
         {
@@ -625,10 +630,74 @@ Historial reciente:
         }
     }
 
-    private static string BuildMessageMetadata(string fingerprint, object? payload = null) =>
+    private static bool TryGetContextLong(
+        IReadOnlyDictionary<string, object> context,
+        string key,
+        out long value)
+    {
+        value = 0;
+        if (!context.TryGetValue(key, out var raw) || raw is null)
+            return false;
+
+        return raw switch
+        {
+            long number => SetContextLong(number, out value),
+            int number => SetContextLong(number, out value),
+            JsonElement { ValueKind: JsonValueKind.Number } element => element.TryGetInt64(out value),
+            _ => long.TryParse(raw.ToString(), out value)
+        };
+    }
+
+    private static bool SetContextLong(long number, out long value)
+    {
+        value = number;
+        return true;
+    }
+
+    private static string? GetStringProperty(JsonElement element, params string[] names)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (names.Any(name => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                && property.Value.ValueKind == JsonValueKind.String)
+                return property.Value.GetString();
+        }
+
+        return null;
+    }
+
+    private static bool IsDisabledStockMutation(string? operation) =>
+        operation is not null
+        && (operation.Equals("add_stock", StringComparison.OrdinalIgnoreCase)
+            || operation.Equals("create_and_stock", StringComparison.OrdinalIgnoreCase));
+
+    private static AiChatResponse? GetDisabledStockMutationRejection(
+        JsonElement response,
+        string agentType,
+        long? sessionId = null)
+    {
+        var action = GetStringProperty(response, "action");
+        var toolName = GetStringProperty(response, "toolName", "tool_name");
+        if (!IsDisabledStockMutation(action) && !IsDisabledStockMutation(toolName))
+            return null;
+
+        var rejection = new AiChatResponse
+        {
+            AgentType = agentType,
+            ResponseType = "text",
+            Message = "Por seguridad, el ingreso de stock desde IA no esta disponible en V1. Registra la entrada desde Inventario para garantizar una operacion atomica y auditable."
+        };
+        if (sessionId.HasValue)
+            rejection.SessionId = sessionId.Value;
+
+        return rejection;
+    }
+
+    private static string BuildMessageMetadata(string fingerprint, long branchId, object? payload = null) =>
         JsonSerializer.Serialize(new
         {
             capability_fingerprint = fingerprint,
+            branch_id = branchId,
             payload
         }, _json);
 }

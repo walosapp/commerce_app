@@ -9,6 +9,10 @@ export const printService = {
     const response = await api.get(`/sales/orders/${orderId}/kitchen`);
     return response.data;
   },
+  getActiveRestaurantKitchenTicket: async (orderId) => {
+    const response = await api.get(`/sales/restaurant/orders/${orderId}/kitchen`);
+    return response.data;
+  },
   getZReport: async (registerId) => {
     const response = await api.get(`/sales/cash-register/${registerId}/z-report`);
     return response.data;

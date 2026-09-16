@@ -5,7 +5,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Clock, Receipt, X, GripVertical, Plus, Minus, PlusCircle } from 'lucide-react';
+import { Clock, Receipt, X, GripVertical, Plus, Minus, PlusCircle, Printer } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatCurrency';
 
 const InlineTableName = ({ table, onRename }) => {
@@ -86,7 +86,7 @@ const useIsMobile = () => {
   return mobile;
 };
 
-const TableCard = ({ table, tableIndex = 0, onInvoice, onCancel, onUpdateItemQty, onAddProducts, onRename, containerRef, arrangeKey = 0, stockByProduct = {} }) => {
+const TableCard = ({ table, tableIndex = 0, onInvoice, onCancel, onPrintKitchen, onUpdateItemQty, onAddProducts, onRename, containerRef, arrangeKey = 0, stockByProduct = {} }) => {
   const isMobile = useIsMobile();
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
@@ -220,20 +220,33 @@ const TableCard = ({ table, tableIndex = 0, onInvoice, onCancel, onUpdateItemQty
         >
           <PlusCircle className="h-4 w-4" />
         </button>
-        <button
-          onClick={() => onCancel?.(table)}
-          className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-          title="Cancelar mesa"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => onInvoice?.(table)}
-          className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-medium text-white hover:bg-green-700 transition-colors"
-        >
-          <Receipt className="h-3.5 w-3.5" />
-          Facturar
-        </button>
+        {onPrintKitchen && items[0]?.orderId && (
+          <button
+            onClick={() => onPrintKitchen(items[0].orderId)}
+            className="rounded-lg p-2 text-orange-500 hover:bg-orange-50 transition-colors"
+            title="Imprimir comanda"
+          >
+            <Printer className="h-4 w-4" />
+          </button>
+        )}
+        {onCancel && (
+          <button
+            onClick={() => onCancel(table)}
+            className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+            title="Cancelar mesa"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+        {onInvoice && (
+          <button
+            onClick={() => onInvoice(table)}
+            className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-medium text-white hover:bg-green-700 transition-colors"
+          >
+            <Receipt className="h-3.5 w-3.5" />
+            Facturar
+          </button>
+        )}
       </div>
     </div>
   );

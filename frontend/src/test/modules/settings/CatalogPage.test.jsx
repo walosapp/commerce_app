@@ -64,11 +64,11 @@ describe('CatalogPage permissions', () => {
     expect(screen.getAllByTitle('Eliminar')).toHaveLength(2);
   });
 
-  it('keeps manager catalog writes but hides delete actions', async () => {
+  it('keeps manager catalog writes and delete actions', async () => {
     authState.user = { role: 'manager', isPlatformAdmin: false };
     renderPage();
     await screen.findByText('Bebidas');
     expect(screen.getByText('Nueva categoria')).toBeInTheDocument();
-    expect(screen.queryByTitle('Eliminar')).not.toBeInTheDocument();
+    expect(screen.getAllByTitle('Eliminar')).toHaveLength(2);
   });
 });

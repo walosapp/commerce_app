@@ -12,7 +12,7 @@ namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/catalog")]
-[Authorize]
+[Authorize(Policy = WalosPolicies.CatalogRead)]
 [RequireAnyFeature(WalosFeatures.Inventory, WalosFeatures.Restaurant, WalosFeatures.Pos,
     WalosFeatures.Purchases, WalosFeatures.Suppliers)]
 public class CatalogController : ControllerBase

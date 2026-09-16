@@ -100,13 +100,40 @@ describe('Layout company features', () => {
 
   it('does not expose Users or Settings navigation to an operational cashier', () => {
     authState.user = { role: 'cashier', isPlatformAdmin: false, email: 'cashier@walos.app' };
-    featureState.canAccess.mockImplementation((code) => ['dashboard', 'cash'].includes(code));
+    featureState.canAccess.mockImplementation((code) =>
+      canRoleAccessFeature(authState.user, code));
 
     render(<MemoryRouter><Layout><div>Dashboard</div></Layout></MemoryRouter>);
 
+    expect(screen.queryByRole('link', { name: /Dashboard/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Inventario/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Usuarios/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Configuracion/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Restaurante/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /POS/i })).toHaveAttribute('href', '/pos-deli');
     expect(screen.getByRole('link', { name: /Caja/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Delivery/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Compras/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Proveedores/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Finanzas/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Asistente IA/i })).not.toBeInTheDocument();
+  });
+
+  it('shows waiter only Restaurante and Delivery tenant modules', () => {
+    authState.user = { role: 'waiter', isPlatformAdmin: false, email: 'waiter@walos.app' };
+    featureState.canAccess.mockImplementation((code) =>
+      canRoleAccessFeature(authState.user, code));
+
+    render(<MemoryRouter><Layout><div>Restaurante</div></Layout></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: /Restaurante/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Delivery/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Dashboard/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Inventario/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^POS$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Caja/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Usuarios/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Configuracion/i })).not.toBeInTheDocument();
   });
 
   it('fails closed for a non-canonical legacy role', () => {

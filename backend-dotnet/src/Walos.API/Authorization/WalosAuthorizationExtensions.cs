@@ -31,27 +31,35 @@ public static class WalosAuthorizationExtensions
             AddRolePolicy(options, WalosPolicies.Users,
                 WalosRoles.SuperAdmin, WalosRoles.Manager);
             AddRolePolicy(options, WalosPolicies.Dashboard,
-                WalosRoles.SuperAdmin, WalosRoles.Manager, WalosRoles.Cashier, WalosRoles.Waiter);
+                WalosRoles.SuperAdmin, WalosRoles.Manager);
             AddRolePolicy(options, WalosPolicies.Finance,
                 WalosRoles.SuperAdmin, WalosRoles.Manager);
             AddRolePolicy(options, WalosPolicies.PurchasesRead,
                 WalosRoles.SuperAdmin, WalosRoles.Manager);
             AddRolePolicy(options, WalosPolicies.SuppliersRead,
                 WalosRoles.SuperAdmin, WalosRoles.Manager);
+            AddRolePolicy(options, WalosPolicies.InventoryRead,
+                WalosRoles.SuperAdmin, WalosRoles.Manager);
             AddRolePolicy(options, WalosPolicies.InventoryWrite,
                 WalosRoles.SuperAdmin, WalosRoles.Manager);
-            AddRolePolicy(options, WalosPolicies.SalesOperator,
+            AddRolePolicy(options, WalosPolicies.Recipes,
+                WalosRoles.SuperAdmin, WalosRoles.Manager);
+            AddRolePolicy(options, WalosPolicies.CatalogRead,
                 WalosRoles.SuperAdmin, WalosRoles.Manager, WalosRoles.Cashier, WalosRoles.Waiter);
+            AddRolePolicy(options, WalosPolicies.SalesTableOperator,
+                WalosRoles.SuperAdmin, WalosRoles.Manager, WalosRoles.Cashier, WalosRoles.Waiter);
+            AddRolePolicy(options, WalosPolicies.SalesInvoiceOperator,
+                WalosRoles.SuperAdmin, WalosRoles.Manager, WalosRoles.Cashier);
             AddRolePolicy(options, WalosPolicies.CashOperator,
                 WalosRoles.SuperAdmin, WalosRoles.Manager, WalosRoles.Cashier);
             AddRolePolicy(options, WalosPolicies.DeliveryOperator,
                 WalosRoles.SuperAdmin, WalosRoles.Manager, WalosRoles.Cashier, WalosRoles.Waiter);
             AddRolePolicy(options, WalosPolicies.DeliveryManage,
-                WalosRoles.SuperAdmin, WalosRoles.Manager);
+                WalosRoles.SuperAdmin, WalosRoles.Manager, WalosRoles.Cashier);
             AddRolePolicy(options, WalosPolicies.CatalogWrite,
                 WalosRoles.SuperAdmin, WalosRoles.Manager);
             AddRolePolicy(options, WalosPolicies.CatalogDelete,
-                WalosRoles.SuperAdmin);
+                WalosRoles.SuperAdmin, WalosRoles.Manager);
             AddRolePolicy(options, WalosPolicies.PosDeliOperator,
                 WalosRoles.SuperAdmin, WalosRoles.Manager, WalosRoles.Cashier);
 

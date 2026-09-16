@@ -24,11 +24,12 @@ import CloseCashRegisterModal from './components/CloseCashRegisterModal';
 import CashMovementModal from './components/CashMovementModal';
 import CashRegisterHistory from './components/CashRegisterHistory';
 import OrderHistoryTab from './components/OrderHistoryTab';
+import KitchenTicket from './components/KitchenTicket';
 
 import { formatCurrency } from '../../utils/formatCurrency';
 import { calculateExpectedCash } from '../../utils/cashRegister';
 import useCompanyFeatures from '../../hooks/useCompanyFeatures';
-import { canOperateCash } from '../../config/companyFeatures';
+import { canCancelSalesTable, canInvoiceSales, canOperateCash, canReviewSales } from '../../config/companyFeatures';
 
 const CashSummaryView = ({ register }) => {
   const elapsed = Math.floor((Date.now() - new Date(register.openedAt).getTime()) / 60000);
@@ -89,6 +90,9 @@ const SalesPage = ({ initialTab = 'tables' }) => {
   const restaurantEnabled = canAccess('restaurant');
   const cashEnabled = canAccess('cash');
   const canUseCashOperations = canOperateCash(user);
+  const canInvoice = canInvoiceSales(user);
+  const canCancelTable = canCancelSalesTable(user);
+  const canReview = canReviewSales(user);
   const enqueuePostSale = usePostSaleHardwareStore((state) => state.enqueuePostSale);
   const queryClient = useQueryClient();
   const areaRef = useRef(null);
@@ -96,6 +100,7 @@ const SalesPage = ({ initialTab = 'tables' }) => {
 
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [invoiceTarget, setInvoiceTarget] = useState(null);
+  const [kitchenTicketOrderId, setKitchenTicketOrderId] = useState(null);
   const [addProductsTarget, setAddProductsTarget] = useState(null);
   const [arrangeKey, setArrangeKey] = useState(0);
   const [showCredits, setShowCredits] = useState(false);
@@ -124,8 +129,8 @@ const SalesPage = ({ initialTab = 'tables' }) => {
   });
 
   const { data: stockData, isLoading: stockLoading } = useQuery({
-    queryKey: ['stock', branchId],
-    queryFn: () => inventoryService.getStock(branchId),
+    queryKey: ['sale-catalog', branchId],
+    queryFn: () => inventoryService.getSaleCatalog(branchId),
     enabled: !!branchId && restaurantEnabled,
   });
 
@@ -133,9 +138,7 @@ const SalesPage = ({ initialTab = 'tables' }) => {
   const stockItems = stockData?.data || [];
   const products = stockItems.filter(
     (p) =>
-      p.isForSale &&
-      Number(p.costPrice ?? 0) > 0 &&
-      Number(p.salePrice ?? 0) > 0 &&
+      p.isConfiguredForSale &&
       (!p.trackStock || Number(p.availableQuantity ?? p.quantity ?? 0) > 0)
   );
   const stockByProduct = useMemo(
@@ -261,6 +264,8 @@ const SalesPage = ({ initialTab = 'tables' }) => {
   };
 
   const handleInvoice = async (tableId, payload) => {
+    if (!canInvoice) return null;
+
     const response = await salesService.invoiceTable(tableId, payload);
     const invoice = response?.data;
 
@@ -276,6 +281,7 @@ const SalesPage = ({ initialTab = 'tables' }) => {
   };
 
   const handleCancel = async (table) => {
+    if (!canCancelTable) return;
     if (!window.confirm(`Cancelar Mesa ${table.tableNumber}?`)) return;
     await salesService.cancelTable(table.id);
     toast.success('Mesa cancelada');
@@ -321,8 +327,10 @@ const SalesPage = ({ initialTab = 'tables' }) => {
     ...(restaurantEnabled ? [
       { k: 'tables',  label: 'Mesas',   icon: TableProperties },
       ...(canUseCashOperations ? [{ k: 'credits', label: 'Créditos', icon: CreditCard }] : []),
-      { k: 'sales',   label: 'Ventas',   icon: TrendingUp },
-      { k: 'history', label: 'Historial', icon: ClipboardList },
+      ...(canReview ? [
+        { k: 'sales',   label: 'Ventas',   icon: TrendingUp },
+        { k: 'history', label: 'Historial', icon: ClipboardList },
+      ] : []),
     ] : []),
     ...(cashEnabled ? [{ k: 'cash', label: 'Caja', icon: Wallet }] : []),
   ];
@@ -440,8 +448,9 @@ const SalesPage = ({ initialTab = 'tables' }) => {
                       tableIndex={idx}
                       containerRef={areaRef}
                       arrangeKey={arrangeKey}
-                      onInvoice={(t) => setInvoiceTarget(t)}
-                      onCancel={handleCancel}
+                      onInvoice={canInvoice ? (t) => setInvoiceTarget(t) : undefined}
+                      onCancel={canCancelTable ? handleCancel : undefined}
+                      onPrintKitchen={setKitchenTicketOrderId}
                       onUpdateItemQty={handleUpdateItemQty}
                       onAddProducts={handleAddProducts}
                       onRename={handleRenameTable}
@@ -457,8 +466,9 @@ const SalesPage = ({ initialTab = 'tables' }) => {
                       tableIndex={idx}
                       containerRef={areaRef}
                       arrangeKey={arrangeKey}
-                      onInvoice={(t) => setInvoiceTarget(t)}
-                      onCancel={handleCancel}
+                      onInvoice={canInvoice ? (t) => setInvoiceTarget(t) : undefined}
+                      onCancel={canCancelTable ? handleCancel : undefined}
+                      onPrintKitchen={setKitchenTicketOrderId}
                       onUpdateItemQty={handleUpdateItemQty}
                       onAddProducts={handleAddProducts}
                       onRename={handleRenameTable}
@@ -529,12 +539,22 @@ const SalesPage = ({ initialTab = 'tables' }) => {
             submitLabel="Agregar Productos"
           />
 
-          <InvoicePanel
-            isOpen={!!invoiceTarget}
-            onClose={() => setInvoiceTarget(null)}
-            onConfirm={handleInvoice}
-            table={invoiceTarget}
-          />
+          {canInvoice && (
+            <InvoicePanel
+              isOpen={!!invoiceTarget}
+              onClose={() => setInvoiceTarget(null)}
+              onConfirm={handleInvoice}
+              table={invoiceTarget}
+            />
+          )}
+
+          {kitchenTicketOrderId && (
+            <KitchenTicket
+              orderId={kitchenTicketOrderId}
+              scope="activeRestaurant"
+              onClose={() => setKitchenTicketOrderId(null)}
+            />
+          )}
         </>
       )}
 

@@ -13,7 +13,7 @@ namespace Walos.API.Controllers;
 
 [ApiController]
 [Route("api/v1/recipes")]
-[Authorize]
+[Authorize(Policy = WalosPolicies.Recipes)]
 [RequireFeature(WalosFeatures.Inventory)]
 public class RecipesController : ControllerBase
 {

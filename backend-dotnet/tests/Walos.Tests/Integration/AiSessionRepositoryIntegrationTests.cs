@@ -13,21 +13,35 @@ public sealed class AiSessionRepositoryIntegrationTests : V1IntegrationTestBase
         var branchId = await SeedBranchAsync(companyId);
         var ownerId = await SeedUserAsync(companyId, branchId);
         var otherUserId = await SeedUserAsync(companyId, branchId);
+        var foreignCompanyId = await SeedCompanyAsync("AI foreign session scope");
+        var foreignBranchId = await SeedBranchAsync(foreignCompanyId);
+        var foreignUserId = await SeedUserAsync(foreignCompanyId, foreignBranchId);
         var repository = new AiSessionRepository(
             ConnectionFactory,
             NullLogger<AiSessionRepository>.Instance);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            repository.GetOrCreateSessionAsync(companyId, foreignUserId));
+
         var session = await repository.GetOrCreateSessionAsync(companyId, ownerId);
         await repository.AddMessageAsync(session.Id, companyId, ownerId, "user", "owner secret");
         await repository.AddMessageAsync(session.Id, companyId, otherUserId, "user", "cross-user write");
+        await repository.AddMessageAsync(session.Id, foreignCompanyId, foreignUserId, "user", "cross-tenant write");
         await repository.UpdateSessionContextAsync(
             session.Id, companyId, otherUserId, "{\"cross_user\":true}", "inventory");
+        await repository.UpdateSessionContextAsync(
+            session.Id, foreignCompanyId, foreignUserId, "{\"cross_tenant\":true}", "inventory");
 
         Assert.Null(await repository.GetSessionAsync(session.Id, companyId, otherUserId));
+        Assert.Null(await repository.GetSessionAsync(session.Id, foreignCompanyId, foreignUserId));
         await repository.ResetSessionAsync(session.Id, companyId, otherUserId, "{}");
+        await repository.ResetSessionAsync(session.Id, foreignCompanyId, foreignUserId, "{}");
         Assert.Empty(await repository.GetMessagesAsync(session.Id, companyId, otherUserId));
+        Assert.Empty(await repository.GetMessagesAsync(session.Id, foreignCompanyId, foreignUserId));
         Assert.Single(await repository.GetMessagesAsync(session.Id, companyId, ownerId));
         var unchanged = await repository.GetSessionAsync(session.Id, companyId, ownerId);
         Assert.DoesNotContain("cross_user", unchanged!.Context);
+        Assert.DoesNotContain("cross_tenant", unchanged.Context);
 
         await repository.ResetSessionAsync(
             session.Id,

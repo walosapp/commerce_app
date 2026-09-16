@@ -276,6 +276,36 @@ public class InventoryRepository : IInventoryRepository
                     p.sale_price AS SalePrice,
                     p.image_url AS ImageUrl,
                     p.product_type AS ProductType,
+                    CASE
+                        WHEN LOWER(TRIM(COALESCE(p.product_type, ''))) <> 'prepared' THEN TRUE
+                        ELSE EXISTS (
+                            SELECT 1
+                            FROM inventory.recipes recipe
+                            JOIN inventory.products ingredient
+                              ON ingredient.id = recipe.ingredient_id
+                             AND ingredient.company_id = recipe.company_id
+                            WHERE recipe.company_id = p.company_id
+                              AND recipe.product_id = p.id
+                              AND recipe.quantity > 0
+                              AND ingredient.is_active = TRUE
+                              AND ingredient.deleted_at IS NULL
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM inventory.recipes recipe
+                            LEFT JOIN inventory.products ingredient
+                              ON ingredient.id = recipe.ingredient_id
+                             AND ingredient.company_id = recipe.company_id
+                            WHERE recipe.company_id = p.company_id
+                              AND recipe.product_id = p.id
+                              AND (
+                                  recipe.quantity <= 0
+                                  OR ingredient.id IS NULL
+                                  OR ingredient.is_active = FALSE
+                                  OR ingredient.deleted_at IS NOT NULL
+                              )
+                        )
+                    END AS HasValidRecipe,
                     p.track_stock AS TrackStock,
                     p.is_for_sale AS IsForSale,
                     p.is_perishable AS IsPerishable,
@@ -404,11 +434,26 @@ public class InventoryRepository : IInventoryRepository
                     interaction_type, user_input, ai_response, ai_action,
                     processed_data, action_status, confidence_score,
                     ai_model, tokens_used
-                ) VALUES (
+                ) SELECT
                     @CompanyId, @BranchId, @UserId, @SessionId,
                     @InteractionType, @UserInput, @AiResponse, @AiAction,
                     CAST(@ProcessedData AS JSONB), @ActionStatus, @ConfidenceScore,
                     @AiModel, @TokensUsed
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM core.users u
+                    WHERE u.id = @UserId
+                      AND u.company_id = @CompanyId
+                      AND u.is_active = TRUE
+                      AND u.deleted_at IS NULL
+                )
+                  AND EXISTS (
+                    SELECT 1
+                    FROM core.branches b
+                    WHERE b.id = @BranchId
+                      AND b.company_id = @CompanyId
+                      AND b.is_active = TRUE
+                      AND b.deleted_at IS NULL
                 )
                 RETURNING id AS Id, company_id AS CompanyId,
                        branch_id AS BranchId, user_id AS UserId,
@@ -429,89 +474,6 @@ public class InventoryRepository : IInventoryRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error guardando interacción IA");
-            throw;
-        }
-    }
-
-    public async Task<AiInteraction?> GetAiInteractionByIdAsync(long id, long companyId)
-    {
-        try
-        {
-            using var connection = await _connectionFactory.CreateConnectionAsync();
-
-            const string sql = @"
-                SELECT 
-                    id AS Id, company_id AS CompanyId, branch_id AS BranchId,
-                    user_id AS UserId, session_id AS SessionId,
-                    interaction_type AS InteractionType,
-                    user_input AS UserInput, ai_response AS AiResponse,
-                    ai_action AS AiAction, processed_data AS ProcessedData,
-                    action_status AS ActionStatus,
-                    confidence_score AS ConfidenceScore,
-                    ai_model AS AiModel, tokens_used AS TokensUsed,
-                    confirmed_by_user AS ConfirmedByUser,
-                    confirmed_at AS ConfirmedAt,
-                    created_at AS CreatedAt
-                FROM inventory.ai_interactions
-                WHERE id = @Id AND company_id = @CompanyId";
-
-            return await connection.QueryFirstOrDefaultAsync<AiInteraction>(sql, new { Id = id, CompanyId = companyId });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error obteniendo interacción IA");
-            throw;
-        }
-    }
-
-    public async Task<IEnumerable<AiInteraction>> GetAiInteractionsBySessionAsync(string sessionId, long companyId)
-    {
-        try
-        {
-            using var connection = await _connectionFactory.CreateConnectionAsync();
-
-            const string sql = @"
-                SELECT
-                    id AS Id, company_id AS CompanyId, branch_id AS BranchId,
-                    user_id AS UserId, session_id AS SessionId,
-                    interaction_type AS InteractionType,
-                    user_input AS UserInput, ai_response AS AiResponse,
-                    ai_action AS AiAction, processed_data::TEXT AS ProcessedData,
-                    action_status AS ActionStatus,
-                    confidence_score AS ConfidenceScore,
-                    created_at AS CreatedAt
-                FROM inventory.ai_interactions
-                WHERE session_id = @SessionId AND company_id = @CompanyId
-                ORDER BY created_at ASC
-                LIMIT 10";
-
-            return await connection.QueryAsync<AiInteraction>(sql, new { SessionId = sessionId, CompanyId = companyId });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error obteniendo historial de sesión IA");
-            throw;
-        }
-    }
-
-    public async Task UpdateAiInteractionStatusAsync(long id, string status, bool confirmedByUser, long companyId)
-    {
-        try
-        {
-            using var connection = await _connectionFactory.CreateConnectionAsync();
-
-            const string sql = @"
-                UPDATE inventory.ai_interactions
-                SET action_status = @Status,
-                    confirmed_by_user = @ConfirmedByUser,
-                    confirmed_at = NOW()
-                WHERE id = @Id AND company_id = @CompanyId";
-
-            await connection.ExecuteAsync(sql, new { Id = id, Status = status, ConfirmedByUser = confirmedByUser, CompanyId = companyId });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error actualizando estado de interacción IA");
             throw;
         }
     }
