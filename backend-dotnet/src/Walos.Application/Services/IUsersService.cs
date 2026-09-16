@@ -12,4 +12,10 @@ public interface IUsersService
     Task<User?> UpdateAsync(long companyId, long currentUserId, string currentRole, long id, UpdateUserRequest request);
     Task<bool> SetStatusAsync(long companyId, long currentUserId, string currentRole, long id, bool isActive);
     Task<bool> DeleteAsync(long companyId, long currentUserId, string currentRole, long id);
+    Task<bool> ResetPasswordAsync(
+        long companyId,
+        long currentUserId,
+        string currentRole,
+        long targetUserId,
+        string newPassword);
 }

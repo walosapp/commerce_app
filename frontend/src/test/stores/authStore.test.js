@@ -8,6 +8,7 @@ describe('authStore', () => {
     store = createStore((set, get) => ({
       user: null,
       token: null,
+      refreshToken: null,
       tenantId: null,
       branchId: null,
       isAuthenticated: false,
@@ -16,6 +17,7 @@ describe('authStore', () => {
         set({
           user: data.user,
           token: data.token,
+          refreshToken: data.refreshToken,
           tenantId: data.user?.companyId,
           branchId: data.user?.branchId,
           isAuthenticated: true,
@@ -26,6 +28,7 @@ describe('authStore', () => {
         set({
           user: null,
           token: null,
+          refreshToken: null,
           tenantId: null,
           branchId: null,
           isAuthenticated: false,
@@ -58,10 +61,11 @@ describe('authStore', () => {
       companyId: 10,
       branchId: 5
     }
-    store.getState().setAuth({ token: 'jwt-token-123', user: testUser })
+    store.getState().setAuth({ token: 'jwt-token-123', refreshToken: 'refresh-123', user: testUser })
 
     const state = store.getState()
     expect(state.token).toBe('jwt-token-123')
+    expect(state.refreshToken).toBe('refresh-123')
     expect(state.user).toEqual(testUser)
     expect(state.tenantId).toBe(10)
     expect(state.branchId).toBe(5)
@@ -69,11 +73,12 @@ describe('authStore', () => {
   })
 
   it('should clear auth on logout', () => {
-    store.getState().setAuth({ token: 'token', user: { id: 1, companyId: 1 } })
+    store.getState().setAuth({ token: 'token', refreshToken: 'refresh', user: { id: 1, companyId: 1 } })
     store.getState().logout()
 
     const state = store.getState()
     expect(state.token).toBeNull()
+    expect(state.refreshToken).toBeNull()
     expect(state.user).toBeNull()
     expect(state.tenantId).toBeNull()
     expect(state.branchId).toBeNull()
@@ -89,7 +94,7 @@ describe('authStore', () => {
         inventory: { read: true, write: false }
       }
     }
-    store.getState().setAuth({ token: 'token', user: testUser })
+    store.getState().setAuth({ token: 'token', refreshToken: 'refresh', user: testUser })
 
     expect(store.getState().hasPermission('inventory', 'read')).toBe(true)
     // 'all.write' is true, so even though 'inventory.write' is false, the OR returns true

@@ -378,23 +378,48 @@ public class AdminRepository : IAdminRepository
         return await GetTenantByIdAsync(companyId);
     }
 
-    public async Task<bool> ResetTenantAdminPasswordAsync(long companyId, string passwordHash)
+    public async Task<long?> ResetTenantAdminPasswordAsync(long companyId, long actorUserId, string passwordHash)
     {
         using var conn = await _db.CreateConnectionAsync();
         const string sql = @"
+            WITH candidates AS MATERIALIZED (
+                SELECT u.id
+                FROM core.users u
+                INNER JOIN core.roles r ON u.role_id = r.id
+                    AND r.company_id = u.company_id
+                    AND r.code = 'super_admin'
+                    AND r.is_active = TRUE
+                    AND r.deleted_at IS NULL
+                WHERE u.company_id = @CompanyId
+                  AND u.id <> @ActorUserId
+                  AND u.is_active = TRUE
+                  AND u.deleted_at IS NULL
+                FOR UPDATE OF u
+            ),
+            eligible AS (
+                SELECT MIN(id) AS id FROM candidates HAVING COUNT(*) = 1
+            ),
+            updated AS (
             UPDATE core.users u
             SET password_hash = @PasswordHash,
                 updated_at    = NOW(),
                 failed_login_attempts = 0,
-                locked_until  = NULL
-            FROM core.roles r
-            WHERE u.role_id      = r.id
-              AND r.code         = 'super_admin'
-              AND u.company_id   = @CompanyId
-              AND u.deleted_at   IS NULL";
+                locked_until  = NULL,
+                refresh_token = NULL,
+                refresh_token_expires_at = NULL
+            FROM eligible e
+            WHERE u.id = e.id
+              AND u.company_id = @CompanyId
+            RETURNING u.id
+            )
+            SELECT id FROM updated";
 
-        var rows = await conn.ExecuteAsync(sql, new { CompanyId = companyId, PasswordHash = passwordHash });
-        return rows > 0;
+        return await conn.QuerySingleOrDefaultAsync<long?>(sql, new
+        {
+            CompanyId = companyId,
+            ActorUserId = actorUserId,
+            PasswordHash = passwordHash
+        });
     }
 
     public async Task<IReadOnlyList<BranchAdminResponse>> GetBranchesAsync(long companyId)

@@ -188,18 +188,87 @@ public class UsersRepository : IUsersRepository
         return await conn.ExecuteScalarAsync<int>(sql, new { Email = email, ExcludeId = excludeUserId }) > 0;
     }
 
-    public async Task<bool> ResetPasswordAsync(long userId, long companyId, string newPasswordHash)
+    public async Task<bool> ResetPasswordByTenantActorAsync(
+        long actorUserId,
+        string actorRole,
+        long targetUserId,
+        long companyId,
+        string newPasswordHash)
     {
         using var conn = await _db.CreateConnectionAsync();
         const string sql = @"
-            UPDATE core.users u SET password_hash = @Hash, updated_at = NOW()
-            WHERE u.id = @UserId AND u.company_id = @CompanyId AND u.deleted_at IS NULL
-              AND NOT EXISTS (
-                  SELECT 1 FROM core.roles r
-                  WHERE r.id = u.role_id AND r.company_id = u.company_id
-                    AND r.code = 'dev'
-              )";
-        return await conn.ExecuteAsync(sql, new { Hash = newPasswordHash, UserId = userId, CompanyId = companyId }) > 0;
+            UPDATE core.users target
+            SET password_hash = @Hash,
+                refresh_token = NULL,
+                refresh_token_expires_at = NULL,
+                failed_login_attempts = 0,
+                locked_until = NULL,
+                updated_at = NOW()
+            FROM core.users actor,
+                 core.roles actor_role,
+                 core.roles target_role
+            WHERE target.id = @TargetUserId
+              AND target.company_id = @CompanyId
+              AND target.deleted_at IS NULL
+              AND target.id <> @ActorUserId
+              AND target.role_id = target_role.id
+              AND target_role.company_id = target.company_id
+              AND target_role.is_active = TRUE
+              AND target_role.deleted_at IS NULL
+              AND target_role.code <> 'dev'
+              AND actor.id = @ActorUserId
+              AND actor.company_id = @CompanyId
+              AND actor.is_active = TRUE
+              AND actor.deleted_at IS NULL
+              AND actor.role_id = actor_role.id
+              AND actor_role.company_id = actor.company_id
+              AND actor_role.is_active = TRUE
+              AND actor_role.deleted_at IS NULL
+              AND actor_role.code = @ActorRole
+              AND actor_role.code IN ('super_admin', 'manager', 'dev')
+              AND NOT (actor_role.code = 'manager' AND target_role.code = 'super_admin')";
+        return await conn.ExecuteAsync(sql, new
+        {
+            Hash = newPasswordHash,
+            ActorUserId = actorUserId,
+            ActorRole = actorRole,
+            TargetUserId = targetUserId,
+            CompanyId = companyId
+        }) == 1;
+    }
+
+    public async Task<bool> ResetPasswordByPlatformActorAsync(
+        long actorUserId,
+        long targetUserId,
+        long companyId,
+        string newPasswordHash)
+    {
+        using var conn = await _db.CreateConnectionAsync();
+        const string sql = @"
+            UPDATE core.users target
+            SET password_hash = @Hash,
+                refresh_token = NULL,
+                refresh_token_expires_at = NULL,
+                failed_login_attempts = 0,
+                locked_until = NULL,
+                updated_at = NOW()
+            FROM core.roles target_role
+            WHERE target.id = @TargetUserId
+              AND target.company_id = @CompanyId
+              AND target.deleted_at IS NULL
+              AND target.id <> @ActorUserId
+              AND target.role_id = target_role.id
+              AND target_role.company_id = target.company_id
+              AND target_role.is_active = TRUE
+              AND target_role.deleted_at IS NULL
+              AND target_role.code <> 'dev'";
+        return await conn.ExecuteAsync(sql, new
+        {
+            Hash = newPasswordHash,
+            ActorUserId = actorUserId,
+            TargetUserId = targetUserId,
+            CompanyId = companyId
+        }) == 1;
     }
 
     public async Task<IEnumerable<RoleOption>> GetRolesAsync(long companyId, bool excludeDev = true)

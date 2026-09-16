@@ -7,6 +7,7 @@ import {
 import toast from 'react-hot-toast';
 import userService from '../../services/userService';
 import adminService from '../../services/adminService';
+import { validatePassword } from '../../utils/passwordPolicy';
 
 const ROLE_COLORS = {
   dev:            'bg-violet-100 text-violet-700',
@@ -23,11 +24,14 @@ const ResetPasswordModal = ({ user, onClose, onSave }) => {
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
-    if (pw.length < 6) { toast.error('Mínimo 6 caracteres'); return; }
+    const policyError = validatePassword(pw);
+    if (policyError) { toast.error(policyError); return; }
     setSaving(true);
     try {
       await onSave(pw);
       onClose();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'No fue posible resetear la contraseña');
     } finally {
       setSaving(false);
     }
@@ -42,7 +46,7 @@ const ResetPasswordModal = ({ user, onClose, onSave }) => {
         </p>
         <input
           type="password"
-          placeholder="Nueva contraseña (mín. 6 caracteres)"
+          placeholder="Nueva contraseña segura (mín. 8)"
           value={pw}
           onChange={e => setPw(e.target.value)}
           className="input w-full mb-4"

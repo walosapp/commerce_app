@@ -34,6 +34,7 @@ public class CriticalControllerPolicyTests
     [InlineData(typeof(CompanyController), "UpdateOperationsSettings", WalosPolicies.Settings)]
     [InlineData(typeof(PlatformController), "UpdateAiKey", WalosPolicies.Settings)]
     [InlineData(typeof(AuthController), "Logout", WalosPolicies.CanonicalAuthenticated)]
+    [InlineData(typeof(AuthController), "ChangePassword", WalosPolicies.CanonicalAuthenticated)]
     [InlineData(typeof(SalesController), "InvoiceTable", WalosPolicies.SalesInvoiceOperator)]
     [InlineData(typeof(SalesController), "CancelTable", WalosPolicies.SalesInvoiceOperator)]
     [InlineData(typeof(SalesController), "GetOrderItems", WalosPolicies.SalesInvoiceOperator)]

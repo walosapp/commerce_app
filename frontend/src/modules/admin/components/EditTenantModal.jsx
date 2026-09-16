@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X, Building2, Save, Loader2, KeyRound, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import adminService from '../../../services/adminService';
+import { validatePassword } from '../../../utils/passwordPolicy';
 
 const Field = ({ label, name, value, onChange, type = 'text', placeholder }) => (
   <div>
@@ -66,8 +67,9 @@ const EditTenantModal = ({ tenant, onClose, onSaved }) => {
   };
 
   const handleResetPassword = async () => {
-    if (newPassword.length < 6) {
-      toast.error('Minimo 6 caracteres');
+    const policyError = validatePassword(newPassword);
+    if (policyError) {
+      toast.error(policyError);
       return;
     }
 
@@ -171,7 +173,7 @@ const EditTenantModal = ({ tenant, onClose, onSaved }) => {
                   type={showPwd ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Nueva contrasena (min. 6 caracteres)"
+                  placeholder="Nueva contraseña segura (mín. 8)"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <button
@@ -184,7 +186,7 @@ const EditTenantModal = ({ tenant, onClose, onSaved }) => {
               </div>
               <button
                 onClick={handleResetPassword}
-                disabled={savingPwd || newPassword.length < 6}
+                disabled={savingPwd || newPassword.length < 8}
                 className="whitespace-nowrap rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-40"
               >
                 {savingPwd ? <Loader2 size={14} className="animate-spin" /> : 'Cambiar'}

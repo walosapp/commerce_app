@@ -57,31 +57,31 @@ describe('LoginPage', () => {
 
   it('consumes trusted dev isPlatformAdmin but enters the operational shell', async () => {
     const user = { id: 1, name: 'Dev', role: 'dev', companyId: 1, branchId: 1, isPlatformAdmin: true };
-    login.mockResolvedValue({ success: true, data: { token: 'jwt', user } });
+    login.mockResolvedValue({ success: true, data: { token: 'jwt', refreshToken: 'refresh', user } });
     renderLogin();
     submitCredentials();
 
-    await waitFor(() => expect(setAuth).toHaveBeenCalledWith({ token: 'jwt', user }));
+    await waitFor(() => expect(setAuth).toHaveBeenCalledWith({ token: 'jwt', refreshToken: 'refresh', user }));
     expect(navigate).toHaveBeenCalledWith('/');
   });
 
   it('uses isPlatformAdmin to keep platform_admin in the platform shell', async () => {
     const user = { id: 2, name: 'Plataforma', role: 'platform_admin', companyId: 1, branchId: 1, isPlatformAdmin: true };
-    login.mockResolvedValue({ success: true, data: { token: 'jwt-platform', user } });
+    login.mockResolvedValue({ success: true, data: { token: 'jwt-platform', refreshToken: 'refresh-platform', user } });
     renderLogin();
     submitCredentials('platform@walos.app');
 
-    await waitFor(() => expect(setAuth).toHaveBeenCalledWith({ token: 'jwt-platform', user }));
+    await waitFor(() => expect(setAuth).toHaveBeenCalledWith({ token: 'jwt-platform', refreshToken: 'refresh-platform', user }));
     expect(navigate).toHaveBeenCalledWith('/admin/tenants');
   });
 
   it('resolves an operator landing against enabled tenant features after login', async () => {
     const user = { id: 3, name: 'Caja', role: 'cashier', companyId: 1, branchId: 1, isPlatformAdmin: false };
-    login.mockResolvedValue({ success: true, data: { token: 'jwt-cashier', user } });
+    login.mockResolvedValue({ success: true, data: { token: 'jwt-cashier', refreshToken: 'refresh-cashier', user } });
     renderLogin();
     submitCredentials('cashier@walos.app');
 
-    await waitFor(() => expect(setAuth).toHaveBeenCalledWith({ token: 'jwt-cashier', user }));
+    await waitFor(() => expect(setAuth).toHaveBeenCalledWith({ token: 'jwt-cashier', refreshToken: 'refresh-cashier', user }));
     expect(navigate).toHaveBeenCalledWith('/landing');
   });
 

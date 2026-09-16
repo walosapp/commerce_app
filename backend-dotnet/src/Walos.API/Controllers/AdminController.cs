@@ -18,11 +18,19 @@ public class AdminController : ControllerBase
 {
     private readonly IAdminService _adminService;
     private readonly IUsersRepository _usersRepo;
+    private readonly ITenantContext _tenant;
+    private readonly ILogger<AdminController> _logger;
 
-    public AdminController(IAdminService adminService, IUsersRepository usersRepo)
+    public AdminController(
+        IAdminService adminService,
+        IUsersRepository usersRepo,
+        ITenantContext tenant,
+        ILogger<AdminController> logger)
     {
         _adminService = adminService;
         _usersRepo = usersRepo;
+        _tenant = tenant;
+        _logger = logger;
     }
 
     [HttpGet("tenants")]
@@ -64,7 +72,7 @@ public class AdminController : ControllerBase
     [HttpPost("tenants/{id:long}/reset-password")]
     public async Task<IActionResult> ResetAdminPassword(long id, [FromBody] ResetPasswordRequest request)
     {
-        await _adminService.ResetTenantAdminPasswordAsync(id, request.NewPassword);
+        await _adminService.ResetTenantAdminPasswordAsync(id, _tenant.UserId, request.NewPassword);
         return Ok(ApiResponse.Ok("Contraseña del administrador actualizada"));
     }
 
@@ -99,8 +107,7 @@ public class AdminController : ControllerBase
             return BadRequest(ApiResponse.Fail("Nombre y apellido son requeridos"));
         if (string.IsNullOrWhiteSpace(request.Email))
             return BadRequest(ApiResponse.Fail("El email es requerido"));
-        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
-            return BadRequest(ApiResponse.Fail("La contraseña debe tener al menos 6 caracteres"));
+        PasswordPolicy.Validate(request.Password);
         if (await _usersRepo.EmailExistsAsync(request.Email))
             return Conflict(ApiResponse.Fail("Ya existe un usuario con ese email"));
 
@@ -145,8 +152,8 @@ public class AdminController : ControllerBase
     [HttpPost("users/{id:long}/reset-password")]
     public async Task<IActionResult> ResetUserPassword(long id, [FromQuery] long companyId, [FromBody] ResetPasswordRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
-            return BadRequest(ApiResponse.Fail("La contraseña debe tener al menos 6 caracteres"));
+        if (id == _tenant.UserId)
+            return BadRequest(ApiResponse.Fail("Use change-password to update your own password"));
 
         var target = await _usersRepo.GetByIdAsync(id, companyId);
         if (target is null)
@@ -155,9 +162,19 @@ public class AdminController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden,
                 ApiResponse.Fail("La cuenta tecnica dev esta protegida", "protected_technical_account"));
 
+        PasswordPolicy.Validate(request.NewPassword);
         var hash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-        var ok = await _usersRepo.ResetPasswordAsync(id, companyId, hash);
+        var ok = await _usersRepo.ResetPasswordByPlatformActorAsync(
+            _tenant.UserId,
+            id,
+            companyId,
+            hash);
         if (!ok) return NotFound(ApiResponse.Fail("Usuario no encontrado"));
+        _logger.LogWarning(
+            "PasswordReset ActorUserId {ActorUserId} TargetUserId {TargetUserId} CompanyId {CompanyId}; target sessions invalidated",
+            _tenant.UserId,
+            id,
+            companyId);
         return Ok(ApiResponse.Ok("Contraseña actualizada"));
     }
 

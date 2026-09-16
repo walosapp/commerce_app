@@ -83,6 +83,7 @@ describe('Layout company features', () => {
     expect(screen.queryByRole('link', { name: /Dashboard/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Restaurante/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Configuracion/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Perfil/i })).toHaveAttribute('href', '/profile');
   });
 
   it('lets a trusted dev see platform navigation and all operational modules', () => {
@@ -117,6 +118,7 @@ describe('Layout company features', () => {
     expect(screen.queryByRole('link', { name: /Proveedores/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Finanzas/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Asistente IA/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Perfil/i })).toHaveAttribute('href', '/profile');
   });
 
   it('shows waiter only Restaurante and Delivery tenant modules', () => {
@@ -134,6 +136,7 @@ describe('Layout company features', () => {
     expect(screen.queryByRole('link', { name: /Caja/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Usuarios/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Configuracion/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Perfil/i })).toHaveAttribute('href', '/profile');
   });
 
   it('fails closed for a non-canonical legacy role', () => {

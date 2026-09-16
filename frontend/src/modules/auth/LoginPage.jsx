@@ -36,6 +36,7 @@ const LoginPage = () => {
       if (result.success) {
         const accepted = setAuth({
           token: result.data.token,
+          refreshToken: result.data.refreshToken,
           user: result.data.user,
         });
 

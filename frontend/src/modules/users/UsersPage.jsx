@@ -10,6 +10,7 @@ import useAuthStore from '../../stores/authStore';
 import userService from '../../services/userService';
 import adminService from '../../services/adminService';
 import UserFormModal from './components/UserFormModal';
+import { validatePassword } from '../../utils/passwordPolicy';
 
 const ROLE_COLORS = {
   dev:         'bg-violet-100 text-violet-700',
@@ -23,19 +24,35 @@ const ROLE_COLORS = {
 
 const ResetPasswordModal = ({ user, onClose, onSave }) => {
   const [pw, setPw] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [saving, setSaving] = useState(false);
   const handleSave = async () => {
-    if (pw.length < 6) { toast.error('Mínimo 6 caracteres'); return; }
+    const policyError = validatePassword(pw);
+    if (policyError) { toast.error(policyError); return; }
+    if (pw !== confirm) { toast.error('La confirmación de contraseña no coincide'); return; }
     setSaving(true);
-    try { await onSave(pw); onClose(); } finally { setSaving(false); }
+    try {
+      await onSave(pw);
+      onClose();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'No fue posible actualizar la contraseña');
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
         <h2 className="text-base font-bold text-gray-900 mb-1">Resetear contraseña</h2>
         <p className="text-sm text-gray-500 mb-4">{user.firstName} {user.lastName}</p>
-        <input type="password" placeholder="Nueva contraseña (mín. 6 caracteres)" value={pw}
-          onChange={e => setPw(e.target.value)} className="input w-full mb-4" />
+        <label className="mb-3 block text-sm font-medium text-gray-700">
+          Nueva contraseña
+          <input type="password" value={pw} onChange={e => setPw(e.target.value)} className="input mt-1 w-full" />
+        </label>
+        <label className="mb-4 block text-sm font-medium text-gray-700">
+          Confirmar contraseña
+          <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} className="input mt-1 w-full" />
+        </label>
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="btn-secondary text-sm">Cancelar</button>
           <button onClick={handleSave} disabled={saving} className="btn-primary text-sm">
@@ -137,7 +154,11 @@ const UsersPage = () => {
   };
 
   const handleResetPassword = async (u, newPassword) => {
-    await userService.adminResetPassword(u.id, u.companyId, newPassword);
+    if (isDev) {
+      await userService.adminResetPassword(u.id, u.companyId, newPassword);
+    } else {
+      await userService.resetPassword(u.id, newPassword);
+    }
     toast.success('Contraseña actualizada');
   };
 
@@ -291,6 +312,15 @@ const UsersPage = () => {
                           >
                             <Edit2 size={15} />
                           </button>
+                          {isSelf && (
+                            <button
+                              disabled
+                              className="cursor-not-allowed p-1.5 text-gray-300"
+                              title="Usa 'Cambiar mi contraseña' en tu perfil"
+                            >
+                              <KeyRound size={15} />
+                            </button>
+                          )}
                           {!isSelf && (
                             <>
                               <button

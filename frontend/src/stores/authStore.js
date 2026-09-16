@@ -11,6 +11,7 @@ import { authService } from '../services/authService';
 const EMPTY_AUTH_STATE = Object.freeze({
   user: null,
   token: null,
+  refreshToken: null,
   tenantId: null,
   branchId: null,
   isAuthenticated: false,
@@ -28,6 +29,7 @@ export const sanitizePersistedAuthState = (state) => {
   if (
     state?.isAuthenticated !== true
     || !state.token
+    || !state.refreshToken
     || !hasCurrentUserContract(state.user)
   ) {
     return { ...EMPTY_AUTH_STATE };
@@ -42,13 +44,14 @@ const useAuthStore = create(
       ...EMPTY_AUTH_STATE,
 
       setAuth: (data) => {
-        if (!data?.token || !hasCurrentUserContract(data.user)) {
+        if (!data?.token || !data?.refreshToken || !hasCurrentUserContract(data.user)) {
           set({ ...EMPTY_AUTH_STATE });
           return false;
         }
         set({
           user: data.user,
           token: data.token,
+          refreshToken: data.refreshToken,
           tenantId: data.user.companyId,
           branchId: data.user.branchId,
           isAuthenticated: true,
@@ -56,16 +59,24 @@ const useAuthStore = create(
         return true;
       },
 
-      logout: async () => {
-        await authService.logout();
+      updateTokens: (data) => {
+        if (!data?.token || !data?.refreshToken || !get().isAuthenticated) {
+          return false;
+        }
+        set({ token: data.token, refreshToken: data.refreshToken });
+        return true;
+      },
 
-        set({
-          user: null,
-          token: null,
-          tenantId: null,
-          branchId: null,
-          isAuthenticated: false,
-        });
+      clearAuth: () => set({ ...EMPTY_AUTH_STATE }),
+
+      logout: async () => {
+        try {
+          await authService.logout();
+        } catch {
+          // Local credential removal must not depend on an already-invalid access token.
+        } finally {
+          get().clearAuth();
+        }
       },
 
       hasPermission: (module, action) => {
@@ -80,7 +91,7 @@ const useAuthStore = create(
     }),
     {
       name: 'auth-storage',
-      version: 1,
+      version: 2,
       migrate: (persistedState) => sanitizePersistedAuthState(persistedState),
       merge: (persistedState, currentState) => ({
         ...currentState,
@@ -89,6 +100,7 @@ const useAuthStore = create(
       partialize: (state) => ({
         user: state.user,
         token: state.token,
+        refreshToken: state.refreshToken,
         tenantId: state.tenantId,
         branchId: state.branchId,
         isAuthenticated: state.isAuthenticated,

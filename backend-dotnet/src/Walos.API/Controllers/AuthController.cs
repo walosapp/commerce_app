@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Walos.Application.DTOs.Common;
 using Walos.Application.Security;
 using Walos.Application.Services;
+using Walos.Domain.Interfaces;
 
 namespace Walos.API.Controllers;
 
@@ -11,10 +12,12 @@ namespace Walos.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly ITenantContext _tenant;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IAuthService authService, ITenantContext tenant)
     {
         _authService = authService;
+        _tenant = tenant;
     }
 
     public record LoginRequest(string Username, string Password);
@@ -47,4 +50,23 @@ public class AuthController : ControllerBase
     }
 
     public record RefreshRequest(string RefreshToken);
+
+    [HttpPost("change-password")]
+    [Authorize(Policy = WalosPolicies.CanonicalAuthenticated)]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        var tokens = await _authService.ChangePasswordAsync(
+            _tenant.UserId,
+            _tenant.CompanyId,
+            request.CurrentPassword,
+            request.NewPassword,
+            request.ConfirmPassword);
+
+        return Ok(ApiResponse<TokenResult>.Ok(tokens, "Contraseña actualizada"));
+    }
+
+    public record ChangePasswordRequest(
+        string CurrentPassword,
+        string NewPassword,
+        string ConfirmPassword);
 }

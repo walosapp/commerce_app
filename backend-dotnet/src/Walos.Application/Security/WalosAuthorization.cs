@@ -6,6 +6,7 @@ public static class WalosClaimTypes
     public const string CompanyId = "companyId";
     public const string BranchId = "branchId";
     public const string PlatformAdmin = "platformAdmin";
+    public const string SecurityStamp = "securityStamp";
 }
 
 public static class WalosRoles

@@ -53,7 +53,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       const state = _getAuthState?.();
       if (state?.isAuthenticated) {
-        state.logout?.();
+        state.clearAuth?.();
       }
       window.location.href = '/login';
     }

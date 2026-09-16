@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import FeatureRoute from '../../components/routing/FeatureRoute';
+import AuthenticatedRoute from '../../components/routing/AuthenticatedRoute';
 
 const { authState } = vi.hoisted(() => ({
   authState: {
@@ -80,4 +81,24 @@ describe('direct URL access follows the frozen V1 role matrix', () => {
     expect(screen.getByText('Allowed module')).toBeInTheDocument();
     expect(screen.queryByText('Acceso denegado')).not.toBeInTheDocument();
   });
+
+  it.each(['waiter', 'cashier', 'manager', 'super_admin', 'dev', 'platform_admin'])(
+    'allows canonical role %s to open its profile without an admin permission',
+    (role) => {
+      authState.user = {
+        role,
+        isPlatformAdmin: role === 'dev' || role === 'platform_admin',
+      };
+
+      render(
+        <MemoryRouter initialEntries={['/profile']}>
+          <Routes>
+            <Route path="/profile" element={<AuthenticatedRoute><div>My profile</div></AuthenticatedRoute>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText('My profile')).toBeInTheDocument();
+    },
+  );
 });

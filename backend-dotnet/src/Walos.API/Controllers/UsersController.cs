@@ -83,4 +83,21 @@ public class UsersController : ControllerBase
             return NotFound(ApiResponse.Fail("Usuario no encontrado"));
         return Ok(ApiResponse.Ok("Usuario eliminado"));
     }
+
+    [HttpPost("{id:long}/reset-password")]
+    public async Task<IActionResult> ResetPassword(long id, [FromBody] ResetPasswordRequest request)
+    {
+        var updated = await _service.ResetPasswordAsync(
+            _tenant.CompanyId,
+            _tenant.UserId,
+            _tenant.Role,
+            id,
+            request.NewPassword);
+        if (!updated)
+            return NotFound(ApiResponse.Fail("Usuario no encontrado"));
+
+        return Ok(ApiResponse.Ok("Contraseña actualizada"));
+    }
+
+    public sealed record ResetPasswordRequest(string NewPassword);
 }

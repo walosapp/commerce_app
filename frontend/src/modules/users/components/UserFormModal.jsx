@@ -4,6 +4,7 @@ import { X, Loader2, UserPlus, Eye, EyeOff } from 'lucide-react';
 import userService from '../../../services/userService';
 import adminService from '../../../services/adminService';
 import useAuthStore from '../../../stores/authStore';
+import { validatePassword } from '../../../utils/passwordPolicy';
 
 const Field = ({ label, value, onChange, placeholder, type = 'text', required, children }) => (
   <div>
@@ -68,7 +69,10 @@ const UserFormModal = ({ user, onSave, onClose, companies = [] }) => {
   const handleSubmit = async () => {
     if (!form.firstName.trim() || !form.lastName.trim()) { setError('Nombre y apellido requeridos'); return; }
     if (!form.email.trim()) { setError('El email es requerido'); return; }
-    if (!isEdit && (!form.password || form.password.length < 6)) { setError('La contraseña debe tener al menos 6 caracteres'); return; }
+    if (!isEdit) {
+      const policyError = validatePassword(form.password);
+      if (policyError) { setError(policyError); return; }
+    }
     if (!form.roleId) { setError('Selecciona un rol'); return; }
     if (isDev && !isEdit && !form.companyId) { setError('Selecciona un comercio'); return; }
 
@@ -134,7 +138,7 @@ const UserFormModal = ({ user, onSave, onClose, companies = [] }) => {
                   type={showPassword ? 'text' : 'password'}
                   value={form.password}
                   onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Mínimo 8, con mayúscula, minúscula, número y símbolo"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
                 <button

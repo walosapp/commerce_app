@@ -4,16 +4,19 @@ using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
 using Walos.Application.Services;
 using Walos.Application.Security;
+using Microsoft.Extensions.Logging;
 
 namespace Walos.Application.Services;
 
 public class UsersService : IUsersService
 {
     private readonly IUsersRepository _repository;
+    private readonly ILogger<UsersService> _logger;
 
-    public UsersService(IUsersRepository repository)
+    public UsersService(IUsersRepository repository, ILogger<UsersService> logger)
     {
         _repository = repository;
+        _logger = logger;
     }
 
     public Task<IEnumerable<User>> GetAllAsync(long companyId)
@@ -37,8 +40,7 @@ public class UsersService : IUsersService
         if (string.IsNullOrWhiteSpace(request.Email))
             throw new ValidationException("El email es requerido");
 
-        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
-            throw new ValidationException("La contraseña debe tener al menos 6 caracteres");
+        PasswordPolicy.Validate(request.Password);
 
         if (await _repository.EmailExistsAsync(request.Email))
             throw new BusinessException("Ya existe un usuario con ese email");
@@ -145,6 +147,52 @@ public class UsersService : IUsersService
         EnsureCanManageUser(currentRole, existing);
 
         return await _repository.SoftDeleteAsync(id, companyId);
+    }
+
+    public async Task<bool> ResetPasswordAsync(
+        long companyId,
+        long currentUserId,
+        string currentRole,
+        long targetUserId,
+        string newPassword)
+    {
+        if (targetUserId == currentUserId)
+            throw new ValidationException("Usa Cambiar mi contraseña para actualizar tu propia contraseña");
+
+        PasswordPolicy.Validate(newPassword);
+
+        var actorRole = await _repository.GetUserRoleForAssignmentAsync(currentUserId, companyId)
+            ?? throw new BusinessException("El rol del usuario autenticado no es válido para este comercio");
+        if (!string.Equals(actorRole.Code, currentRole, StringComparison.OrdinalIgnoreCase)
+            || actorRole.Code is not (WalosRoles.SuperAdmin or WalosRoles.Manager or WalosRoles.Dev))
+        {
+            throw new BusinessException("No tienes permiso para resetear contraseñas");
+        }
+
+        var target = await _repository.GetByIdAsync(targetUserId, companyId);
+        if (target is null)
+            return false;
+        if (string.Equals(target.RoleCode, WalosRoles.Dev, StringComparison.OrdinalIgnoreCase))
+            throw new BusinessException("La cuenta técnica dev está protegida", "protected_technical_account");
+        EnsureCanManageUser(currentRole, target);
+
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        var updated = await _repository.ResetPasswordByTenantActorAsync(
+            currentUserId,
+            currentRole,
+            targetUserId,
+            companyId,
+            passwordHash);
+        if (updated)
+        {
+            _logger.LogWarning(
+                "PasswordReset ActorUserId {ActorUserId} TargetUserId {TargetUserId} CompanyId {CompanyId}; target refresh tokens revoked",
+                currentUserId,
+                targetUserId,
+                companyId);
+        }
+
+        return updated;
     }
 
     private static void EnsureCanManageUser(string currentRole, User target)

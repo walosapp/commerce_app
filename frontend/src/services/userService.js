@@ -8,6 +8,7 @@ const userService = {
   update: (id, data)            => api.put(`/users/${id}`, data).then(r => r.data),
   setStatus: (id, isActive)     => api.patch(`/users/${id}/status`, isActive).then(r => r.data),
   delete: (id)                  => api.delete(`/users/${id}`).then(r => r.data),
+  resetPassword: (id, newPassword) => api.post(`/users/${id}/reset-password`, { newPassword }).then(r => r.data),
 
   // Superadmin — todos los comercios
   adminGetAll: (companyId)                       => api.get('/admin/users', { params: companyId ? { companyId } : {} }).then(r => r.data),

@@ -21,6 +21,9 @@ public class AuthServiceTests
     {
         _repoMock = new Mock<IAuthRepository>();
         _loggerMock = new Mock<ILogger<AuthService>>();
+        _repoMock.Setup(r => r.SaveRefreshTokenAfterPasswordVerificationAsync(
+                It.IsAny<long>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(true);
         _configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -153,10 +156,37 @@ public class AuthServiceTests
         Assert.Equal("Ana Lopez", result.User.Name);
         Assert.Equal(WalosRoles.Manager, result.User.Role);
         Assert.Equal(1, result.User.CompanyId);
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(result.Token);
+        var stamp = jwt.Claims.Single(claim => claim.Type == WalosClaimTypes.SecurityStamp).Value;
+        Assert.NotEmpty(stamp);
+        Assert.NotEqual(hash, stamp);
 
         _repoMock.Verify(r => r.ResetFailedLoginAsync(5), Times.Once);
         _repoMock.Verify(r => r.UpdateLastLoginAsync(5, "127.0.0.1"), Times.Once);
-        _repoMock.Verify(r => r.SaveRefreshTokenAsync(5, It.IsAny<string>(), It.IsAny<DateTime>()), Times.Once);
+        _repoMock.Verify(r => r.SaveRefreshTokenAfterPasswordVerificationAsync(
+            5, hash, It.IsAny<string>(), It.IsAny<DateTime>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Login_Rejects_WhenPasswordResetWinsBeforeRefreshPersistence()
+    {
+        var hash = BCrypt.Net.BCrypt.HashPassword("mypass");
+        _repoMock.Setup(r => r.GetUserByEmailAsync("race@test.com"))
+            .ReturnsAsync(new User
+            {
+                Id = 55,
+                Email = "race@test.com",
+                IsActive = true,
+                PasswordHash = hash,
+                CompanyId = 1,
+                RoleCode = WalosRoles.Manager
+            });
+        _repoMock.Setup(r => r.SaveRefreshTokenAfterPasswordVerificationAsync(
+                55, hash, It.IsAny<string>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(false);
+
+        await Assert.ThrowsAsync<BusinessException>(() =>
+            _service.LoginAsync("race@test.com", "mypass", null));
     }
 
     [Theory]
@@ -185,6 +215,8 @@ public class AuthServiceTests
         _repoMock.Verify(r => r.UpdateLastLoginAsync(It.IsAny<long>(), It.IsAny<string?>()), Times.Never);
         _repoMock.Verify(r => r.SaveRefreshTokenAsync(
             It.IsAny<long>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
+        _repoMock.Verify(r => r.SaveRefreshTokenAfterPasswordVerificationAsync(
+            It.IsAny<long>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
     }
 
     [Theory]
@@ -262,12 +294,39 @@ public class AuthServiceTests
                 Id = 7, Email = "refresh@test.com", IsActive = true,
                 PasswordHash = "x", CompanyId = 1, FirstName = "R", RoleCode = WalosRoles.Manager
             });
+        _repoMock.Setup(r => r.RotateRefreshTokenAsync(
+                7, "valid", It.IsAny<string>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(true);
 
         var result = await _service.RefreshTokenAsync("valid");
 
         Assert.NotEmpty(result.Token);
         Assert.NotEmpty(result.RefreshToken);
-        _repoMock.Verify(r => r.SaveRefreshTokenAsync(7, It.IsAny<string>(), It.IsAny<DateTime>()), Times.Once);
+        _repoMock.Verify(r => r.RotateRefreshTokenAsync(
+            7, "valid", It.IsAny<string>(), It.IsAny<DateTime>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Refresh_Rejects_When_AtomicRotationLoses_ToPasswordReset()
+    {
+        _repoMock.Setup(r => r.GetUserByRefreshTokenAsync("stale"))
+            .ReturnsAsync(new User
+            {
+                Id = 7,
+                Email = "refresh@test.com",
+                IsActive = true,
+                PasswordHash = "hash",
+                CompanyId = 1,
+                RoleCode = WalosRoles.Manager
+            });
+        _repoMock.Setup(r => r.RotateRefreshTokenAsync(
+                7, "stale", It.IsAny<string>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(false);
+
+        await Assert.ThrowsAsync<BusinessException>(() => _service.RefreshTokenAsync("stale"));
+
+        _repoMock.Verify(r => r.SaveRefreshTokenAsync(
+            It.IsAny<long>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
     }
 
     [Fact]
@@ -298,5 +357,115 @@ public class AuthServiceTests
         await _service.LogoutAsync(99);
 
         _repoMock.Verify(r => r.SaveRefreshTokenAsync(99, string.Empty, It.Is<DateTime>(d => d < DateTime.UtcNow)), Times.Once);
+    }
+
+    [Fact]
+    public async Task ChangePassword_Validates_CurrentPassword_And_Revokes_PriorRefreshToken()
+    {
+        const string currentPassword = "Current1!";
+        const string newPassword = "Changed2@";
+        string? storedHash = null;
+        _repoMock.Setup(repository => repository.GetUserForPasswordChangeAsync(9, 4))
+            .ReturnsAsync(new User
+            {
+                Id = 9,
+                CompanyId = 4,
+                IsActive = true,
+                RoleCode = WalosRoles.Cashier,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(currentPassword)
+            });
+        _repoMock.Setup(repository => repository.ChangePasswordAndRotateRefreshTokenAsync(
+                9, 4, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()))
+            .Callback<long, long, string, string, string, DateTime>((_, _, _, hash, _, _) => storedHash = hash)
+            .ReturnsAsync(true);
+
+        var result = await _service.ChangePasswordAsync(9, 4, currentPassword, newPassword, newPassword);
+
+        _repoMock.Verify(repository => repository.ChangePasswordAndRotateRefreshTokenAsync(
+            9, 4, It.IsAny<string>(), It.IsAny<string>(), result.RefreshToken, It.IsAny<DateTime>()), Times.Once);
+        Assert.NotEmpty(result.Token);
+        Assert.NotNull(storedHash);
+        Assert.True(BCrypt.Net.BCrypt.Verify(newPassword, storedHash));
+        var logText = string.Join(' ', _loggerMock.Invocations.SelectMany(invocation => invocation.Arguments).Select(value => value?.ToString()));
+        Assert.DoesNotContain(currentPassword, logText, StringComparison.Ordinal);
+        Assert.DoesNotContain(newPassword, logText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ChangePassword_Rejects_Incorrect_CurrentPassword_Without_Write()
+    {
+        _repoMock.Setup(repository => repository.GetUserForPasswordChangeAsync(9, 4))
+            .ReturnsAsync(new User
+            {
+                Id = 9,
+                CompanyId = 4,
+                IsActive = true,
+                RoleCode = WalosRoles.Waiter,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Current1!")
+            });
+
+        await Assert.ThrowsAsync<BusinessException>(() =>
+            _service.ChangePasswordAsync(9, 4, "Wrong1!x", "Changed2@", "Changed2@"));
+
+        _repoMock.Verify(repository => repository.ChangePasswordAndRotateRefreshTokenAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ChangePassword_Rejects_WhenConcurrentResetWinsCompareAndSwap()
+    {
+        const string currentPassword = "Current1!";
+        _repoMock.Setup(repository => repository.GetUserForPasswordChangeAsync(9, 4))
+            .ReturnsAsync(new User
+            {
+                Id = 9,
+                CompanyId = 4,
+                IsActive = true,
+                RoleCode = WalosRoles.Cashier,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(currentPassword)
+            });
+        _repoMock.Setup(repository => repository.ChangePasswordAndRotateRefreshTokenAsync(
+                9, 4, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(false);
+
+        await Assert.ThrowsAsync<BusinessException>(() =>
+            _service.ChangePasswordAsync(9, 4, currentPassword, "Changed2@", "Changed2@"));
+    }
+
+    [Theory]
+    [InlineData("Changed2@", "Different3#")]
+    [InlineData("short", "short")]
+    [InlineData("alllowercase1!", "alllowercase1!")]
+    [InlineData("Ábcdef1!", "Ábcdef1!")]
+    public async Task ChangePassword_Rejects_Mismatch_Or_WeakPassword_Before_UserLookup(
+        string newPassword,
+        string confirmation)
+    {
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            _service.ChangePasswordAsync(9, 4, "Current1!", newPassword, confirmation));
+
+        _repoMock.Verify(repository => repository.GetUserForPasswordChangeAsync(
+            It.IsAny<long>(), It.IsAny<long>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ChangePassword_Rejects_Reusing_CurrentPassword()
+    {
+        const string password = "Current1!";
+        _repoMock.Setup(repository => repository.GetUserForPasswordChangeAsync(9, 4))
+            .ReturnsAsync(new User
+            {
+                Id = 9,
+                CompanyId = 4,
+                IsActive = true,
+                RoleCode = WalosRoles.SuperAdmin,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password)
+            });
+
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            _service.ChangePasswordAsync(9, 4, password, password, password));
+
+        _repoMock.Verify(repository => repository.ChangePasswordAndRotateRefreshTokenAsync(
+            It.IsAny<long>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
     }
 }

@@ -26,6 +26,7 @@ import {
   ClipboardList,
   Truck,
   Users,
+  UserCircle,
   X,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -139,14 +140,16 @@ const Layout = ({ children }) => {
   const platformMenuItems = canAccessPlatform(user)
     ? [{ name: 'Comercios', path: '/admin/tenants', icon: Building2 }]
     : [];
+  const profileMenuItem = { name: 'Perfil', path: '/profile', icon: UserCircle };
 
   const menuItems = isPlatformOnly
-    ? platformMenuItems
+    ? [...platformMenuItems, profileMenuItem]
     : [
         ...operationalMenuItems,
         ...(canManageTenantUsers(user) ? [{ name: 'Usuarios', path: '/users', icon: Users }] : []),
         ...platformMenuItems,
         ...(canManageSettings(user) ? [{ name: 'Configuracion', path: '/settings', icon: Settings }] : []),
+        profileMenuItem,
       ];
 
   const hasCurrentTenantBranding = brandingTenantId === tenantId;

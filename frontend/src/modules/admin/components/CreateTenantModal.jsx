@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Building2, MapPin, User, CheckCircle, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react';
+import { validatePassword } from '../../../utils/passwordPolicy';
 
 const STEPS = [
   { id: 1, label: 'Negocio', icon: Building2 },
@@ -71,6 +72,11 @@ const CreateTenantModal = ({ isOpen, onClose, onCreated }) => {
   };
 
   const handleSubmit = async () => {
+    const policyError = validatePassword(form.adminPassword);
+    if (policyError) {
+      setError(policyError);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -197,7 +203,7 @@ const CreateTenantModal = ({ isOpen, onClose, onCreated }) => {
                 <Field label="Apellido" name="adminLastName" value={form.adminLastName} onChange={handleChange} required placeholder="Pérez" />
               </div>
               <Field label="Email del administrador" name="adminEmail" value={form.adminEmail} onChange={handleChange} type="email" required placeholder="admin@comercio.com" />
-              <Field label="Contraseña temporal" name="adminPassword" value={form.adminPassword} onChange={handleChange} type="password" required placeholder="mínimo 6 caracteres" />
+              <Field label="Contraseña temporal" name="adminPassword" value={form.adminPassword} onChange={handleChange} type="password" required placeholder="Mínimo 8, con mayúscula, minúscula, número y símbolo" />
               <p className="text-xs text-gray-500 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                 El administrador podrá cambiar su contraseña después del primer login.
               </p>

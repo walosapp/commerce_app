@@ -92,7 +92,12 @@ public class AuthService : IAuthService
 
         var refreshToken = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
         var refreshDays = int.Parse(_configuration["Jwt:RefreshExpiresInDays"] ?? "7");
-        await _authRepo.SaveRefreshTokenAsync(user.Id, refreshToken, DateTime.UtcNow.AddDays(refreshDays));
+        if (!await _authRepo.SaveRefreshTokenAfterPasswordVerificationAsync(
+                user.Id,
+                user.PasswordHash,
+                refreshToken,
+                DateTime.UtcNow.AddDays(refreshDays)))
+            throw new BusinessException("Credentials changed during login; retry with the current password");
 
         _logger.LogInformation("Login exitoso: {Email}, CompanyId: {CompanyId}", user.Email, user.CompanyId);
 
@@ -117,14 +122,18 @@ public class AuthService : IAuthService
 
         EnsureCanonicalRole(user);
 
-        var tokenString = GenerateJwtToken(user);
         var newRefreshToken = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
         var refreshDays = int.Parse(_configuration["Jwt:RefreshExpiresInDays"] ?? "7");
-        await _authRepo.SaveRefreshTokenAsync(user.Id, newRefreshToken, DateTime.UtcNow.AddDays(refreshDays));
+        if (!await _authRepo.RotateRefreshTokenAsync(
+                user.Id,
+                refreshToken,
+                newRefreshToken,
+                DateTime.UtcNow.AddDays(refreshDays)))
+            throw new BusinessException("Refresh token invalid or expired");
 
         return new TokenResult
         {
-            Token = tokenString,
+            Token = GenerateJwtToken(user),
             RefreshToken = newRefreshToken
         };
     }
@@ -133,6 +142,55 @@ public class AuthService : IAuthService
     {
         await _authRepo.SaveRefreshTokenAsync(userId, string.Empty, DateTime.UtcNow.AddDays(-1));
         _logger.LogInformation("Logout exitoso: UserId {UserId}", userId);
+    }
+
+    public async Task<TokenResult> ChangePasswordAsync(
+        long userId,
+        long companyId,
+        string currentPassword,
+        string newPassword,
+        string confirmPassword)
+    {
+        if (string.IsNullOrWhiteSpace(currentPassword))
+            throw new ValidationException("La contraseña actual es requerida");
+        if (!string.Equals(newPassword, confirmPassword, StringComparison.Ordinal))
+            throw new ValidationException("La confirmación de contraseña no coincide");
+
+        PasswordPolicy.Validate(newPassword);
+
+        var user = await _authRepo.GetUserForPasswordChangeAsync(userId, companyId)
+            ?? throw new BusinessException("No fue posible cambiar la contraseña");
+        EnsureCanonicalRole(user);
+
+        if (!BCrypt.Net.BCrypt.Verify(currentPassword, user.PasswordHash))
+            throw new BusinessException("La contraseña actual es incorrecta");
+        if (BCrypt.Net.BCrypt.Verify(newPassword, user.PasswordHash))
+            throw new ValidationException("La nueva contraseña debe ser diferente a la actual");
+
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        var refreshToken = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var refreshDays = int.Parse(_configuration["Jwt:RefreshExpiresInDays"] ?? "7");
+        if (!await _authRepo.ChangePasswordAndRotateRefreshTokenAsync(
+                userId,
+                companyId,
+                user.PasswordHash,
+                passwordHash,
+                refreshToken,
+                DateTime.UtcNow.AddDays(refreshDays)))
+            throw new BusinessException("No fue posible cambiar la contraseña");
+
+        user.PasswordHash = passwordHash;
+        _logger.LogInformation(
+            "PasswordChanged ActorUserId {ActorUserId} TargetUserId {TargetUserId} CompanyId {CompanyId}; prior sessions invalidated",
+            userId,
+            userId,
+            companyId);
+
+        return new TokenResult
+        {
+            Token = GenerateJwtToken(user),
+            RefreshToken = refreshToken
+        };
     }
 
     private string GenerateJwtToken(User user)
@@ -150,7 +208,8 @@ public class AuthService : IAuthService
             new Claim(ClaimTypes.Role, user.RoleCode ?? "user"),
             new Claim(
                 WalosClaimTypes.PlatformAdmin,
-                IsTrustedPlatformAdmin(user).ToString().ToLowerInvariant())
+                IsTrustedPlatformAdmin(user).ToString().ToLowerInvariant()),
+            new Claim(WalosClaimTypes.SecurityStamp, AccessTokenSecurityStamp.Compute(jwtSecret, user))
         };
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));

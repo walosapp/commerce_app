@@ -7,6 +7,12 @@ public interface IAuthService
     Task<LoginResult> LoginAsync(string username, string password, string? ipAddress);
     Task<TokenResult> RefreshTokenAsync(string refreshToken);
     Task LogoutAsync(long userId);
+    Task<TokenResult> ChangePasswordAsync(
+        long userId,
+        long companyId,
+        string currentPassword,
+        string newPassword,
+        string confirmPassword);
 }
 
 public class LoginResult

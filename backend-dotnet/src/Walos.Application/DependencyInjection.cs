@@ -10,6 +10,7 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAccessTokenValidationService, AccessTokenValidationService>();
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<ICompanyFeatureService, CompanyFeatureService>();
         services.AddScoped<IAiCapabilityGuard, AiCapabilityGuard>();

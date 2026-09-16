@@ -13,7 +13,7 @@ public interface IAdminRepository
     Task<TenantResponse?> GetTenantByIdAsync(long companyId);
     Task<bool> SetTenantActiveAsync(long companyId, bool isActive);
     Task<TenantResponse?> UpdateTenantAsync(long companyId, UpdateTenantRequest request);
-    Task<bool> ResetTenantAdminPasswordAsync(long companyId, string passwordHash);
+    Task<long?> ResetTenantAdminPasswordAsync(long companyId, long actorUserId, string passwordHash);
     Task<IReadOnlyList<BranchAdminResponse>> GetBranchesAsync(long companyId);
     Task<BranchAdminResponse> CreateBranchAsync(long companyId, CreateBranchAdminRequest request, long actorId);
     Task<BranchAdminResponse?> UpdateBranchAsync(

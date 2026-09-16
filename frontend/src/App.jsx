@@ -26,8 +26,10 @@ import DeliveryOrdersPage from './modules/delivery/DeliveryOrdersPage';
 import SuppliersPage from './modules/suppliers/SuppliersPage';
 import UsersPage from './modules/users/UsersPage';
 import PosDeliPage from './modules/pos-deli/PosDeliPage';
+import ProfilePage from './modules/profile/ProfilePage';
 import FeatureRoute from './components/routing/FeatureRoute';
 import PostLoginLanding from './components/routing/PostLoginLanding';
+import AuthenticatedRoute from './components/routing/AuthenticatedRoute';
 import { canAccessPlatform, canManageCatalog, canManageSettings, canManageTenantUsers, isPlatformOnlyUser } from './config/companyFeatures';
 
 setAuthStateGetter(() => useAuthStore.getState());
@@ -105,6 +107,7 @@ function App() {
           <Route path="/suppliers" element={<FeatureRoute feature="suppliers"><SuppliersPage initialTab="suppliers" /></FeatureRoute>} />
           <Route path="/purchases" element={<FeatureRoute feature="purchases"><SuppliersPage initialTab="orders" /></FeatureRoute>} />
           <Route path="/users" element={<ProtectedRoute authorize={canManageTenantUsers}><UsersPage /></ProtectedRoute>} />
+          <Route path="/profile" element={<AuthenticatedRoute><ProfilePage /></AuthenticatedRoute>} />
           <Route path="/settings" element={<ProtectedRoute authorize={canManageSettings}><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/branding" element={<ProtectedRoute authorize={canManageSettings}><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/themes" element={<ProtectedRoute authorize={canManageSettings}><SettingsPage /></ProtectedRoute>} />

@@ -13,6 +13,7 @@ using Walos.API.Middleware;
 using Walos.API.Security;
 using Walos.API.Services;
 using Walos.Application;
+using Walos.Application.Services;
 using Walos.Domain.Interfaces;
 using Walos.Infrastructure;
 using Walos.Infrastructure.Services;
@@ -155,6 +156,27 @@ try
                     if (context.Exception is SecurityTokenExpiredException)
                         context.Response.Headers.Append("Token-Expired", "true");
                     return Task.CompletedTask;
+                },
+                OnTokenValidated = async context =>
+                {
+                    try
+                    {
+                        var validator = context.HttpContext.RequestServices
+                            .GetRequiredService<IAccessTokenValidationService>();
+                        if (context.Principal is null
+                            || !await validator.ValidateAsync(context.Principal))
+                        {
+                            context.Fail("Token invalidated");
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        context.HttpContext.RequestServices
+                            .GetRequiredService<ILoggerFactory>()
+                            .CreateLogger("AccessTokenValidation")
+                            .LogWarning(exception, "AccessTokenValidationUnavailable");
+                        context.Fail("Token validation unavailable");
+                    }
                 }
             };
         });

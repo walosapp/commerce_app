@@ -18,7 +18,17 @@ public interface IUsersRepository
     Task<RoleAssignmentInfo?> GetRoleForAssignmentAsync(long roleId, long companyId);
     Task<RoleAssignmentInfo?> GetUserRoleForAssignmentAsync(long userId, long companyId);
     Task<bool> IsActiveBranchInCompanyAsync(long branchId, long companyId);
-    Task<bool> ResetPasswordAsync(long userId, long companyId, string newPasswordHash);
+    Task<bool> ResetPasswordByTenantActorAsync(
+        long actorUserId,
+        string actorRole,
+        long targetUserId,
+        long companyId,
+        string newPasswordHash);
+    Task<bool> ResetPasswordByPlatformActorAsync(
+        long actorUserId,
+        long targetUserId,
+        long companyId,
+        string newPasswordHash);
 }
 
 public sealed record RoleAssignmentInfo(long Id, string Code, int AccessLevel);

@@ -26,8 +26,7 @@ public class AdminService : IAdminService
         if (string.IsNullOrWhiteSpace(request.AdminEmail))
             throw new ValidationException("El email del administrador es requerido");
 
-        if (string.IsNullOrWhiteSpace(request.AdminPassword) || request.AdminPassword.Length < 6)
-            throw new ValidationException("La contrasena del administrador debe tener al menos 6 caracteres");
+        PasswordPolicy.Validate(request.AdminPassword);
 
         if (string.IsNullOrWhiteSpace(request.BranchName))
             throw new ValidationException("El nombre de la sucursal es requerido");
@@ -98,19 +97,25 @@ public class AdminService : IAdminService
         return await _adminRepo.UpdateTenantAsync(companyId, request);
     }
 
-    public async Task ResetTenantAdminPasswordAsync(long companyId, string newPassword)
+    public async Task<long> ResetTenantAdminPasswordAsync(long companyId, long actorUserId, string newPassword)
     {
-        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6)
-            throw new ValidationException("La contraseña debe tener al menos 6 caracteres");
+        PasswordPolicy.Validate(newPassword);
 
         var exists = await _adminRepo.GetTenantByIdAsync(companyId);
         if (exists is null)
             throw new BusinessException("Comercio no encontrado");
 
         var passwordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
-        var updated = await _adminRepo.ResetTenantAdminPasswordAsync(companyId, passwordHash);
-        if (!updated)
-            throw new BusinessException("No se encontró un administrador activo para este comercio");
+        var targetUserId = await _adminRepo.ResetTenantAdminPasswordAsync(companyId, actorUserId, passwordHash);
+        if (!targetUserId.HasValue)
+            throw new BusinessException("El comercio debe tener exactamente un administrador activo distinto del actor");
+
+        _logger.LogWarning(
+            "PasswordReset ActorUserId {ActorUserId} TargetUserId {TargetUserId} CompanyId {CompanyId}; target sessions invalidated",
+            actorUserId,
+            targetUserId.Value,
+            companyId);
+        return targetUserId.Value;
     }
 
     public async Task<IReadOnlyList<BranchAdminResponse>> GetBranchesAsync(long companyId)
