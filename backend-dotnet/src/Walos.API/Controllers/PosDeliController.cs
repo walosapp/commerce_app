@@ -19,6 +19,15 @@ namespace Walos.API.Controllers;
 [RequireFeature(WalosFeatures.Pos)]
 public class PosDeliController : ControllerBase
 {
+    private sealed class PersistedPosSale
+    {
+        public long SaleId { get; init; }
+        public string TicketNumber { get; init; } = string.Empty;
+        public decimal Total { get; init; }
+        public decimal CashReceived { get; init; }
+        public string RequestFingerprint { get; init; } = string.Empty;
+    }
+
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ITenantContext _tenantContext;
     private readonly ILogger<PosDeliController> _logger;
@@ -157,7 +166,9 @@ public class PosDeliController : ControllerBase
     }
 
     [HttpPost("sale")]
-    public async Task<IActionResult> CreateSale([FromBody] PosDeliSaleRequest request)
+    public async Task<IActionResult> CreateSale(
+        [FromBody] PosDeliSaleRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey = null)
     {
         var branchId = _tenantContext.BranchId;
         if (!branchId.HasValue)
@@ -175,6 +186,9 @@ public class PosDeliController : ControllerBase
         if (request.Payments.Any(p => p.Amount <= 0 || string.IsNullOrWhiteSpace(p.Method)))
             return BadRequest(ApiResponse.Fail("Todos los pagos deben tener método y monto mayor a cero"));
 
+        if (request.CashReceived < 0)
+            return BadRequest(ApiResponse.Fail("El efectivo recibido no puede ser negativo"));
+
         var normalizedPayments = request.Payments.Select(payment => new PosDeliPayment
         {
             Method = PaymentPolicy.NormalizeMethod(payment.Method),
@@ -182,11 +196,81 @@ public class PosDeliController : ControllerBase
             Reference = payment.Reference?.Trim()
         }).ToList();
 
+        var normalizedIdempotencyKey = PosSaleIdempotencyPolicy.NormalizeKey(idempotencyKey);
+        var requestFingerprint = normalizedIdempotencyKey is null
+            ? null
+            : PosSaleIdempotencyPolicy.CreateFingerprint(
+                _tenantContext.CompanyId,
+                branchId.Value,
+                request.Items.Select(item => new PosSaleFingerprintItem(item.ProductId, item.Quantity)),
+                normalizedPayments.Select(payment => new PosSaleFingerprintPayment(
+                    payment.Method,
+                    payment.Amount,
+                    payment.Reference)),
+                request.CashReceived);
+        var normalizedCashReceived = PaymentPolicy.RoundMoney(request.CashReceived ?? 0m);
+
         using var connection = await _connectionFactory.CreateConnectionAsync();
         using var transaction = connection.BeginTransaction();
 
         try
         {
+            if (normalizedIdempotencyKey is not null)
+            {
+                var advisoryLockKey = PosSaleIdempotencyPolicy.CreateAdvisoryLockKey(
+                    _tenantContext.CompanyId,
+                    normalizedIdempotencyKey);
+                await connection.ExecuteAsync(
+                    "SELECT pg_advisory_xact_lock(@AdvisoryLockKey)",
+                    new { AdvisoryLockKey = advisoryLockKey },
+                    transaction);
+
+                const string replaySql = @"
+                    SELECT
+                        id AS SaleId,
+                        order_number AS TicketNumber,
+                        total AS Total,
+                        COALESCE(cash_received, 0) AS CashReceived,
+                        request_fingerprint AS RequestFingerprint
+                    FROM sales.orders
+                    WHERE company_id = @CompanyId
+                      AND idempotency_key = @IdempotencyKey
+                    LIMIT 1";
+
+                var persistedSale = await connection.QueryFirstOrDefaultAsync<PersistedPosSale>(replaySql, new
+                {
+                    CompanyId = _tenantContext.CompanyId,
+                    IdempotencyKey = normalizedIdempotencyKey
+                }, transaction);
+
+                if (persistedSale is not null)
+                {
+                    transaction.Commit();
+
+                    if (!string.Equals(
+                            persistedSale.RequestFingerprint,
+                            requestFingerprint,
+                            StringComparison.Ordinal))
+                    {
+                        return Conflict(ApiResponse.Fail(
+                            "La clave de idempotencia ya fue utilizada para otra venta",
+                            code: "idempotency_conflict"));
+                    }
+
+                    var replayChange = Math.Max(
+                        0,
+                        PaymentPolicy.RoundMoney(persistedSale.CashReceived - persistedSale.Total));
+
+                    return Ok(ApiResponse<PosDeliSaleResponse>.Ok(new PosDeliSaleResponse
+                    {
+                        SaleId = persistedSale.SaleId,
+                        TicketNumber = persistedSale.TicketNumber,
+                        Total = persistedSale.Total,
+                        Change = replayChange
+                    }, "Venta registrada exitosamente"));
+                }
+            }
+
             const string cashSettingsSql = @"
                 SELECT require_cash_register
                 FROM core.companies
@@ -298,12 +382,14 @@ public class PosDeliController : ControllerBase
                     company_id, branch_id, table_id, order_number, status,
                     subtotal, tax, total, discount_amount, final_total_paid,
                     split_reference_count, notes, created_by, payment_method,
-                    tip_amount, tip_included, cash_register_id, created_at
+                    tip_amount, tip_included, cash_register_id,
+                    idempotency_key, request_fingerprint, cash_received, created_at
                 ) VALUES (
                     @CompanyId, @BranchId, @TableId, @OrderNumber, 'completed',
                     @Subtotal, 0, @Total, 0, @FinalTotalPaid,
                     1, @Notes, @CreatedBy, @PaymentMethod,
-                    0, FALSE, @CashRegisterId, NOW()
+                    0, FALSE, @CashRegisterId,
+                    @IdempotencyKey, @RequestFingerprint, @CashReceived, NOW()
                 )
                 RETURNING id";
 
@@ -320,7 +406,10 @@ public class PosDeliController : ControllerBase
                 Notes = request.Notes,
                 CreatedBy = _tenantContext.UserId,
                 PaymentMethod = paymentMethod,
-                CashRegisterId = cashRegisterId
+                CashRegisterId = cashRegisterId,
+                IdempotencyKey = normalizedIdempotencyKey,
+                RequestFingerprint = requestFingerprint,
+                CashReceived = normalizedCashReceived
             }, transaction);
 
             const string itemSql = @"
@@ -430,8 +519,7 @@ public class PosDeliController : ControllerBase
 
             transaction.Commit();
 
-            var cashReceived = request.CashReceived ?? 0;
-            var change = Math.Max(0, PaymentPolicy.RoundMoney(cashReceived - total));
+            var change = Math.Max(0, PaymentPolicy.RoundMoney(normalizedCashReceived - total));
 
             _logger.LogInformation("Venta POS-Deli creada. OrderId={OrderId}, Total={Total}", orderId, total);
 

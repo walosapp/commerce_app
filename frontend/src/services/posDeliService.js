@@ -17,8 +17,10 @@ const posDeliService = {
     return response.data;
   },
 
-  createSale: async (payload) => {
-    const response = await api.post('/pos-deli/sale', payload);
+  createSale: async (payload, idempotencyKey) => {
+    const response = await api.post('/pos-deli/sale', payload, {
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    });
     return response.data;
   },
 };

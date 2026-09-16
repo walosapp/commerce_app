@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   enqueuePostSale: vi.fn(),
   refetch: vi.fn(),
   clearTicket: vi.fn(),
+  getIdempotencyKey: vi.fn(),
+  renewIdempotencyKey: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   storeState: null,
@@ -97,6 +99,8 @@ const renderCheckout = () => {
 describe('PosDeliPage H3 postventa', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getIdempotencyKey.mockReturnValue('sale-key-1');
+    mocks.renewIdempotencyKey.mockReturnValue('sale-key-2');
     mocks.refetch.mockResolvedValue({ data: { data: [] } });
     mocks.enqueuePostSale.mockResolvedValue({ print: { status: 'completed' } });
     mocks.createSale.mockResolvedValue({
@@ -120,10 +124,12 @@ describe('PosDeliPage H3 postventa', () => {
       updateQuantity: vi.fn(),
       setSelectedItemId: vi.fn(),
       clearTicket: mocks.clearTicket,
+      getIdempotencyKey: mocks.getIdempotencyKey,
+      renewIdempotencyKey: mocks.renewIdempotencyKey,
     };
   });
 
-  it('encola hardware solo con el orderId persistido', async () => {
+  it('encola hardware solo con el orderId persistido y conserva la idempotencia de venta', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     renderCheckout();
 
@@ -134,7 +140,7 @@ describe('PosDeliPage H3 postventa', () => {
       items: [{ productId: 42, quantity: 1, unitPrice: 100, isWeighed: false }],
       payments: [{ method: 'cash', amount: 100, reference: null }],
       cashReceived: 120,
-    });
+    }, 'sale-key-1');
     expect(mocks.clearTicket).toHaveBeenCalledOnce();
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Venta POS-932 registrada');
     expect(openSpy).not.toHaveBeenCalled();
@@ -150,7 +156,7 @@ describe('PosDeliPage H3 postventa', () => {
     expect(mocks.createSale).toHaveBeenCalledWith(expect.objectContaining({
       payments: [{ method: 'card', amount: 100, reference: 'CARD-1' }],
       cashReceived: null,
-    }));
+    }), 'sale-key-1');
     expect(mocks.enqueuePostSale).toHaveBeenCalledTimes(1);
   });
 
@@ -179,4 +185,25 @@ describe('PosDeliPage H3 postventa', () => {
     expect(mocks.toastError).not.toHaveBeenCalled();
   });
 
+  it('un error de venta no inicia hardware y el retry conserva la misma sale key', async () => {
+    mocks.createSale
+      .mockRejectedValueOnce({ response: { data: { message: 'timeout de checkout' } } })
+      .mockResolvedValueOnce({
+        data: { saleId: 932, ticketNumber: 'POS-932', total: 100, change: 20 },
+      });
+    renderCheckout();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar efectivo' }));
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith('timeout de checkout'));
+    expect(mocks.enqueuePostSale).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar efectivo' }));
+    await waitFor(() => expect(mocks.enqueuePostSale).toHaveBeenCalledWith({ orderId: 932 }));
+
+    expect(mocks.createSale).toHaveBeenCalledTimes(2);
+    expect(mocks.createSale.mock.calls[0][1]).toBe('sale-key-1');
+    expect(mocks.createSale.mock.calls[1][1]).toBe('sale-key-1');
+    expect(mocks.getIdempotencyKey).toHaveBeenCalledOnce();
+    expect(mocks.renewIdempotencyKey).not.toHaveBeenCalled();
+  });
 });

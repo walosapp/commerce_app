@@ -1,11 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+const createIdempotencyKey = () => crypto.randomUUID();
+
 const usePosDeliStore = create(
   persist(
     (set, get) => ({
       items: [],
       ticketNumber: null,
+      idempotencyKey: null,
 
       get total() {
         return get().items.reduce((sum, item) => sum + item.subtotal, 0);
@@ -16,6 +19,7 @@ const usePosDeliStore = create(
       addWeighedItem: (product, weight) => {
         const subtotal = Math.round(weight * product.salePrice);
         set((state) => ({
+          idempotencyKey: createIdempotencyKey(),
           items: [
             ...state.items,
             {
@@ -39,6 +43,7 @@ const usePosDeliStore = create(
           );
           if (existing) {
             return {
+              idempotencyKey: createIdempotencyKey(),
               items: state.items.map((i) =>
                 i.id === existing.id
                   ? { ...i, quantity: i.quantity + 1, subtotal: (i.quantity + 1) * i.unitPrice }
@@ -47,6 +52,7 @@ const usePosDeliStore = create(
             };
           }
           return {
+            idempotencyKey: createIdempotencyKey(),
             items: [
               ...state.items,
               {
@@ -66,6 +72,7 @@ const usePosDeliStore = create(
 
       removeItem: (itemId) => {
         set((state) => ({
+          idempotencyKey: createIdempotencyKey(),
           items: state.items.filter((i) => i.id !== itemId),
         }));
       },
@@ -76,6 +83,7 @@ const usePosDeliStore = create(
           return;
         }
         set((state) => ({
+          idempotencyKey: createIdempotencyKey(),
           items: state.items.map((i) =>
             i.id === itemId
               ? { ...i, quantity: newQty, subtotal: Math.round(newQty * i.unitPrice) }
@@ -87,7 +95,22 @@ const usePosDeliStore = create(
       setSelectedItemId: (itemId) => set({ selectedItemId: itemId }),
       selectedItemId: null,
 
-      clearTicket: () => set({ items: [], selectedItemId: null }),
+      getIdempotencyKey: () => {
+        const existingKey = get().idempotencyKey;
+        if (existingKey) return existingKey;
+
+        const newKey = createIdempotencyKey();
+        set({ idempotencyKey: newKey });
+        return newKey;
+      },
+
+      renewIdempotencyKey: () => {
+        const newKey = createIdempotencyKey();
+        set({ idempotencyKey: newKey });
+        return newKey;
+      },
+
+      clearTicket: () => set({ items: [], selectedItemId: null, idempotencyKey: null }),
     }),
     {
       name: 'pos-deli-ticket',

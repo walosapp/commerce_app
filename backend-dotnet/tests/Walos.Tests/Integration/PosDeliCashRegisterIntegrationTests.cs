@@ -8,6 +8,7 @@ using Walos.Application.DTOs.Common;
 using Walos.Application.DTOs.PosDeli;
 using Walos.Domain.Entities;
 using Walos.Domain.Exceptions;
+using Walos.Domain.Policies;
 using Walos.Infrastructure.Inventory;
 
 namespace Walos.Tests.Integration;
@@ -491,6 +492,215 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task CreateSale_Same_Key_And_Payload_Replays_Persisted_Sale_Without_Mutations()
+    {
+        var context = await SeedPosContextAsync("POS idempotent replay");
+        var productId = await SeedProductAsync(
+            context.Company, "Producto idempotente", 20m, trackStock: true);
+        await SeedStockAsync(context.Company, context.Branch, productId, 5m);
+        var register = await OpenRegisterAsync(context);
+        var request = SaleRequest(productId, 1m, 20m);
+        request.CashReceived = 50m;
+        var controller = CreateController(context.Company, context.Branch, context.User);
+        const string key = "sale-replay-1";
+
+        var first = ExtractSale(await controller.CreateSale(request, key));
+        var replay = ExtractSale(await controller.CreateSale(request, key));
+
+        Assert.Equal(first.SaleId, replay.SaleId);
+        Assert.Equal(first.TicketNumber, replay.TicketNumber);
+        Assert.Equal(first.Total, replay.Total);
+        Assert.Equal(first.Change, replay.Change);
+        Assert.Equal(1, await CountOrdersAsync(context.Company));
+        Assert.Equal(1L, await ScalarAsync<long>(
+            "SELECT COUNT(*) FROM sales.order_items WHERE company_id = @CompanyId",
+            new { CompanyId = context.Company }));
+        Assert.Equal(1L, await ScalarAsync<long>(
+            "SELECT COUNT(*) FROM sales.order_payments WHERE company_id = @CompanyId",
+            new { CompanyId = context.Company }));
+        Assert.Equal(1L, await ScalarAsync<long>(
+            "SELECT COUNT(*) FROM inventory.movements WHERE company_id = @CompanyId",
+            new { CompanyId = context.Company }));
+        Assert.Equal(4m, await StockAsync(context, productId));
+
+        var persistedRegister = await CashRegisterRepository.GetByIdAsync(register.Id, context.Company);
+        Assert.NotNull(persistedRegister);
+        Assert.Equal(20m, persistedRegister!.TotalSales);
+        Assert.Equal(20m, persistedRegister.TotalCashSales);
+        Assert.Equal(1, persistedRegister.OrderCount);
+        Assert.Equal(64, await ScalarAsync<int>(
+            "SELECT LENGTH(request_fingerprint)::INT FROM sales.orders WHERE id = @OrderId",
+            new { OrderId = first.SaleId }));
+    }
+
+    [SkippableTheory]
+    [InlineData("quantity")]
+    [InlineData("product")]
+    [InlineData("method")]
+    [InlineData("amount")]
+    public async Task CreateSale_Same_Key_With_Different_Economic_Intent_Returns_Conflict(string change)
+    {
+        var context = await SeedPosContextAsync($"POS idempotent conflict {change}");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var firstProduct = await SeedProductAsync(context.Company, "Producto original", 20m);
+        var otherProduct = await SeedProductAsync(context.Company, "Producto alterno", 20m);
+        var controller = CreateController(context.Company, context.Branch, context.User);
+        const string key = "sale-conflict-1";
+        await controller.CreateSale(SaleRequest(firstProduct, 1m, 20m), key);
+
+        var retry = change switch
+        {
+            "quantity" => SaleRequest(firstProduct, 2m, 40m),
+            "product" => SaleRequest(otherProduct, 1m, 20m),
+            "method" => SaleRequest(firstProduct, 1m, 20m, "card"),
+            "amount" => SaleRequest(firstProduct, 1m, 21m),
+            _ => throw new InvalidOperationException("Unknown test case")
+        };
+
+        var conflict = Assert.IsType<ConflictObjectResult>(await controller.CreateSale(retry, key));
+        var response = Assert.IsType<ApiResponse>(conflict.Value);
+        Assert.Equal("idempotency_conflict", response.Code);
+        Assert.Equal(1, await CountOrdersAsync(context.Company));
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Different_Key_With_Same_Payload_Creates_New_Sale()
+    {
+        var context = await SeedPosContextAsync("POS different idempotency key");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var productId = await SeedProductAsync(context.Company, "Producto keys", 20m);
+        var request = SaleRequest(productId, 1m, 20m);
+        var controller = CreateController(context.Company, context.Branch, context.User);
+
+        var first = ExtractSale(await controller.CreateSale(request, "sale-key-a"));
+        var second = ExtractSale(await controller.CreateSale(request, "sale-key-b"));
+
+        Assert.NotEqual(first.SaleId, second.SaleId);
+        Assert.Equal(2, await CountOrdersAsync(context.Company));
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Reordered_Items_And_Transfer_Alias_Replay_Same_Intent()
+    {
+        var context = await SeedPosContextAsync("POS canonical replay");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var firstProduct = await SeedProductAsync(context.Company, "Producto canonical A", 10m);
+        var secondProduct = await SeedProductAsync(context.Company, "Producto canonical B", 20m);
+        var firstRequest = new PosDeliSaleRequest
+        {
+            Items =
+            [
+                new PosDeliSaleItem { ProductId = firstProduct, Quantity = 1m },
+                new PosDeliSaleItem { ProductId = secondProduct, Quantity = 1m }
+            ],
+            Payments = [new PosDeliPayment { Method = "nequi", Amount = 30m, Reference = "REF" }]
+        };
+        var reordered = new PosDeliSaleRequest
+        {
+            Items =
+            [
+                new PosDeliSaleItem { ProductId = secondProduct, Quantity = 1m },
+                new PosDeliSaleItem { ProductId = firstProduct, Quantity = 1m }
+            ],
+            Payments = [new PosDeliPayment { Method = "transfer", Amount = 30m, Reference = "REF" }]
+        };
+        var controller = CreateController(context.Company, context.Branch, context.User);
+
+        var first = ExtractSale(await controller.CreateSale(firstRequest, "sale-canonical"));
+        var replay = ExtractSale(await controller.CreateSale(reordered, "sale-canonical"));
+
+        Assert.Equal(first.SaleId, replay.SaleId);
+        Assert.Equal(1, await CountOrdersAsync(context.Company));
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Same_Key_Is_Isolated_By_Company_And_Scoped_Across_Branches()
+    {
+        var tenantA = await SeedPosContextAsync("POS idempotency tenant A");
+        var tenantB = await SeedPosContextAsync("POS idempotency tenant B");
+        await DisableCashRegisterRequirementAsync(tenantA.Company);
+        await DisableCashRegisterRequirementAsync(tenantB.Company);
+        var productA = await SeedProductAsync(tenantA.Company, "Producto tenant A", 20m);
+        var productB = await SeedProductAsync(tenantB.Company, "Producto tenant B", 20m);
+        const string key = "shared-company-key";
+
+        var saleA = ExtractSale(await CreateController(tenantA.Company, tenantA.Branch, tenantA.User)
+            .CreateSale(SaleRequest(productA, 1m, 20m), key));
+        var saleB = ExtractSale(await CreateController(tenantB.Company, tenantB.Branch, tenantB.User)
+            .CreateSale(SaleRequest(productB, 1m, 20m), key));
+
+        Assert.NotEqual(saleA.SaleId, saleB.SaleId);
+
+        var otherBranch = await SeedBranchAsync(tenantA.Company, "POS idempotency other branch");
+        var otherUser = await SeedUserAsync(
+            tenantA.Company,
+            otherBranch,
+            $"idempotency-{Guid.NewGuid():N}@test.com");
+        var conflict = Assert.IsType<ConflictObjectResult>(await CreateController(
+                tenantA.Company, otherBranch, otherUser)
+            .CreateSale(SaleRequest(productA, 1m, 20m), key));
+        Assert.Equal("idempotency_conflict", Assert.IsType<ApiResponse>(conflict.Value).Code);
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Failed_Inventory_Does_Not_Consume_Key()
+    {
+        var context = await SeedPosContextAsync("POS idempotency rollback");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var productId = await SeedProductAsync(
+            context.Company, "Producto idempotency rollback", 20m, trackStock: true);
+        await SeedStockAsync(context.Company, context.Branch, productId, 0.5m);
+        var controller = CreateController(context.Company, context.Branch, context.User);
+        var request = SaleRequest(productId, 1m, 20m);
+        const string key = "sale-rollback";
+
+        await Assert.ThrowsAsync<BusinessException>(() => controller.CreateSale(request, key));
+        await ExecuteAsync(@"
+            UPDATE inventory.stock SET quantity = 2
+            WHERE company_id = @CompanyId AND branch_id = @BranchId AND product_id = @ProductId",
+            new { CompanyId = context.Company, BranchId = context.Branch, ProductId = productId });
+
+        var completed = ExtractSale(await controller.CreateSale(request, key));
+
+        Assert.True(completed.SaleId > 0);
+        Assert.Equal(1, await CountOrdersAsync(context.Company));
+        Assert.Equal(1m, await StockAsync(context, productId));
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Concurrent_Same_Key_Mutates_Exactly_Once()
+    {
+        var context = await SeedPosContextAsync("POS idempotent concurrent");
+        var productId = await SeedProductAsync(
+            context.Company, "Producto idempotent concurrent", 20m, trackStock: true);
+        await SeedStockAsync(context.Company, context.Branch, productId, 2m);
+        var register = await OpenRegisterAsync(context);
+        var request = SaleRequest(productId, 1m, 20m);
+        const string key = "sale-concurrent";
+
+        var results = await RunBehindIdempotencyGateAsync(
+            context.Company,
+            key,
+            () => CreateController(context.Company, context.Branch, context.User).CreateSale(request, key),
+            () => CreateController(context.Company, context.Branch, context.User).CreateSale(request, key));
+        var sales = results.Select(ExtractSale).ToList();
+
+        Assert.Equal(sales[0].SaleId, sales[1].SaleId);
+        Assert.Equal(1, await CountOrdersAsync(context.Company));
+        Assert.Equal(1m, await StockAsync(context, productId));
+        Assert.Equal(1L, await ScalarAsync<long>(
+            "SELECT COUNT(*) FROM inventory.movements WHERE company_id = @CompanyId",
+            new { CompanyId = context.Company }));
+        Assert.Equal(1L, await ScalarAsync<long>(
+            "SELECT COUNT(*) FROM sales.order_payments WHERE company_id = @CompanyId",
+            new { CompanyId = context.Company }));
+        var persistedRegister = await CashRegisterRepository.GetByIdAsync(register.Id, context.Company);
+        Assert.NotNull(persistedRegister);
+        Assert.Equal(20m, persistedRegister!.TotalSales);
+        Assert.Equal(1, persistedRegister.OrderCount);
+    }
+
+    [SkippableFact]
     public async Task CreateSale_Concurrent_Sales_Do_Not_Persist_Negative_Stock()
     {
         var context = await SeedPosContextAsync("POS concurrent");
@@ -601,6 +811,9 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
         var suffix = Guid.NewGuid().ToString("N");
         var functionName = $"fail_pos_movement_{suffix}";
         var triggerName = $"trg_fail_pos_movement_{suffix}";
+        var controller = CreateController(context.Company, context.Branch, context.User);
+        var request = SaleRequest(productId, 1m, 20m);
+        const string key = "sale-movement-rollback";
         await ExecuteAsync($@"
             CREATE FUNCTION {functionName}() RETURNS trigger LANGUAGE plpgsql AS $$
             BEGIN
@@ -613,8 +826,7 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
         try
         {
             await Assert.ThrowsAsync<PostgresException>(() =>
-                CreateController(context.Company, context.Branch, context.User)
-                    .CreateSale(SaleRequest(productId, 1m, 20m)));
+                controller.CreateSale(request, key));
             Assert.Equal(2m, await StockAsync(context, productId));
             Assert.Equal(0, await CountOrdersAsync(context.Company));
         }
@@ -624,6 +836,97 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
                 DROP TRIGGER IF EXISTS {triggerName} ON inventory.movements;
                 DROP FUNCTION IF EXISTS {functionName}();");
         }
+
+        var completed = ExtractSale(await controller.CreateSale(request, key));
+        Assert.True(completed.SaleId > 0);
+        Assert.Equal(1, await CountOrdersAsync(context.Company));
+        Assert.Equal(1m, await StockAsync(context, productId));
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Payment_Insert_Failure_Does_Not_Consume_Key()
+    {
+        var context = await SeedPosContextAsync("POS payment rollback key");
+        await DisableCashRegisterRequirementAsync(context.Company);
+        var productId = await SeedProductAsync(context.Company, "Producto payment rollback", 20m);
+        var suffix = Guid.NewGuid().ToString("N");
+        var functionName = $"fail_pos_payment_{suffix}";
+        var triggerName = $"trg_fail_pos_payment_{suffix}";
+        var controller = CreateController(context.Company, context.Branch, context.User);
+        var request = SaleRequest(productId, 1m, 20m);
+        const string key = "sale-payment-rollback";
+        await ExecuteAsync($@"
+            CREATE FUNCTION {functionName}() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                IF NEW.company_id = {context.Company} THEN RAISE EXCEPTION 'forced payment failure'; END IF;
+                RETURN NEW;
+            END $$;
+            CREATE TRIGGER {triggerName} BEFORE INSERT ON sales.order_payments
+            FOR EACH ROW EXECUTE FUNCTION {functionName}();");
+
+        try
+        {
+            await Assert.ThrowsAsync<PostgresException>(() => controller.CreateSale(request, key));
+            Assert.Equal(0, await CountOrdersAsync(context.Company));
+        }
+        finally
+        {
+            await ExecuteAsync($@"
+                DROP TRIGGER IF EXISTS {triggerName} ON sales.order_payments;
+                DROP FUNCTION IF EXISTS {functionName}();");
+        }
+
+        var completed = ExtractSale(await controller.CreateSale(request, key));
+        Assert.True(completed.SaleId > 0);
+        Assert.Equal(1, await CountOrdersAsync(context.Company));
+        Assert.Equal(1L, await ScalarAsync<long>(
+            "SELECT COUNT(*) FROM sales.order_payments WHERE company_id = @CompanyId",
+            new { CompanyId = context.Company }));
+    }
+
+    [SkippableFact]
+    public async Task CreateSale_Cash_Update_Failure_Does_Not_Consume_Key_Or_Inventory()
+    {
+        var context = await SeedPosContextAsync("POS cash rollback key");
+        var productId = await SeedProductAsync(
+            context.Company, "Producto cash rollback", 20m, trackStock: true);
+        await SeedStockAsync(context.Company, context.Branch, productId, 2m);
+        var register = await OpenRegisterAsync(context);
+        var suffix = Guid.NewGuid().ToString("N");
+        var functionName = $"fail_pos_cash_{suffix}";
+        var triggerName = $"trg_fail_pos_cash_{suffix}";
+        var controller = CreateController(context.Company, context.Branch, context.User);
+        var request = SaleRequest(productId, 1m, 20m);
+        const string key = "sale-cash-rollback";
+        await ExecuteAsync($@"
+            CREATE FUNCTION {functionName}() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                IF NEW.company_id = {context.Company} THEN RAISE EXCEPTION 'forced cash failure'; END IF;
+                RETURN NEW;
+            END $$;
+            CREATE TRIGGER {triggerName} BEFORE UPDATE ON sales.cash_registers
+            FOR EACH ROW EXECUTE FUNCTION {functionName}();");
+
+        try
+        {
+            await Assert.ThrowsAsync<PostgresException>(() => controller.CreateSale(request, key));
+            Assert.Equal(0, await CountOrdersAsync(context.Company));
+            Assert.Equal(2m, await StockAsync(context, productId));
+        }
+        finally
+        {
+            await ExecuteAsync($@"
+                DROP TRIGGER IF EXISTS {triggerName} ON sales.cash_registers;
+                DROP FUNCTION IF EXISTS {functionName}();");
+        }
+
+        var completed = ExtractSale(await controller.CreateSale(request, key));
+        Assert.True(completed.SaleId > 0);
+        Assert.Equal(1m, await StockAsync(context, productId));
+        var persistedRegister = await CashRegisterRepository.GetByIdAsync(register.Id, context.Company);
+        Assert.NotNull(persistedRegister);
+        Assert.Equal(20m, persistedRegister!.TotalSales);
+        Assert.Equal(1, persistedRegister.OrderCount);
     }
 
     [SkippableFact]
@@ -778,6 +1081,12 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
         Items = [new PosDeliSaleItem { ProductId = productId, Quantity = quantity }],
         Payments = [new PosDeliPayment { Method = paymentMethod, Amount = paymentAmount }]
     };
+
+    private static PosDeliSaleResponse ExtractSale(IActionResult result)
+    {
+        var ok = Assert.IsType<OkObjectResult>(result);
+        return Assert.IsType<ApiResponse<PosDeliSaleResponse>>(ok.Value).Data!;
+    }
 
     private async Task<CashRegister> OpenRegisterAsync((long Company, long Branch, long User) context) =>
         await CashRegisterRepository.OpenAsync(new CashRegister
@@ -950,6 +1259,54 @@ public class PosDeliCashRegisterIntegrationTests : IntegrationTestBase
             await ExecuteAsync($@"
                 DROP TRIGGER IF EXISTS {triggerName} ON sales.order_payments;
                 DROP FUNCTION IF EXISTS {functionName}();");
+        }
+    }
+
+    private async Task<IActionResult[]> RunBehindIdempotencyGateAsync(
+        long companyId,
+        string idempotencyKey,
+        params Func<Task<IActionResult>>[] actions)
+    {
+        var lockKey = PosSaleIdempotencyPolicy.CreateAdvisoryLockKey(companyId, idempotencyKey);
+        await using var gateConnection = (NpgsqlConnection)await ConnectionFactory.CreateConnectionAsync();
+        await using var gateTransaction = await gateConnection.BeginTransactionAsync();
+        await new NpgsqlCommand($"SELECT pg_advisory_xact_lock({lockKey})", gateConnection, gateTransaction)
+            .ExecuteNonQueryAsync();
+
+        var tasks = actions.Select(action => Task.Run(action)).ToArray();
+        var gateReleased = false;
+        try
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (DateTime.UtcNow < deadline)
+            {
+                var waiters = await ScalarAsync<int>(@"
+                    SELECT COUNT(*)::INT
+                    FROM pg_stat_activity
+                    WHERE datname = current_database()
+                      AND wait_event = 'advisory'");
+                if (waiters >= actions.Length)
+                    break;
+
+                await Task.Delay(20);
+            }
+
+            var blocked = await ScalarAsync<int>(@"
+                SELECT COUNT(*)::INT
+                FROM pg_stat_activity
+                WHERE datname = current_database()
+                  AND wait_event = 'advisory'");
+            Assert.True(blocked >= actions.Length, "Las ventas no alcanzaron la barrera de idempotencia");
+
+            await gateTransaction.CommitAsync();
+            gateReleased = true;
+            return await Task.WhenAll(tasks);
+        }
+        finally
+        {
+            if (!gateReleased)
+                await gateTransaction.RollbackAsync();
+            await Task.WhenAll(tasks);
         }
     }
 

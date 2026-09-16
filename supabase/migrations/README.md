@@ -25,6 +25,7 @@ El orden real se obtiene lexicograficamente por nombre:
 015_ai_sessions.sql
 016_cash_registers.sql
 017_credit_refund_atomicity.sql
+018_pos_sale_idempotency.sql
 019_company_features.sql
 800_seed_initial_data.sql        # marcador de compatibilidad, no crea datos
 900_seed_dev_user.sql            # marcador de compatibilidad, no crea usuarios

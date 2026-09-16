@@ -24,6 +24,7 @@ const PosDeliPage = () => {
   const [weightModalProduct, setWeightModalProduct] = useState(null);
   const [savingSale, setSavingSale] = useState(false);
   const searchInputRef = useRef(null);
+  const pendingSaleIntentRef = useRef(null);
 
   const {
     weight,
@@ -43,6 +44,8 @@ const PosDeliPage = () => {
     updateQuantity,
     setSelectedItemId,
     clearTicket,
+    getIdempotencyKey,
+    renewIdempotencyKey,
   } = usePosDeliStore();
   const enqueuePostSale = usePostSaleHardwareStore((state) => state.enqueuePostSale);
 
@@ -68,11 +71,14 @@ const PosDeliPage = () => {
   const unitProducts = useMemo(() => products.filter((product) => !product.isWeighed), [products]);
 
   const handleAddUnit = (product) => {
+    if (savingSale) return;
+    pendingSaleIntentRef.current = null;
     addUnitItem(product);
     toast.success(`${product.name} agregado`);
   };
 
   const handleAddWeighed = (product, manualWeight = null) => {
+    if (savingSale) return;
     const effectiveWeight = manualWeight ?? weight;
 
     if (!manualWeight && !isConnected) {
@@ -90,12 +96,14 @@ const PosDeliPage = () => {
       return;
     }
 
+    pendingSaleIntentRef.current = null;
     addWeighedItem(product, effectiveWeight);
     setWeightModalProduct(null);
     toast.success(`${product.name} agregado al ticket`);
   };
 
   const handleBarcode = async (barcode) => {
+    if (savingSale) return;
     try {
       const response = await posDeliService.getProducts({ barcode });
       const product = response?.data?.[0];
@@ -131,8 +139,9 @@ const PosDeliPage = () => {
         searchInputRef.current?.focus();
       }
 
-      if (event.key === 'Delete' && selectedItemId) {
+      if (event.key === 'Delete' && selectedItemId && !savingSale) {
         event.preventDefault();
+        pendingSaleIntentRef.current = null;
         removeItem(selectedItemId);
       }
 
@@ -144,7 +153,19 @@ const PosDeliPage = () => {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [items.length, removeItem, selectedItemId]);
+  }, [items.length, removeItem, savingSale, selectedItemId]);
+
+  const handleRemoveItem = (itemId) => {
+    if (savingSale) return;
+    pendingSaleIntentRef.current = null;
+    removeItem(itemId);
+  };
+
+  const handleUpdateQuantity = (itemId, quantity) => {
+    if (savingSale) return;
+    pendingSaleIntentRef.current = null;
+    updateQuantity(itemId, quantity);
+  };
 
   const handleConfirmSale = async ({ method, cashReceived, reference }) => {
     let persistedSale = null;
@@ -168,7 +189,22 @@ const PosDeliPage = () => {
         cashReceived: method === 'cash' ? cashReceived : null,
       };
 
-      const response = await posDeliService.createSale(payload);
+      const signature = JSON.stringify(payload);
+      if (!pendingSaleIntentRef.current || pendingSaleIntentRef.current.signature !== signature) {
+        pendingSaleIntentRef.current = {
+          payload,
+          signature,
+          idempotencyKey: pendingSaleIntentRef.current
+            ? renewIdempotencyKey()
+            : getIdempotencyKey(),
+        };
+      }
+
+      const pendingIntent = pendingSaleIntentRef.current;
+      const response = await posDeliService.createSale(
+        pendingIntent.payload,
+        pendingIntent.idempotencyKey
+      );
       persistedSale = response.data;
     } catch (saleError) {
       toast.error(saleError?.response?.data?.message || 'No se pudo registrar la venta');
@@ -178,6 +214,7 @@ const PosDeliPage = () => {
 
     if (!persistedSale) return;
 
+    pendingSaleIntentRef.current = null;
     clearTicket();
     setCheckoutOpen(false);
     toast.success(`Venta ${persistedSale.ticketNumber} registrada`);
@@ -228,8 +265,8 @@ const PosDeliPage = () => {
           total={total}
           selectedItemId={selectedItemId}
           onSelectItem={setSelectedItemId}
-          onRemoveItem={removeItem}
-          onUpdateQuantity={updateQuantity}
+          onRemoveItem={handleRemoveItem}
+          onUpdateQuantity={handleUpdateQuantity}
           onCheckout={() => setCheckoutOpen(true)}
         />
       </div>
