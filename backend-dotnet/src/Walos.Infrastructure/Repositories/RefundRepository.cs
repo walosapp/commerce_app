@@ -681,31 +681,50 @@ public class RefundRepository : IRefundRepository
             var orderItem = orderItems.Single(i => i.Id == refundItem.OrderItemId);
             if (orderItem.ProductType == "prepared")
             {
-                var ingredients = await connection.QueryAsync<RecipeRefundRow>(@"
-                    SELECT r.ingredient_id AS ProductId,
-                           r.quantity AS QuantityPerProduct,
-                           p.track_stock AS TrackStock
-                    FROM inventory.recipes r
-                    JOIN inventory.products p
-                      ON p.id = r.ingredient_id AND p.company_id = r.company_id
-                    WHERE r.company_id = @CompanyId AND r.product_id = @ProductId", new
+                var historicalConsumptions = (await connection.QueryAsync<HistoricalRecipeConsumptionRow>(@"
+                    SELECT product_id AS ProductId,
+                           SUM(quantity) AS OriginalQuantity,
+                           COALESCE(MAX(unit_cost), 0) AS UnitCost,
+                           BOOL_OR(stock_after IS NOT NULL) AS AffectedStock
+                    FROM inventory.movements
+                    WHERE company_id = @CompanyId
+                      AND branch_id = @BranchId
+                      AND reference_type = 'order'
+                      AND reference_id = @OrderId
+                      AND source_order_item_id = @OrderItemId
+                      AND movement_type = 'recipe_consumption'
+                    GROUP BY product_id
+                    ORDER BY product_id", new
                 {
                     command.CompanyId,
-                    ProductId = orderItem.ProductId
-                }, transaction);
+                    command.BranchId,
+                    OrderId = order.Id,
+                    OrderItemId = orderItem.Id
+                }, transaction)).ToList();
 
-                foreach (var ingredient in ingredients.Where(i => i.TrackStock))
+                if (historicalConsumptions.Count == 0)
                 {
+                    throw new BusinessException(
+                        "La venta preparada no tiene trazabilidad historica suficiente para devolver inventario",
+                        "prepared_refund_history_unavailable");
+                }
+
+                foreach (var consumption in historicalConsumptions.Where(row => row.AffectedStock))
+                {
+                    var quantity = InventoryMovementPlanner.CalculateHistoricalRefundQuantity(
+                        consumption.OriginalQuantity,
+                        orderItem.Quantity,
+                        refundItem.Quantity);
                     await RestoreTrackedProductAsync(connection, transaction, command,
-                        ingredient.ProductId, ingredient.QuantityPerProduct * refundItem.Quantity,
-                        0, "refund_recipe", refundId, order.OrderNumber);
+                        consumption.ProductId, quantity, consumption.UnitCost,
+                        "refund_recipe", refundId, order.OrderNumber, orderItem.Id);
                 }
             }
             else if (orderItem.TrackStock)
             {
                 await RestoreTrackedProductAsync(connection, transaction, command,
                     orderItem.ProductId, refundItem.Quantity, refundItem.UnitPrice,
-                    "refund", refundId, order.OrderNumber);
+                    "refund", refundId, order.OrderNumber, orderItem.Id);
             }
         }
     }
@@ -719,7 +738,8 @@ public class RefundRepository : IRefundRepository
         decimal unitCost,
         string movementType,
         long refundId,
-        string orderNumber)
+        string orderNumber,
+        long sourceOrderItemId)
     {
         var stockAfter = await connection.QuerySingleOrDefaultAsync<decimal?>(@"
             INSERT INTO inventory.stock (
@@ -744,12 +764,12 @@ public class RefundRepository : IRefundRepository
         await connection.ExecuteAsync(@"
             INSERT INTO inventory.movements (
                 company_id, branch_id, product_id, movement_type, quantity,
-                unit_cost, reference_type, reference_id, notes, stock_after,
-                created_by, created_at
+                unit_cost, reference_type, reference_id, source_order_item_id,
+                notes, stock_after, created_by, created_at
             ) VALUES (
                 @CompanyId, @BranchId, @ProductId, @MovementType, @Quantity,
-                @UnitCost, 'refund', @RefundId, @Notes, @StockAfter,
-                @UserId, NOW()
+                @UnitCost, 'refund', @RefundId, @SourceOrderItemId,
+                @Notes, @StockAfter, @UserId, NOW()
             )", new
         {
             command.CompanyId,
@@ -760,6 +780,7 @@ public class RefundRepository : IRefundRepository
             Quantity = quantity,
             UnitCost = unitCost,
             RefundId = refundId,
+            SourceOrderItemId = sourceOrderItemId,
             Notes = $"Devolucion - Orden {orderNumber}",
             StockAfter = stockAfter.Value
         }, transaction);
@@ -812,10 +833,11 @@ public class RefundRepository : IRefundRepository
         public decimal Amount { get; init; }
     }
 
-    private sealed class RecipeRefundRow
+    private sealed class HistoricalRecipeConsumptionRow
     {
         public long ProductId { get; init; }
-        public decimal QuantityPerProduct { get; init; }
-        public bool TrackStock { get; init; }
+        public decimal OriginalQuantity { get; init; }
+        public decimal UnitCost { get; init; }
+        public bool AffectedStock { get; init; }
     }
 }

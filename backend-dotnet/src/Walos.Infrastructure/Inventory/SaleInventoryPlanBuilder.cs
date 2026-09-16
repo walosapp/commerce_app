@@ -14,7 +14,8 @@ public sealed record SaleInventoryLine(
     bool TrackStock,
     bool ProductExists,
     bool IsActive,
-    bool IsForSale);
+    bool IsForSale,
+    long? OrderItemId = null);
 
 public sealed record SaleInventoryPlanContext(
     long CompanyId,
@@ -46,7 +47,7 @@ public sealed class SaleInventoryPlanBuilder
 
         var plans = lines
             .Where(line => !IsPrepared(line.ProductType))
-            .GroupBy(line => new { line.ProductId, line.TrackStock, line.UnitCost })
+            .GroupBy(line => new { line.ProductId, line.TrackStock, line.UnitCost, line.OrderItemId })
             .Select(group => InventoryMovementPlanner.Create(
                 InventoryMovementDirection.Outbound,
                 group.Key.ProductId,
@@ -56,7 +57,8 @@ public sealed class SaleInventoryPlanBuilder
                 referenceType: context.ReferenceType,
                 referenceId: context.ReferenceId,
                 requiresStock: group.Key.TrackStock,
-                notes: context.SaleNotes))
+                notes: context.SaleNotes,
+                sourceOrderItemId: group.Key.OrderItemId))
             .ToList();
 
         var preparedIds = lines
@@ -98,28 +100,39 @@ public sealed class SaleInventoryPlanBuilder
         if (recipes.Any(recipe => recipe.Quantity <= 0 || !recipe.IsActive || recipe.DeletedAt.HasValue))
             throw new BusinessException("La receta contiene ingredientes invalidos o inactivos");
 
-        var soldByProduct = lines
-            .Where(line => IsPrepared(line.ProductType))
-            .GroupBy(line => line.ProductId)
-            .ToDictionary(group => group.Key, group => group.Sum(line => line.Quantity));
+        var preparedLines = lines.Where(line => IsPrepared(line.ProductType)).ToList();
+        if (preparedLines.Any(line => !line.OrderItemId.HasValue))
+            throw new BusinessException("La venta preparada no tiene trazabilidad por item de orden");
 
-        plans.AddRange(recipes
-            .GroupBy(recipe => new
+        plans.AddRange(preparedLines
+            .SelectMany(line => recipes
+                .Where(recipe => recipe.ProductId == line.ProductId)
+                .Select(recipe => new
+                {
+                    line.OrderItemId,
+                    recipe.IngredientId,
+                    recipe.TrackStock,
+                    recipe.UnitCost,
+                    Quantity = recipe.Quantity * line.Quantity
+                }))
+            .GroupBy(requirement => new
             {
-                recipe.IngredientId,
-                recipe.TrackStock,
-                recipe.UnitCost
+                requirement.OrderItemId,
+                requirement.IngredientId,
+                requirement.TrackStock,
+                requirement.UnitCost
             })
             .Select(group => InventoryMovementPlanner.Create(
                 InventoryMovementDirection.Outbound,
                 group.Key.IngredientId,
                 movementType: "recipe_consumption",
-                quantity: group.Sum(recipe => recipe.Quantity * soldByProduct[recipe.ProductId]),
+                quantity: group.Sum(requirement => requirement.Quantity),
                 unitCost: group.Key.UnitCost,
                 referenceType: context.ReferenceType,
                 referenceId: context.ReferenceId,
                 requiresStock: group.Key.TrackStock,
-                notes: context.RecipeNotes)));
+                notes: context.RecipeNotes,
+                sourceOrderItemId: group.Key.OrderItemId)));
 
         return plans;
     }

@@ -70,11 +70,11 @@ public sealed class InventoryTransactionWriter
                 INSERT INTO inventory.movements (
                     company_id, branch_id, product_id, movement_type,
                     quantity, unit_cost, reference_type, reference_id,
-                    notes, stock_after, created_by, created_at
+                    source_order_item_id, notes, stock_after, created_by, created_at
                 ) VALUES (
                     @CompanyId, @BranchId, @ProductId, @MovementType,
                     @Quantity, @UnitCost, @ReferenceType, @ReferenceId,
-                    @Notes, @StockAfter, @UserId, NOW()
+                    @SourceOrderItemId, @Notes, @StockAfter, @UserId, NOW()
                 )",
                 new
                 {
@@ -86,6 +86,7 @@ public sealed class InventoryTransactionWriter
                     completedPlan.UnitCost,
                     completedPlan.ReferenceType,
                     completedPlan.ReferenceId,
+                    completedPlan.SourceOrderItemId,
                     completedPlan.Notes,
                     completedPlan.StockAfter,
                     context.UserId

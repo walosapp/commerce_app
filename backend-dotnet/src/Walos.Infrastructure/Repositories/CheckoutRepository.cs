@@ -463,7 +463,8 @@ public sealed class CheckoutRepository : ICheckoutRepository
             item.TrackStock,
             item.ProductExists,
             item.IsActive,
-            item.IsForSale)).ToList();
+            item.IsForSale,
+            item.Id)).ToList();
 
         return _inventoryPlanBuilder.BuildAsync(
             connection,

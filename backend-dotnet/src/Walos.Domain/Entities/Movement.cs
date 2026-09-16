@@ -7,6 +7,7 @@ public class Movement : BaseEntity
     public string MovementType { get; set; } = string.Empty;
     public decimal Quantity { get; set; }
     public decimal? UnitCost { get; set; }
+    public long? SourceOrderItemId { get; set; }
     public string? Notes { get; set; }
     public bool CreatedByAi { get; set; }
     public decimal? AiConfidence { get; set; }

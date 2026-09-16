@@ -17,7 +17,8 @@ public class InventoryMovementPlannerTests
             referenceType: "order",
             referenceId: 99,
             requiresStock: true,
-            notes: "Venta");
+            notes: "Venta",
+            sourceOrderItemId: 501);
 
         Assert.Equal(InventoryMovementDirection.Outbound, plan.Direction);
         Assert.Equal(15, plan.ProductId);
@@ -25,6 +26,7 @@ public class InventoryMovementPlannerTests
         Assert.Equal(7.50m, plan.UnitCost);
         Assert.Equal("order", plan.ReferenceType);
         Assert.Equal(99, plan.ReferenceId);
+        Assert.Equal(501, plan.SourceOrderItemId);
         Assert.Null(plan.StockAfter);
 
         var completed = InventoryMovementPlanner.WithStockAfter(plan, 8.75m);
@@ -61,5 +63,29 @@ public class InventoryMovementPlannerTests
             referenceType: "order",
             referenceId: 1,
             requiresStock: true));
+    }
+
+    [Theory]
+    [InlineData(4, 2, 0.5, 1)]
+    [InlineData(4, 2, 2, 4)]
+    public void Historical_Refund_Uses_Original_Item_Consumption(
+        double originalConsumption,
+        double soldQuantity,
+        double refundQuantity,
+        double expected)
+    {
+        var restored = InventoryMovementPlanner.CalculateHistoricalRefundQuantity(
+            (decimal)originalConsumption,
+            (decimal)soldQuantity,
+            (decimal)refundQuantity);
+
+        Assert.Equal((decimal)expected, restored);
+    }
+
+    [Fact]
+    public void Historical_Refund_Rejects_Quantity_Above_Original_Sale()
+    {
+        Assert.Throws<ValidationException>(() =>
+            InventoryMovementPlanner.CalculateHistoricalRefundQuantity(4m, 2m, 2.5m));
     }
 }

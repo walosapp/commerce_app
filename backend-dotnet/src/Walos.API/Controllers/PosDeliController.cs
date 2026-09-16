@@ -414,11 +414,13 @@ public class PosDeliController : ControllerBase
 
             const string itemSql = @"
                 INSERT INTO sales.order_items (company_id, order_id, product_id, product_name, quantity, unit_price, created_at)
-                VALUES (@CompanyId, @OrderId, @ProductId, @ProductName, @Quantity, @UnitPrice, NOW())";
+                VALUES (@CompanyId, @OrderId, @ProductId, @ProductName, @Quantity, @UnitPrice, NOW())
+                RETURNING id";
 
+            var inventoryLines = new List<SaleInventoryLine>();
             foreach (var item in normalizedItems)
             {
-                await connection.ExecuteAsync(itemSql, new
+                var orderItemId = await connection.ExecuteScalarAsync<long>(itemSql, new
                 {
                     CompanyId = _tenantContext.CompanyId,
                     OrderId = orderId,
@@ -427,6 +429,17 @@ public class PosDeliController : ControllerBase
                     item.Quantity,
                     item.UnitPrice
                 }, transaction);
+                inventoryLines.Add(new SaleInventoryLine(
+                    item.ProductId,
+                    item.ProductName,
+                    item.ProductType,
+                    item.Quantity,
+                    item.CostPrice,
+                    item.TrackStock,
+                    ProductExists: true,
+                    item.IsActive,
+                    item.IsForSale,
+                    orderItemId));
             }
 
             const string paymentSql = @"
@@ -497,16 +510,7 @@ public class PosDeliController : ControllerBase
                     ReferenceId: orderId,
                     SaleNotes: $"Venta POS Deli - {orderNumber}",
                     RecipeNotes: $"Consumo receta - Venta POS Deli - {orderNumber}"),
-                normalizedItems.Select(item => new SaleInventoryLine(
-                    item.ProductId,
-                    item.ProductName,
-                    item.ProductType,
-                    item.Quantity,
-                    item.CostPrice,
-                    item.TrackStock,
-                    ProductExists: true,
-                    item.IsActive,
-                    item.IsForSale)).ToList());
+                inventoryLines);
 
             await _inventoryWriter.ApplyAsync(
                 connection,

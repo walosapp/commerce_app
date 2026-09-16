@@ -1,3 +1,4 @@
+using Dapper;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Walos.Application.DTOs.Sales;
@@ -37,9 +38,10 @@ public class RefundAtomicityIntegrationTests : V1IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task Prepared_Product_Partial_Refund_Restores_Current_Recipe_Ingredient()
+    public async Task Prepared_Product_Partial_Refund_Restores_Original_Recipe_Consumption()
     {
         var ctx = await SeedPreparedOrderAsync("Prepared partial");
+        await ChangePreparedRecipeQuantityAsync(ctx, 10m);
 
         var result = await RefundAsync(ctx, "partial", NewKey(), 0.5m);
 
@@ -50,9 +52,10 @@ public class RefundAtomicityIntegrationTests : V1IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task Prepared_Product_Full_Refund_Restores_All_Current_Recipe_Ingredients()
+    public async Task Prepared_Product_Full_Refund_Restores_All_Original_Recipe_Ingredients()
     {
         var ctx = await SeedPreparedOrderAsync("Prepared full");
+        await ChangePreparedRecipeQuantityAsync(ctx, 10m);
 
         var result = await RefundAsync(ctx, "full", NewKey(), null);
 
@@ -60,6 +63,47 @@ public class RefundAtomicityIntegrationTests : V1IntegrationTestBase
         Assert.Equal(12m, await GetStockAsync(ctx));
         Assert.Equal("refund_recipe", await GetLastMovementTypeAsync(ctx));
         Assert.Equal(4m, await GetLastMovementQuantityAsync(ctx));
+    }
+
+    [SkippableFact]
+    public async Task Prepared_Product_Multiple_Partial_Refunds_Restore_Only_Accumulated_Original_Consumption()
+    {
+        var ctx = await SeedPreparedOrderAsync("Prepared multiple");
+
+        await RefundAsync(ctx, "partial", NewKey(), 0.5m);
+        await RefundAsync(ctx, "partial", NewKey(), 0.5m);
+
+        Assert.Equal(10m, await GetStockAsync(ctx));
+        Assert.Equal(1m, await GetRefundedQuantityAsync(ctx.OrderItemId));
+    }
+
+    [SkippableFact]
+    public async Task Prepared_Products_Sharing_Ingredient_Restore_Only_The_Refunded_Order_Item()
+    {
+        var ctx = await SeedPreparedOrderAsync("Prepared shared");
+        await AddPreparedOrderItemSharingIngredientAsync(ctx);
+
+        await RefundAsync(ctx, "partial", NewKey(), 0.5m);
+
+        Assert.Equal(9m, await GetStockAsync(ctx));
+        Assert.Equal(1m, await GetLastMovementQuantityAsync(ctx));
+    }
+
+    [SkippableFact]
+    public async Task Prepared_Product_Legacy_Refund_Fails_Closed_Without_Historical_Attribution()
+    {
+        var ctx = await SeedPreparedOrderAsync("Prepared legacy");
+        using var connection = await ConnectionFactory.CreateConnectionAsync();
+        await connection.ExecuteAsync(
+            "DELETE FROM inventory.movements WHERE company_id = @CompanyId AND source_order_item_id = @OrderItemId",
+            new { CompanyId = ctx.Company, OrderItemId = ctx.OrderItemId });
+
+        var error = await Assert.ThrowsAsync<BusinessException>(() =>
+            RefundAsync(ctx, "partial", NewKey(), 0.5m));
+
+        Assert.Equal("prepared_refund_history_unavailable", error.Code);
+        Assert.Equal(8m, await GetStockAsync(ctx));
+        Assert.Equal(0, await CountRefundsAsync(ctx));
     }
 
     [SkippableFact]
@@ -422,6 +466,21 @@ public class RefundAtomicityIntegrationTests : V1IntegrationTestBase
             ) VALUES (@company, @order, @product, @name, 2, 50) RETURNING id",
             ("@company", company), ("@order", order), ("@product", product), ("@name", $"Product {prefix}"));
 
+        if (prepared)
+        {
+            await ExecuteAsync(conn, @"
+                INSERT INTO inventory.movements (
+                    company_id, branch_id, product_id, movement_type, quantity,
+                    unit_cost, reference_type, reference_id, source_order_item_id,
+                    stock_after, created_by, created_at
+                ) VALUES (
+                    @company, @branch, @ingredient, 'recipe_consumption', 4,
+                    5, 'order', @order, @orderItem, 8, @user, NOW()
+                )",
+                ("@company", company), ("@branch", branch), ("@ingredient", trackedProduct),
+                ("@order", order), ("@orderItem", orderItem), ("@user", user));
+        }
+
         if (amountPaid > 0)
         {
             await ExecuteAsync(conn, @"
@@ -451,6 +510,83 @@ public class RefundAtomicityIntegrationTests : V1IntegrationTestBase
 
     private Task<RefundTestContext> SeedPreparedOrderAsync(string prefix) =>
         SeedOrderAsync(prefix, paymentMethod: "card", prepared: true);
+
+    private async Task ChangePreparedRecipeQuantityAsync(RefundTestContext context, decimal quantity)
+    {
+        using var connection = await ConnectionFactory.CreateConnectionAsync();
+        await connection.ExecuteAsync(@"
+            UPDATE inventory.recipes r
+            SET quantity = @Quantity
+            FROM sales.order_items oi
+            WHERE oi.id = @OrderItemId
+              AND oi.company_id = @CompanyId
+              AND r.company_id = oi.company_id
+              AND r.product_id = oi.product_id",
+            new { Quantity = quantity, OrderItemId = context.OrderItemId, CompanyId = context.Company });
+    }
+
+    private async Task AddPreparedOrderItemSharingIngredientAsync(RefundTestContext context)
+    {
+        using var connection = await ConnectionFactory.CreateConnectionAsync();
+        var secondProductId = await connection.QuerySingleAsync<long>(@"
+            INSERT INTO inventory.products (
+                company_id, name, sku, category_id, unit_id, cost_price, sale_price,
+                product_type, track_stock, is_for_sale, is_active, created_by
+            )
+            SELECT @CompanyId, 'Second prepared', @Sku, category_id, unit_id, 20, 50,
+                   'prepared', false, true, true, @UserId
+            FROM inventory.products
+            WHERE id = (
+                SELECT product_id FROM sales.order_items
+                WHERE id = @OrderItemId AND company_id = @CompanyId
+            )
+            RETURNING id",
+            new
+            {
+                CompanyId = context.Company,
+                Sku = $"SHARED-{Guid.NewGuid():N}",
+                UserId = context.User,
+                context.OrderItemId
+            });
+        await connection.ExecuteAsync(@"
+            INSERT INTO inventory.recipes (company_id, product_id, ingredient_id, quantity, unit_id)
+            SELECT @CompanyId, @ProductId, @IngredientId, 3, unit_id
+            FROM inventory.products
+            WHERE id = @IngredientId AND company_id = @CompanyId",
+            new
+            {
+                CompanyId = context.Company,
+                ProductId = secondProductId,
+                IngredientId = context.ProductId
+            });
+        var secondOrderItemId = await connection.QuerySingleAsync<long>(@"
+            INSERT INTO sales.order_items (
+                company_id, order_id, product_id, product_name, quantity, unit_price
+            ) VALUES (@CompanyId, @OrderId, @ProductId, 'Second prepared', 2, 50)
+            RETURNING id",
+            new { CompanyId = context.Company, context.OrderId, ProductId = secondProductId });
+        await connection.ExecuteAsync(@"
+            INSERT INTO inventory.movements (
+                company_id, branch_id, product_id, movement_type, quantity,
+                unit_cost, reference_type, reference_id, source_order_item_id,
+                stock_after, created_by, created_at
+            ) VALUES (
+                @CompanyId, @BranchId, @IngredientId, 'recipe_consumption', 6,
+                5, 'order', @OrderId, @OrderItemId, 2, @UserId, NOW()
+            );
+            UPDATE sales.orders
+            SET subtotal = 200, total = 200, final_total_paid = 200
+            WHERE id = @OrderId AND company_id = @CompanyId",
+            new
+            {
+                CompanyId = context.Company,
+                BranchId = context.Branch,
+                IngredientId = context.ProductId,
+                context.OrderId,
+                OrderItemId = secondOrderItemId,
+                UserId = context.User
+            });
+    }
 
     private async Task PayCreditAsync(RefundTestContext context, decimal amount, string paymentMethod)
     {

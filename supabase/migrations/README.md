@@ -27,6 +27,7 @@ El orden real se obtiene lexicograficamente por nombre:
 017_credit_refund_atomicity.sql
 018_pos_sale_idempotency.sql
 019_company_features.sql
+020_refund_preparados_source_item.sql
 800_seed_initial_data.sql        # marcador de compatibilidad, no crea datos
 900_seed_dev_user.sql            # marcador de compatibilidad, no crea usuarios
 999_cleanup_data_keep_inventory.sql

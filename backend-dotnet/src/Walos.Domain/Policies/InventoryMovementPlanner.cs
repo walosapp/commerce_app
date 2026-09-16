@@ -18,7 +18,8 @@ public sealed record InventoryMovementPlan(
     long ReferenceId,
     bool RequiresStock,
     string? Notes,
-    decimal? StockAfter);
+    decimal? StockAfter,
+    long? SourceOrderItemId);
 
 public static class InventoryMovementPlanner
 {
@@ -33,7 +34,8 @@ public static class InventoryMovementPlanner
         string referenceType,
         long referenceId,
         bool requiresStock,
-        string? notes = null)
+        string? notes = null,
+        long? sourceOrderItemId = null)
     {
         if (productId <= 0)
             throw new ValidationException("Producto requerido para el movimiento");
@@ -57,11 +59,28 @@ public static class InventoryMovementPlanner
             referenceId,
             requiresStock,
             notes?.Trim(),
-            StockAfter: null);
+            StockAfter: null,
+            SourceOrderItemId: sourceOrderItemId);
     }
 
     public static InventoryMovementPlan WithStockAfter(InventoryMovementPlan plan, decimal stockAfter) =>
         plan with { StockAfter = stockAfter };
+
+    public static decimal CalculateHistoricalRefundQuantity(
+        decimal originalConsumption,
+        decimal soldQuantity,
+        decimal refundQuantity)
+    {
+        var normalizedOriginal = NormalizeQuantity(originalConsumption);
+        var normalizedSold = NormalizeQuantity(soldQuantity);
+        var normalizedRefund = NormalizeQuantity(refundQuantity);
+        if (normalizedOriginal <= 0 || normalizedSold <= 0 || normalizedRefund <= 0)
+            throw new ValidationException("Las cantidades historicas del refund deben ser mayores que cero");
+        if (normalizedRefund > normalizedSold)
+            throw new ValidationException("La cantidad devuelta no puede superar la cantidad vendida");
+
+        return NormalizeQuantity(normalizedOriginal * normalizedRefund / normalizedSold);
+    }
 
     public static decimal NormalizeQuantity(decimal quantity) =>
         Math.Round(quantity, InventoryQuantityDecimals, MidpointRounding.AwayFromZero);

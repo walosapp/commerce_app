@@ -237,6 +237,19 @@ public class CompanyFeatureSchemaTests
     }
 
     [Fact]
+    public void PreparedRefundMigration_AddsNullableItemAttributionWithoutBackfill()
+    {
+        var source = ReadRepositoryFile(Path.Combine(
+            "..", "supabase", "migrations", "020_refund_preparados_source_item.sql"));
+
+        Assert.Contains("ADD COLUMN IF NOT EXISTS source_order_item_id BIGINT", source);
+        Assert.Contains("REFERENCES sales.order_items(id)", source);
+        Assert.Contains("ON DELETE SET NULL", source);
+        Assert.Contains("idx_inv_movements_source_order_item", source);
+        Assert.DoesNotContain("UPDATE inventory.movements", source, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TenantCreation_InsertsDefaultFeaturesInsideExistingTransaction()
     {
         var source = ReadRepositoryFile(Path.Combine("src", "Walos.Infrastructure", "Repositories", "AdminRepository.cs"));
