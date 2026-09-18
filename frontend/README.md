@@ -29,16 +29,16 @@ cp .env.example .env
 
 ### Descarga de Walos Agent
 
-Configurá `VITE_WALOS_AGENT_DOWNLOAD_URL` en cada entorno con la URL HTTPS
-estable del instalador `.exe`. Mientras no exista infraestructura definitiva,
-la opción mínima es publicar el instalador como asset de una release del
-repositorio y usar una URL estable como:
+Producción define `VITE_WALOS_AGENT_DOWNLOAD_URL` en `.env.production` con la
+URL HTTPS versionada del instalador publicado como GitHub Release asset:
 
 ```text
-https://github.com/walosapp/commerce_app/releases/latest/download/Walos-Agent-Setup.exe
+https://github.com/walosapp/commerce_app/releases/download/walos-agent-v1.0.2/Walos-Agent-Setup.exe
 ```
 
-La URL queda incorporada al build de Vite. Producción exige HTTPS; HTTP se
+El workflow `release-walos-agent.yml` rechaza un tag cuya versión no coincida
+con el proyecto o con esta URL. La URL queda incorporada al build de Vite.
+Producción exige HTTPS; HTTP se
 acepta únicamente para loopback durante desarrollo. Si falta o es insegura, la
 interfaz mantiene la descarga deshabilitada y no redirige a una ubicación implícita.
 

@@ -222,7 +222,7 @@ public sealed class ApiSecurityTests : IAsyncLifetime
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("1.0.1", body.GetProperty("version").GetString());
+        Assert.Equal("1.0.2", body.GetProperty("version").GetString());
     }
 
     [Fact]

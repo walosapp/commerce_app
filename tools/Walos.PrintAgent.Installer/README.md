@@ -8,10 +8,26 @@ Desde la raíz del repositorio:
 
 ```powershell
 .\tools\Walos.PrintAgent.Installer\Build-Installer.ps1 `
-  -Version 1.0.1
+  -Version 1.0.2
 ```
 
 El instalador siempre incluye de forma explícita el origen oficial `https://commerce-app-red.vercel.app` y los orígenes locales `http://localhost:5173` y `http://127.0.0.1:5173`. No requiere configuración manual del comercio. `-AllowedOrigins` es opcional y solo agrega orígenes HTTPS separados por `;`; nunca reemplaza los orígenes canónicos.
+
+## Publicación reproducible
+
+El tag `walos-agent-v<major>.<minor>.<patch>` ejecuta
+`.github/workflows/release-walos-agent.yml` en un runner Windows limpio. El
+workflow exige que el tag, la versión del proyecto y la URL productiva
+coincidan; luego ejecuta tests, construye el instalador y publica un prerelease
+de UAT interna con `Walos-Agent-Setup.exe` y su archivo SHA-256. La publicación
+advierte explícitamente que el instalador no tiene firma Authenticode y puede
+activar SmartScreen. Usa
+exclusivamente el `GITHUB_TOKEN` efímero con permiso `contents: write`.
+
+Para automatización aislada, el smoke pasa `/NORUN /NOSTARTAGENT` para suprimir
+la entrada `[Run]` del instalador y verifica primero que el Agent sandbox no se
+haya iniciado. Solo después lo inicia explícitamente cuando la prueba lo
+requiere; no depende del postinstall automático.
 
 Artefacto no versionado:
 
@@ -38,7 +54,7 @@ Cerrá manualmente cualquier agente que ya esté escuchando en el puerto 17831. 
 
 ```powershell
 .\tools\Walos.PrintAgent.Installer\Smoke-Test-Installer.ps1 `
-  -Version 1.0.1 `
+  -Version 1.0.2 `
   -ConfirmDisposableUserProfile
 ```
 

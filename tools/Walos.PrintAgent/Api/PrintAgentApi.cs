@@ -386,6 +386,6 @@ public static class PrintAgentApi
     private static string GetSemanticVersion()
     {
         var version = typeof(PrintAgentApi).Assembly.GetName().Version;
-        return version is null ? "1.0.1" : version.ToString(3);
+        return version is null ? "1.0.2" : version.ToString(3);
     }
 }

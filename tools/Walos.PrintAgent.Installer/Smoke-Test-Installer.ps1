@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.1',
+    [string]$Version = '1.0.2',
 
     [Parameter(Mandatory)]
     [switch]$ConfirmDisposableUserProfile
@@ -70,6 +70,18 @@ function Stop-InstalledAgent([string]$ExpectedExecutable) {
         }
 }
 
+function Assert-InstalledAgentNotRunning([string]$ExpectedExecutable) {
+    $expected = [IO.Path]::GetFullPath($ExpectedExecutable)
+    $processes = @(Get-CimInstance Win32_Process -Filter "Name='Walos.PrintAgent.exe'" |
+        Where-Object {
+            $_.ExecutablePath -and
+            [IO.Path]::GetFullPath($_.ExecutablePath).Equals($expected, [StringComparison]::OrdinalIgnoreCase)
+        })
+    if ($processes.Count -ne 0) {
+        throw "El instalador inició inesperadamente $($processes.Count) proceso(s) del agente sandbox."
+    }
+}
+
 if (-not $ConfirmDisposableUserProfile) {
     throw 'Este smoke test solo se ejecuta en una cuenta Windows descartable o VM.'
 }
@@ -95,13 +107,15 @@ if (Test-Path -LiteralPath $sandbox) {
 try {
     Write-Host 'Instalando silenciosamente en sandbox /CURRENTUSER...'
     $install = Start-Process -FilePath $installer -ArgumentList @(
-        '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', "/DIR=$sandbox"
+        '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NORUN', '/NOSTARTAGENT',
+        '/CLOSEAPPLICATIONS', "/DIR=$sandbox"
     ) -Wait -PassThru -WindowStyle Hidden
     if ($install.ExitCode -ne 0) { throw "El instalador devolvió $($install.ExitCode)." }
 
     $installedExe = Join-Path $sandbox 'Walos.PrintAgent.exe'
     if (-not (Test-Path -LiteralPath $installedExe)) { throw 'No se instaló Walos.PrintAgent.exe.' }
     if (-not (Test-Path -LiteralPath $uninstaller)) { throw 'No se registró el desinstalador.' }
+    Assert-InstalledAgentNotRunning $installedExe
 
     $runValue = (Get-ItemProperty -LiteralPath $runKey -Name $runValueName).$runValueName
     $expectedRunValue = '"' + $installedExe + '" --autostart'
@@ -109,7 +123,9 @@ try {
         throw "La entrada HKCU de smoke no apunta al agente instalado: $runValue"
     }
 
-    # [Run] must start the tray even during a silent install.
+    # Automation explicitly suppresses [Run] so no process can escape the
+    # sandbox before all paths and registry entries have been validated.
+    Start-Process -FilePath $installedExe | Out-Null
     $health = Wait-AgentHealth
     if ($health.status -ne 'ok' -or $health.version -ne $Version) {
         throw "Health inesperado: $($health | ConvertTo-Json -Compress)"
@@ -127,10 +143,13 @@ try {
     Write-Host 'Reinstalando mientras el agente está activo; debe cerrarlo, conservar el estado y relanzarlo...'
     $previousProcessId = $agentProcessId
     $reinstall = Start-Process -FilePath $installer -ArgumentList @(
-        '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', "/DIR=$sandbox"
+        '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NORUN', '/NOSTARTAGENT',
+        '/CLOSEAPPLICATIONS', "/DIR=$sandbox"
     ) -Wait -PassThru -WindowStyle Hidden
     if ($reinstall.ExitCode -ne 0) { throw "La reinstalación devolvió $($reinstall.ExitCode)." }
 
+    Assert-InstalledAgentNotRunning $installedExe
+    Start-Process -FilePath $installedExe | Out-Null
     $health = Wait-AgentHealth
     $agentProcessId = Get-InstalledAgentProcessId $installedExe
     if ($agentProcessId -eq $previousProcessId) { throw 'La reinstalación no reemplazó la instancia anterior.' }

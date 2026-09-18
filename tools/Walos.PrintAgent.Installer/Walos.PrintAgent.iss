@@ -5,7 +5,7 @@
   #error OutputDir must point to the installer artifact directory.
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.0.1"
+  #define AppVersion "1.0.2"
 #endif
 
 #define AppName "Walos Agent"
@@ -67,7 +67,7 @@ Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Name: "{group}\Walos Agent"; Filename: "{app}\{#AppExeName}"
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "Iniciar Walos Agent"; Flags: nowait postinstall runasoriginaluser
+Filename: "{app}\{#AppExeName}"; Description: "Iniciar Walos Agent"; Flags: nowait postinstall runasoriginaluser; Check: ShouldStartAgent
 
 [Code]
 var
@@ -86,6 +86,14 @@ begin
       Exit;
     end;
   end;
+end;
+
+function ShouldStartAgent(): Boolean;
+begin
+  { Inno's /NORUN did not suppress this uncheckable postinstall entry in a }
+  { silent upgrade. Keep /NORUN and the explicit automation switch fail-safe. }
+  Result := (not HasCommandLineSwitch('/NORUN')) and
+            (not HasCommandLineSwitch('/NOSTARTAGENT'));
 end;
 
 function InitializeUninstall(): Boolean;

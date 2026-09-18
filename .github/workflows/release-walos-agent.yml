@@ -1,0 +1,122 @@
+name: Release Walos Agent
+
+on:
+  push:
+    tags:
+      - "walos-agent-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
+
+      - name: Validate release version
+        id: version
+        run: |
+          $tag = '${{ github.ref_name }}'
+          if ($tag -notmatch '^walos-agent-v(?<version>\d+\.\d+\.\d+)$') {
+            throw "Tag '$tag' must match walos-agent-v<major>.<minor>.<patch>."
+          }
+
+          $version = $Matches.version
+          [xml] $project = Get-Content -LiteralPath 'tools/Walos.PrintAgent/Walos.PrintAgent.csproj' -Raw
+          $projectVersion = [string] $project.Project.PropertyGroup.Version
+          if ([string]::IsNullOrWhiteSpace($projectVersion)) {
+            throw 'Agent project version is missing.'
+          }
+          $projectVersion = $projectVersion.Trim()
+          if ($projectVersion -ne $version) {
+            throw "Tag version '$version' does not match Agent version '$projectVersion'."
+          }
+
+          $expectedUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/Walos-Agent-Setup.exe"
+          $productionEnvironment = Get-Content -LiteralPath 'frontend/.env.production'
+          $configuredUrl = $productionEnvironment |
+            Where-Object { $_ -match '^VITE_WALOS_AGENT_DOWNLOAD_URL=' } |
+            Select-Object -First 1
+          if ($configuredUrl -ne "VITE_WALOS_AGENT_DOWNLOAD_URL=$expectedUrl") {
+            throw "frontend/.env.production must point to '$expectedUrl'."
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "download_url=$expectedUrl" >> $env:GITHUB_OUTPUT
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test, publish and build installer
+        run: |
+          ./tools/Walos.PrintAgent.Installer/Build-Installer.ps1 `
+            -Version '${{ steps.version.outputs.version }}'
+
+      - name: Verify and checksum release assets
+        id: asset
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $installer = Resolve-Path 'tools/Walos.PrintAgent.Installer/artifacts/installer/Walos-Agent-Setup.exe'
+          $agent = Resolve-Path 'tools/Walos.PrintAgent.Installer/artifacts/publish/win-x64/Walos.PrintAgent.exe'
+
+          $installerVersion = (Get-Item -LiteralPath $installer).VersionInfo.ProductVersion
+          $agentVersion = (Get-Item -LiteralPath $agent).VersionInfo.ProductVersion
+          if ([string]::IsNullOrWhiteSpace($installerVersion)) {
+            throw 'Installer ProductVersion is missing.'
+          }
+          if ([string]::IsNullOrWhiteSpace($agentVersion)) {
+            throw 'Agent ProductVersion is missing.'
+          }
+          $installerVersion = $installerVersion.Trim()
+          $agentVersion = $agentVersion.Trim()
+          if ($installerVersion -ne $version) {
+            throw "Installer version '$installerVersion' does not match '$version'."
+          }
+          if ($agentVersion -ne $version) {
+            throw "Agent version '$agentVersion' does not match '$version'."
+          }
+
+          $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash
+          $size = (Get-Item -LiteralPath $installer).Length
+          $checksum = Join-Path (Split-Path -Parent $installer) 'Walos-Agent-Setup.exe.sha256'
+          [IO.File]::WriteAllText(
+            $checksum,
+            "$hash  Walos-Agent-Setup.exe`n",
+            [Text.UTF8Encoding]::new($false))
+
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          "size=$size" >> $env:GITHUB_OUTPUT
+          "installer=$installer" >> $env:GITHUB_OUTPUT
+          "checksum=$checksum" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @"
+          Walos Agent ${{ steps.version.outputs.version }}
+
+          UAT interna. Instalador sin firma Authenticode: Windows puede mostrar una advertencia de SmartScreen.
+          SHA-256: ${{ steps.asset.outputs.sha256 }}
+          Size: ${{ steps.asset.outputs.size }} bytes
+          Download: ${{ steps.version.outputs.download_url }}
+          "@
+
+          gh release create '${{ github.ref_name }}' `
+            '${{ steps.asset.outputs.installer }}' `
+            '${{ steps.asset.outputs.checksum }}' `
+            --verify-tag `
+            --prerelease `
+            --title 'Walos Agent ${{ steps.version.outputs.version }}' `
+            --notes $notes

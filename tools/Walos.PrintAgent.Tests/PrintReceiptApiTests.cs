@@ -91,6 +91,24 @@ public sealed class PrintReceiptApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CashCloseExplicitReprint_UsesNewJobAndNeverOpensDrawer()
+    {
+        var firstRequest = ReceiptTestData.CreateCashCloseRequest("cash-close-original");
+        var reprintRequest = ReceiptTestData.CreateCashCloseRequest("cash-close-reprint");
+
+        using var first = await _client.SendAsync(CreateCashCloseMessage(firstRequest));
+        using var reprint = await _client.SendAsync(CreateCashCloseMessage(reprintRequest));
+        var reprintBody = await reprint.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, reprint.StatusCode);
+        Assert.Equal("completed", reprintBody.GetProperty("status").GetString());
+        Assert.True(reprintBody.GetProperty("executed").GetBoolean());
+        Assert.Equal(2, _rawPrinter.CallCount);
+        Assert.False(Contains(_rawPrinter.LastData, [0x1B, 0x70]));
+    }
+
+    [Fact]
     public async Task DrawerRequiresPairedCompanyAndBranchBeforeSpooling()
     {
         using var message = CreateDrawerMessage(new DrawerCommandRequest("drawer-other-tenant", 99, 20));
