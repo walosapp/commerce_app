@@ -48,10 +48,10 @@ public class CashRegisterController : ControllerBase
             return BadRequest(ApiResponse.Fail("ID de sucursal requerido"));
 
         var register = await _cashRegisterService.GetActiveAsync(
-            _tenant.CompanyId, _tenant.BranchId.Value, _tenant.UserId);
+            _tenant.CompanyId, _tenant.BranchId.Value);
 
         if (register == null)
-            return Ok(ApiResponse<CashRegisterResponse?>.Ok(null, "No tienes una caja abierta"));
+            return Ok(ApiResponse<CashRegisterResponse?>.Ok(null, "No hay una caja abierta en esta sucursal"));
 
         return Ok(ApiResponse<CashRegisterResponse>.Ok(register));
     }

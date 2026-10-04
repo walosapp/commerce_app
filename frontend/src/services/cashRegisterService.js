@@ -7,7 +7,7 @@ export const cashRegisterService = {
     return response.data;
   },
 
-  // Obtener caja activa del usuario
+  // Obtener caja activa de la sucursal operativa del usuario
   getActive: async () => {
     const response = await api.get('/sales/cash-register/active');
     return response.data;

@@ -5,7 +5,7 @@ namespace Walos.Domain.Interfaces;
 public interface ICashRegisterRepository
 {
     Task<CashRegister> OpenAsync(CashRegister register);
-    Task<CashRegister?> GetActiveByUserAsync(long companyId, long branchId, long userId);
+    Task<CashRegister?> GetActiveAsync(long companyId, long branchId);
     Task<CashRegister?> GetByIdAsync(long id, long companyId);
     Task<CashRegister?> GetByIdAsync(long id, long companyId, long branchId);
     Task<CashRegister?> CloseAsync(long id, long companyId, long branchId, long closedBy, decimal closingAmount, string? notes);

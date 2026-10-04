@@ -9,7 +9,7 @@ namespace Walos.Application.Services;
 public interface ICashRegisterService
 {
     Task<CashRegisterResponse> OpenAsync(long companyId, long branchId, long userId, OpenCashRegisterRequest request);
-    Task<CashRegisterResponse?> GetActiveAsync(long companyId, long branchId, long userId);
+    Task<CashRegisterResponse?> GetActiveAsync(long companyId, long branchId);
     Task<CashRegisterResponse> CloseAsync(long id, long companyId, long branchId, long userId, CloseCashRegisterRequest request);
     Task<CashMovementResponse> AddMovementAsync(long cashRegisterId, long companyId, long branchId, long userId, CashMovementRequest request);
     Task<IEnumerable<CashMovementResponse>> GetMovementsAsync(long cashRegisterId, long companyId, long branchId);
@@ -39,11 +39,6 @@ public class CashRegisterService : ICashRegisterService
         if (request.OpeningAmount < 0)
             throw new ValidationException("El monto de apertura no puede ser negativo");
 
-        // Verificar que no tenga caja abierta
-        var existing = await _cashRegisterRepo.GetActiveByUserAsync(companyId, branchId, userId);
-        if (existing != null)
-            throw new BusinessException("Ya tienes una caja abierta. Ciérrala antes de abrir una nueva.");
-
         var register = new CashRegister
         {
             CompanyId = companyId,
@@ -59,9 +54,9 @@ public class CashRegisterService : ICashRegisterService
         return MapToResponse(created);
     }
 
-    public async Task<CashRegisterResponse?> GetActiveAsync(long companyId, long branchId, long userId)
+    public async Task<CashRegisterResponse?> GetActiveAsync(long companyId, long branchId)
     {
-        var register = await _cashRegisterRepo.GetActiveByUserAsync(companyId, branchId, userId);
+        var register = await _cashRegisterRepo.GetActiveAsync(companyId, branchId);
         return register != null ? MapToResponse(register) : null;
     }
 
@@ -75,9 +70,6 @@ public class CashRegisterService : ICashRegisterService
 
         if (register.Status != "open")
             throw new BusinessException("Esta caja ya está cerrada");
-
-        if (register.OpenedBy != userId)
-            throw new BusinessException("Solo el usuario que abrió la caja puede cerrarla");
 
         var closed = await _cashRegisterRepo.CloseAsync(
             id, companyId, branchId, userId, request.ClosingAmount, request.Notes)

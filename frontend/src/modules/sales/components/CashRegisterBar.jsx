@@ -8,7 +8,34 @@ import { useState } from 'react';
 import { Wallet, DoorOpen, DoorClosed, ArrowDownCircle, ArrowUpCircle, Clock } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatCurrency';
 
-const CashRegisterBar = ({ register, onOpen, onClose, onMovement, onHistory }) => {
+const CashRegisterBar = ({ register, isLoading = false, isError = false, onRetry, onOpen, onClose, onMovement, onHistory }) => {
+  if (isLoading) {
+    return (
+      <div className="bg-gray-50 border-b border-gray-200 px-4 md:px-6 py-3 flex items-center gap-3 flex-shrink-0">
+        <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+        <p className="text-sm font-medium text-gray-600">Consultando estado de caja...</p>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-red-50 border-b border-red-200 px-4 md:px-6 py-3 flex items-center justify-between gap-3 flex-wrap flex-shrink-0" role="alert">
+        <div>
+          <p className="text-sm font-semibold text-red-800">Estado de caja no disponible</p>
+          <p className="text-xs text-red-600">No se puede abrir otra caja hasta verificar el estado actual.</p>
+        </div>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
   if (!register) {
     return (
       <div className="bg-amber-50 border-b border-amber-200 px-4 md:px-6 py-3 flex items-center justify-between gap-3 flex-wrap flex-shrink-0">

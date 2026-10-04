@@ -116,7 +116,12 @@ const SalesPage = ({ initialTab = 'tables' }) => {
   const [showCashHistory, setShowCashHistory] = useState(false);
 
   // Cash register query
-  const { data: cashRegData, isLoading: cashLoading } = useQuery({
+  const {
+    data: cashRegData,
+    isLoading: cashLoading,
+    isError: cashError,
+    refetch: retryCashRegister,
+  } = useQuery({
     queryKey: ['cash-register-active', branchId],
     queryFn: () => cashRegisterService.getActive(),
     enabled: !!branchId && cashEnabled,
@@ -173,6 +178,10 @@ const SalesPage = ({ initialTab = 'tables' }) => {
     queryClient.invalidateQueries({ queryKey: ['cash-register-active'] });
     queryClient.invalidateQueries({ queryKey: ['cash-register-history'] });
   };
+
+  useEffect(() => {
+    if (activeRegister) setShowOpenCash(false);
+  }, [activeRegister]);
 
   const handleOpenCash = async (data) => {
     await cashRegisterService.open(data);
@@ -361,6 +370,9 @@ const SalesPage = ({ initialTab = 'tables' }) => {
       {cashEnabled && (
         <CashRegisterBar
           register={activeRegister}
+          isLoading={cashLoading}
+          isError={cashError}
+          onRetry={retryCashRegister}
           onOpen={() => setShowOpenCash(true)}
           onClose={() => setShowCloseCash(true)}
           onMovement={(type) => setCashMovementType(type)}
@@ -511,7 +523,23 @@ const SalesPage = ({ initialTab = 'tables' }) => {
         {/* ── CAJA TAB ── */}
         {activeTab === 'cash' && (
           <div className="flex-1 overflow-y-auto p-4 md:p-6">
-            {!activeRegister ? (
+            {cashLoading ? (
+              <div className="flex h-60 items-center justify-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
+              </div>
+            ) : cashError ? (
+              <div className="flex h-60 flex-col items-center justify-center text-red-600" role="alert">
+                <p className="text-lg font-medium">Estado de caja no disponible</p>
+                <p className="mt-1 text-sm text-red-500">No se puede abrir otra caja hasta verificar el estado actual.</p>
+                <button
+                  type="button"
+                  onClick={() => retryCashRegister()}
+                  className="mt-4 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  Reintentar
+                </button>
+              </div>
+            ) : !activeRegister ? (
               <div className="flex flex-col items-center justify-center h-60 text-gray-400">
                 <Wallet size={48} className="mb-3 opacity-50" />
                 <p className="text-lg font-medium">No hay caja abierta</p>
@@ -573,7 +601,7 @@ const SalesPage = ({ initialTab = 'tables' }) => {
       {cashEnabled && (
         <>
           <OpenCashRegisterModal
-            isOpen={showOpenCash}
+            isOpen={showOpenCash && !cashLoading && !cashError && !activeRegister}
             onClose={() => setShowOpenCash(false)}
             onConfirm={handleOpenCash}
           />

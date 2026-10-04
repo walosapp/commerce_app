@@ -439,12 +439,11 @@ public sealed class CheckoutRepository : ICheckoutRepository
             FROM sales.cash_registers
             WHERE company_id = @CompanyId
               AND branch_id = @BranchId
-              AND opened_by = @UserId
               AND status = 'open'
               AND deleted_at IS NULL
             ORDER BY opened_at DESC, id DESC
             LIMIT 1
-            FOR UPDATE", new { command.CompanyId, command.BranchId, command.UserId }, transaction);
+            FOR UPDATE", new { command.CompanyId, command.BranchId }, transaction);
 
     private Task<IReadOnlyList<InventoryMovementPlan>> BuildInventoryMovementsAsync(
         IDbConnection connection,
@@ -536,14 +535,12 @@ public sealed class CheckoutRepository : ICheckoutRepository
             WHERE id = @CashRegisterId
               AND company_id = @CompanyId
               AND branch_id = @BranchId
-              AND opened_by = @UserId
               AND status = 'open'",
             new
             {
                 CashRegisterId = cashRegisterId,
                 command.CompanyId,
                 command.BranchId,
-                command.UserId,
                 calculation.NetTotal,
                 Cash = cash,
                 Card = card,

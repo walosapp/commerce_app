@@ -286,7 +286,6 @@ public class PosDeliController : ControllerBase
                 FROM sales.cash_registers
                 WHERE company_id = @CompanyId
                   AND branch_id = @BranchId
-                  AND opened_by = @UserId
                   AND status = 'open'
                   AND deleted_at IS NULL
                 ORDER BY opened_at DESC
@@ -296,8 +295,7 @@ public class PosDeliController : ControllerBase
             var cashRegisterId = await connection.QueryFirstOrDefaultAsync<long?>(activeRegisterSql, new
             {
                 CompanyId = _tenantContext.CompanyId,
-                BranchId = branchId.Value,
-                UserId = _tenantContext.UserId
+                BranchId = branchId.Value
             }, transaction);
 
             if (requireCashRegister && !cashRegisterId.HasValue)

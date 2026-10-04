@@ -1,6 +1,7 @@
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Walos.Domain.Entities;
+using Walos.Domain.Exceptions;
 using Walos.Domain.Interfaces;
 using Walos.Infrastructure.Data;
 
@@ -20,6 +21,31 @@ public class CashRegisterRepository : ICashRegisterRepository
     public async Task<CashRegister> OpenAsync(CashRegister register)
     {
         using var connection = await _connectionFactory.CreateConnectionAsync();
+        using var transaction = connection.BeginTransaction();
+
+        // Serializa aperturas por empresa/sucursal sin requerir una migracion. La
+        // segunda consulta corre despues de adquirir el lock y ve cualquier alta
+        // confirmada por un intento concurrente anterior.
+        await connection.ExecuteAsync(@"
+            SELECT pg_advisory_xact_lock(
+                hashtextextended(CONCAT(@CompanyId, ':', @BranchId), 0))",
+            new { register.CompanyId, register.BranchId }, transaction);
+
+        var activeRegisterId = await connection.QuerySingleOrDefaultAsync<long?>(@"
+            SELECT id
+            FROM sales.cash_registers
+            WHERE company_id = @CompanyId
+              AND branch_id = @BranchId
+              AND status = 'open'
+              AND deleted_at IS NULL
+            ORDER BY opened_at DESC, id DESC
+            LIMIT 1",
+            new { register.CompanyId, register.BranchId }, transaction);
+
+        if (activeRegisterId.HasValue)
+            throw new BusinessException(
+                "Ya existe una caja abierta en esta sucursal.",
+                "cash_register_already_open");
 
         const string sql = @"
             INSERT INTO sales.cash_registers (
@@ -50,7 +76,9 @@ public class CashRegisterRepository : ICashRegisterRepository
             register.OpeningAmount,
             register.Notes,
             register.OpenedAt
-        });
+        }, transaction);
+
+        transaction.Commit();
 
         _logger.LogInformation("Caja abierta: Id={Id}, Company={CompanyId}, Branch={BranchId}, User={OpenedBy}, Amount={OpeningAmount}",
             result.Id, result.CompanyId, result.BranchId, result.OpenedBy, result.OpeningAmount);
@@ -58,7 +86,7 @@ public class CashRegisterRepository : ICashRegisterRepository
         return result;
     }
 
-    public async Task<CashRegister?> GetActiveByUserAsync(long companyId, long branchId, long userId)
+    public async Task<CashRegister?> GetActiveAsync(long companyId, long branchId)
     {
         using var connection = await _connectionFactory.CreateConnectionAsync();
 
@@ -75,16 +103,21 @@ public class CashRegisterRepository : ICashRegisterRepository
                 cr.total_tips AS TotalTips, cr.cash_in AS CashIn, cr.cash_out AS CashOut,
                 cr.order_count AS OrderCount, cr.notes AS Notes,
                 cr.opened_at AS OpenedAt, cr.closed_at AS ClosedAt,
-                u.first_name || ' ' || u.last_name AS OpenedByName
+                u.first_name || ' ' || u.last_name AS OpenedByName,
+                b.name AS BranchName
             FROM sales.cash_registers cr
-            LEFT JOIN core.users u ON cr.opened_by = u.id
+            JOIN core.branches b
+              ON b.id = cr.branch_id AND b.company_id = cr.company_id
+            LEFT JOIN core.users u
+              ON cr.opened_by = u.id AND u.company_id = cr.company_id
             WHERE cr.company_id = @CompanyId 
               AND cr.branch_id = @BranchId
-              AND cr.opened_by = @UserId
               AND cr.status = 'open'
-              AND cr.deleted_at IS NULL";
+              AND cr.deleted_at IS NULL
+            ORDER BY cr.opened_at DESC, cr.id DESC
+            LIMIT 1";
 
-        return await connection.QueryFirstOrDefaultAsync<CashRegister>(sql, new { CompanyId = companyId, BranchId = branchId, UserId = userId });
+        return await connection.QueryFirstOrDefaultAsync<CashRegister>(sql, new { CompanyId = companyId, BranchId = branchId });
     }
 
     public async Task<CashRegister?> GetByIdAsync(long id, long companyId)

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SalesPage from '../../../modules/sales/SalesPage';
 
-const { cancelTable, invoiceTable, getSaleCatalog, enqueuePostSale, invalidateQueries, toastSuccess, toastError, featureState, queryConfigs, authState } = vi.hoisted(() => ({
+const { cancelTable, invoiceTable, getSaleCatalog, enqueuePostSale, invalidateQueries, toastSuccess, toastError, featureState, queryConfigs, authState, cashState } = vi.hoisted(() => ({
   cancelTable: vi.fn(),
   invoiceTable: vi.fn(),
   getSaleCatalog: vi.fn(),
@@ -13,6 +13,7 @@ const { cancelTable, invoiceTable, getSaleCatalog, enqueuePostSale, invalidateQu
   featureState: { canAccess: vi.fn() },
   queryConfigs: [],
   authState: { branchId: 7, user: { role: 'manager', isPlatformAdmin: false } },
+  cashState: { register: null, isLoading: false },
 }));
 
 const table = {
@@ -30,6 +31,14 @@ vi.mock('@tanstack/react-query', () => ({
     const { queryKey } = config;
     if (queryKey[0] === 'sales-tables') return { data: { data: [table] }, isLoading: false };
     if (queryKey[0] === 'sale-catalog') return { data: { data: [] }, isLoading: false };
+    if (queryKey[0] === 'cash-register-active') {
+      return {
+        data: { data: cashState.register },
+        isLoading: cashState.isLoading,
+        isError: cashState.isError,
+        refetch: cashState.refetch,
+      };
+    }
     return { data: { data: null }, isLoading: false };
   },
 }));
@@ -92,7 +101,6 @@ vi.mock('../../../modules/sales/components/InvoicePanel', () => ({
 vi.mock('../../../modules/sales/components/AddTablePanel', () => ({ default: () => null }));
 vi.mock('../../../modules/sales/components/CreditsPanel', () => ({ default: () => <div>Panel de créditos</div> }));
 vi.mock('../../../modules/sales/components/SalesSummaryTab', () => ({ default: ({ canRefund }) => <div>{canRefund ? 'Puede devolver' : 'Solo consulta'}</div> }));
-vi.mock('../../../modules/sales/components/CashRegisterBar', () => ({ default: () => null }));
 vi.mock('../../../modules/sales/components/OpenCashRegisterModal', () => ({ default: () => null }));
 vi.mock('../../../modules/sales/components/CloseCashRegisterModal', () => ({ default: () => null }));
 vi.mock('../../../modules/sales/components/CashMovementModal', () => ({ default: () => null }));
@@ -112,6 +120,10 @@ describe('SalesPage postventa restaurante H3', () => {
     vi.clearAllMocks();
     queryConfigs.length = 0;
     authState.user = { role: 'manager', isPlatformAdmin: false };
+    cashState.register = null;
+    cashState.isLoading = false;
+    cashState.isError = false;
+    cashState.refetch = vi.fn();
     featureState.canAccess.mockReturnValue(true);
     getSaleCatalog.mockResolvedValue({ data: [] });
     cancelTable.mockResolvedValue({ success: true });
@@ -257,5 +269,46 @@ describe('SalesPage postventa restaurante H3', () => {
     expect(screen.getAllByRole('button', { name: 'Cancelar mesa' }).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: /Ventas/i }));
     expect(screen.getByText('Puede devolver')).toBeInTheDocument();
+  });
+
+  it('uses the active register shared by the tenant branch and hides duplicate opening', () => {
+    authState.user = { role: 'cashier', isPlatformAdmin: false };
+    cashState.register = {
+      id: 81,
+      openedByUserId: 99,
+      openedByName: 'Dueño',
+      openedAt: new Date().toISOString(),
+      orderCount: 0,
+      openingAmount: 100000,
+      totalSales: 0,
+      totalCashSales: 0,
+      totalCardSales: 0,
+      totalTransferSales: 0,
+      totalDiscounts: 0,
+      cashIn: 0,
+      cashOut: 0,
+    };
+    featureState.canAccess.mockImplementation((code) => code === 'cash');
+
+    render(<SalesPage initialTab="cash" />);
+
+    const activeQuery = queryConfigs.find((config) => config.queryKey[0] === 'cash-register-active');
+    expect(activeQuery.queryKey).toEqual(['cash-register-active', 7]);
+    expect(screen.getByText('Caja abierta')).toBeInTheDocument();
+    expect(screen.getByText('Turno actual')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Abrir Caja/i })).not.toBeInTheDocument();
+  });
+
+  it('fails closed when active cash-register state cannot be verified', () => {
+    authState.user = { role: 'cashier', isPlatformAdmin: false };
+    cashState.isError = true;
+    featureState.canAccess.mockImplementation((code) => code === 'cash');
+
+    render(<SalesPage initialTab="cash" />);
+
+    expect(screen.getAllByText(/Estado de caja no disponible/).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /Abrir Caja/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: /Reintentar/i })[0]);
+    expect(cashState.refetch).toHaveBeenCalledOnce();
   });
 });

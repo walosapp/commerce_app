@@ -24,6 +24,67 @@ public class CashRegisterRepositoryIntegrationTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task Active_Register_Is_Visible_At_Branch_Level_Regardless_Of_Opening_User()
+    {
+        var company = await SeedCompanyAsync("Shared cash register company");
+        var branch = await SeedBranchAsync(company, "Shared branch");
+        var superAdmin = await SeedUserAsync(company, branch, $"owner-{Guid.NewGuid():N}@test.com");
+        _ = await SeedUserAsync(company, branch, $"cashier-{Guid.NewGuid():N}@test.com");
+        var opened = await Service.OpenAsync(
+            company, branch, superAdmin, new OpenCashRegisterRequest(100m, null));
+
+        var active = await Service.GetActiveAsync(company, branch);
+
+        Assert.NotNull(active);
+        Assert.Equal(opened.Id, active.Id);
+        Assert.Equal(superAdmin, active.OpenedBy);
+    }
+
+    [SkippableFact]
+    public async Task Active_Register_From_Another_Branch_Is_Not_Visible()
+    {
+        var company = await SeedCompanyAsync("Branch isolation company");
+        var branchA = await SeedBranchAsync(company, "Branch A");
+        var branchB = await SeedBranchAsync(company, "Branch B");
+        var userA = await SeedUserAsync(company, branchA, $"branch-a-{Guid.NewGuid():N}@test.com");
+        await Service.OpenAsync(company, branchA, userA, new OpenCashRegisterRequest(100m, null));
+
+        var active = await Service.GetActiveAsync(company, branchB);
+
+        Assert.Null(active);
+    }
+
+    [SkippableFact]
+    public async Task Concurrent_Open_Attempts_Create_Exactly_One_Register_For_Branch()
+    {
+        var company = await SeedCompanyAsync("Concurrent open company");
+        var branch = await SeedBranchAsync(company, "Concurrent branch");
+        var userA = await SeedUserAsync(company, branch, $"open-a-{Guid.NewGuid():N}@test.com");
+        var userB = await SeedUserAsync(company, branch, $"open-b-{Guid.NewGuid():N}@test.com");
+
+        async Task<(CashRegisterResponse? Opened, BusinessException? Error)> Attempt(long userId)
+        {
+            try
+            {
+                return (await Service.OpenAsync(
+                    company, branch, userId, new OpenCashRegisterRequest(100m, null)), null);
+            }
+            catch (BusinessException error)
+            {
+                return (null, error);
+            }
+        }
+
+        var results = await Task.WhenAll(Attempt(userA), Attempt(userB));
+
+        Assert.Single(results, result => result.Opened is not null);
+        var rejected = Assert.Single(results, result => result.Error is not null);
+        Assert.Equal("cash_register_already_open", rejected.Error!.Code);
+        var active = await Service.GetActiveAsync(company, branch);
+        Assert.Equal(results.Single(result => result.Opened is not null).Opened!.Id, active!.Id);
+    }
+
+    [SkippableFact]
     public async Task Cash_Sale_Updates_Only_Cash_And_Total_Sales()
     {
         var ctx = await CreateOpenRegisterAsync("Cash sale", 50m);
