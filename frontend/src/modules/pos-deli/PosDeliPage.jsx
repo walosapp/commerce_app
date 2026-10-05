@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { LayoutGrid, ChevronRight } from 'lucide-react';
+import PosHeader from './components/PosHeader';
 import ProductGrid from './components/ProductGrid';
 import ProductSearchBar from './components/ProductSearchBar';
 import ScaleIndicator from './components/ScaleIndicator';
@@ -23,6 +25,7 @@ const PosDeliPage = () => {
   const { branchId, tenantId } = useAuthStore();
   const canLoadSalesCatalog = !!tenantId && !!branchId;
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [weightModalProduct, setWeightModalProduct] = useState(null);
   const [savingSale, setSavingSale] = useState(false);
@@ -54,9 +57,9 @@ const PosDeliPage = () => {
 
   const total = getTotal();
 
-  const { data: productsData, refetch } = useQuery({
-    queryKey: ['pos-deli-products', tenantId, branchId, search],
-    queryFn: () => posDeliService.getProducts({ search }),
+  const { data: productsData, refetch, isPending, isError } = useQuery({
+    queryKey: ['pos-deli-products', tenantId, branchId, ''],
+    queryFn: () => posDeliService.getProducts({ search: '' }),
     enabled: canLoadSalesCatalog,
   });
 
@@ -67,13 +70,28 @@ const PosDeliPage = () => {
   });
 
   const products = useMemo(() => {
-    const live = productsData?.data ?? [];
-    if (live.length > 0) return live.map((product) => ({ ...product, isWeighed: isWeighedProduct(product) }));
-    return (favoritesData?.data ?? []).map((product) => ({ ...product, isWeighed: isWeighedProduct(product) }));
+    // El endpoint devuelve el catálogo completo: filtrar localmente conserva
+    // las categorías visibles mientras se busca, sin permisos de Inventario.
+    const catalog = productsData?.data ?? favoritesData?.data ?? [];
+    return catalog.map((product) => ({ ...product, isWeighed: isWeighedProduct(product) }));
   }, [favoritesData?.data, productsData?.data]);
 
-  const weighedProducts = useMemo(() => products.filter((product) => product.isWeighed), [products]);
-  const unitProducts = useMemo(() => products.filter((product) => !product.isWeighed), [products]);
+  const categories = useMemo(() => [...new Set(products.map((product) => product.categoryName || 'Sin categoría'))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
+  const visibleProducts = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase('es');
+    return products.filter((product) => (
+      (category === null || (product.categoryName || 'Sin categoría') === category)
+      && (!term || [product.name, product.sku, product.barcode].some((value) => `${value || ''}`.toLocaleLowerCase('es').includes(term)))
+    ));
+  }, [products, category, search]);
+  const weighedProducts = useMemo(() => visibleProducts.filter((product) => product.isWeighed), [visibleProducts]);
+  const unitProducts = useMemo(() => visibleProducts.filter((product) => !product.isWeighed), [visibleProducts]);
+  const showScale = isConnected || !!error || products.some((product) => product.isWeighed);
+
+  useEffect(() => {
+    setCategory(null);
+    setSearch('');
+  }, [tenantId, branchId]);
 
   const handleAddUnit = (product) => {
     if (savingSale) return;
@@ -136,7 +154,7 @@ const PosDeliPage = () => {
     const onKeyDown = (event) => {
       if (event.key === 'F12') {
         event.preventDefault();
-        if (items.length > 0) setCheckoutOpen(true);
+        if (items.length > 0 && !savingSale) setCheckoutOpen(true);
       }
 
       if (event.key === 'F1') {
@@ -234,36 +252,55 @@ const PosDeliPage = () => {
   };
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black text-gray-900">POS</h1>
-          <p className="text-sm text-gray-500">Venta rapida para mostrador, barcode y productos por peso</p>
-        </div>
-      </div>
+    <div className="flex min-h-0 flex-col gap-4 xl:h-full">
+      <PosHeader>
+        <ProductSearchBar value={search} onChange={setSearch} inputRef={searchInputRef} />
+      </PosHeader>
 
-      <div className="grid flex-1 grid-cols-1 gap-4 xl:grid-cols-[1.4fr_0.8fr]">
-        <div className="space-y-4">
-          <ProductSearchBar value={search} onChange={setSearch} inputRef={searchInputRef} />
-          <ScaleIndicator
-            weight={weight}
-            isStable={isStable}
-            isConnected={isConnected}
-            error={error}
-            unit={config?.weightUnit || 'kg'}
-            showActions={false}
-            helperText="La conexion de la bascula ahora se administra en Configuracion > Dispositivos."
-          />
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[152px_minmax(0,1fr)_320px]">
+        <nav aria-label="Categorías de productos" className="min-h-0 rounded-2xl border border-gray-200 bg-white p-3 lg:col-span-2 xl:col-span-1 xl:overflow-y-auto">
+          <h2 className="mb-3 flex items-center gap-2 px-2 pt-2 text-xs font-bold uppercase tracking-wide text-gray-500"><LayoutGrid className="h-4 w-4" />Categorías</h2>
+          <div className="flex gap-1 overflow-x-auto xl:flex-col xl:overflow-visible">
+            {[null, ...categories].map((name) => (
+              <button key={name === null ? 'all' : `category:${name}`} type="button" aria-pressed={category === name} onClick={() => setCategory(name)} className={`flex shrink-0 items-center justify-between gap-2 rounded-xl px-3 py-3 text-left text-sm font-semibold transition-colors ${category === name ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                <span className="break-words">{name ?? 'Todos'}</span>
+                {category === name && <ChevronRight aria-hidden="true" className="hidden h-4 w-4 shrink-0 xl:block" />}
+              </button>
+            ))}
+          </div>
+        </nav>
 
-          <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-            <ProductGrid
+        <section aria-label="Catálogo de productos" className="flex min-h-0 min-w-0 flex-col gap-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <div className="shrink-0">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-400">
+              <span>{visibleProducts.length} productos{category ? ` · ${category}` : ''}</span>
+              {showScale && <ScaleIndicator
+                compact
+                weight={weight}
+                isStable={isStable}
+                isConnected={isConnected}
+                error={error}
+                unit={config?.weightUnit || 'kg'}
+                showActions={false}
+                helperText="La conexión de la báscula se administra en Configuración > Dispositivos."
+              />}
+              <span className="ml-auto">F1 · Buscar</span>
+            </div>
+          </div>
+
+          <div className="scrollbar-subtle max-h-[50dvh] min-h-0 flex-1 overflow-y-auto lg:max-h-none">
+            {!canLoadSalesCatalog ? <p role="alert" className="p-6 text-center text-sm text-amber-700">Necesitás una sucursal asignada para cargar productos.</p>
+              : isError ? <div role="alert" className="p-6 text-center text-sm text-gray-600"><p>No se pudieron cargar los productos.</p><button type="button" onClick={() => refetch()} className="mt-3 font-semibold text-primary-600 hover:underline">Reintentar catálogo</button></div>
+              : isPending ? <p role="status" className="p-6 text-center text-sm text-gray-500">Cargando productos…</p>
+              : <ProductGrid
               weighedProducts={weighedProducts}
               unitProducts={unitProducts}
               onSelectWeighed={(product) => handleAddWeighed(product)}
               onSelectUnit={handleAddUnit}
-            />
+              disabled={savingSale}
+            />}
           </div>
-        </div>
+        </section>
 
         <TicketPanel
           items={items}
@@ -272,7 +309,8 @@ const PosDeliPage = () => {
           onSelectItem={setSelectedItemId}
           onRemoveItem={handleRemoveItem}
           onUpdateQuantity={handleUpdateQuantity}
-          onCheckout={() => setCheckoutOpen(true)}
+          onCheckout={() => { if (!savingSale) setCheckoutOpen(true); }}
+          disabled={savingSale}
         />
       </div>
 

@@ -10,8 +10,9 @@ const ProductSearchBar = ({ value, onChange, inputRef }) => {
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Buscar por nombre, SKU o barcode..."
-        className="w-full rounded-2xl border border-gray-200 bg-white py-4 pl-12 pr-14 text-base text-gray-900 shadow-sm outline-none transition-colors focus:border-primary-500"
+        aria-label="Buscar producto"
+        placeholder="Buscar producto, SKU o código..."
+        className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-12 pr-12 text-sm text-gray-900 outline-none transition-colors focus:border-primary-500 focus:bg-white"
       />
       <ScanBarcode className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-300" />
     </div>

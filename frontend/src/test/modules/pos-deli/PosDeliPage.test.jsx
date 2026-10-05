@@ -78,6 +78,8 @@ vi.mock('../../../modules/pos-deli/components/ProductGrid', () => ({
   ),
 }));
 
+vi.mock('../../../modules/pos-deli/components/PosHeader', () => ({ default: () => <h1>POS</h1> }));
+
 vi.mock('../../../modules/pos-deli/components/ProductSearchBar', () => ({
   default: () => null,
 }));
