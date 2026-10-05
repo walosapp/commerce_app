@@ -136,7 +136,7 @@ public class AuthRepositoryIntegrationTests : IntegrationTestBase
         var companyId = await SeedCompanyAsync("Last Login Co");
         var branchId = await SeedBranchAsync(companyId);
         var userId = await SeedUserAsync(companyId, branchId, "lastlogin@test.com");
-        var beforeUpdate = DateTime.UtcNow;
+        var beforeUpdate = await GetDatabaseUtcNowAsync();
 
         // Act
         await AuthRepository.UpdateLastLoginAsync(userId, "127.0.0.1");

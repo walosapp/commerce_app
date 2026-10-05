@@ -7,8 +7,6 @@ namespace Walos.Tests.Integration;
 
 public class PurchaseOrderRepositoryIntegrationTests : IntegrationTestBase
 {
-    private readonly List<long> _companyIds = [];
-
     [SkippableFact]
     public async Task CreateAsync_Uses_Server_Loaded_Product_And_Validates_Same_Tenant_References()
     {
@@ -459,43 +457,6 @@ public class PurchaseOrderRepositoryIntegrationTests : IntegrationTestBase
             new { BranchId = branchA, ProductId = productA }));
     }
 
-    private new async Task<long> SeedCompanyAsync(string name = "Test Company")
-    {
-        var suffix = Guid.NewGuid().ToString("N")[..12];
-        using var conn = await ConnectionFactory.CreateConnectionAsync();
-        var companyId = await conn.QuerySingleAsync<long>(@"
-            INSERT INTO core.companies
-                (name, legal_name, tax_id, email, phone, is_active, created_by)
-            VALUES
-                (@Name, @Name, @TaxId, @Email, '123456', true, 1)
-            RETURNING id",
-            new
-            {
-                Name = name,
-                TaxId = $"TEST-{suffix}",
-                Email = $"{suffix}@test.com"
-            });
-        _companyIds.Add(companyId);
-        return companyId;
-    }
-
-    private new async Task<long> SeedBranchAsync(long companyId, string name = "Test Branch")
-    {
-        using var conn = await ConnectionFactory.CreateConnectionAsync();
-        return await conn.QuerySingleAsync<long>(@"
-            INSERT INTO core.branches
-                (company_id, name, code, branch_type, address, city, is_active, created_by)
-            VALUES
-                (@CompanyId, @Name, @Code, 'store', 'Test Address', 'Test City', true, 1)
-            RETURNING id",
-            new
-            {
-                CompanyId = companyId,
-                Name = name,
-                Code = $"T{Guid.NewGuid().ToString("N")[..10]}"
-            });
-    }
-
     private async Task<long> SeedSupplierAsync(long companyId, long? branchId, string name)
     {
         using var conn = await ConnectionFactory.CreateConnectionAsync();
@@ -593,47 +554,6 @@ public class PurchaseOrderRepositoryIntegrationTests : IntegrationTestBase
             SELECT COUNT(*)::int FROM inventory.movements
             WHERE company_id = @CompanyId AND reference_type = 'purchase_order' AND reference_id = @OrderId",
             new { CompanyId = companyId, OrderId = orderId }));
-    }
-
-    public override void Dispose()
-    {
-        try
-        {
-            if (_companyIds.Count > 0)
-            {
-                using var conn = ConnectionFactory.CreateConnectionAsync().GetAwaiter().GetResult();
-                conn.Execute(@"
-                    DELETE FROM suppliers.purchase_order_items
-                    WHERE order_id IN (
-                        SELECT id FROM suppliers.purchase_orders WHERE company_id = ANY(@CompanyIds)
-                    );
-                    DELETE FROM suppliers.purchase_orders WHERE company_id = ANY(@CompanyIds);
-                    DELETE FROM suppliers.supplier_products
-                    WHERE supplier_id IN (
-                        SELECT id FROM suppliers.suppliers WHERE company_id = ANY(@CompanyIds)
-                    );
-                    DELETE FROM suppliers.suppliers WHERE company_id = ANY(@CompanyIds);
-                    DELETE FROM inventory.movements WHERE company_id = ANY(@CompanyIds);
-                    DELETE FROM inventory.stock
-                    WHERE company_id = ANY(@CompanyIds)
-                       OR branch_id IN (SELECT id FROM core.branches WHERE company_id = ANY(@CompanyIds))
-                       OR product_id IN (SELECT id FROM inventory.products WHERE company_id = ANY(@CompanyIds));
-                    DELETE FROM inventory.products WHERE company_id = ANY(@CompanyIds);
-                    DELETE FROM inventory.categories WHERE company_id = ANY(@CompanyIds);
-                    DELETE FROM inventory.units WHERE company_id = ANY(@CompanyIds);
-                    DELETE FROM finance.entries WHERE company_id = ANY(@CompanyIds);
-                    DELETE FROM finance.categories WHERE company_id = ANY(@CompanyIds);
-                    DELETE FROM core.users WHERE company_id = ANY(@CompanyIds);
-                    DELETE FROM core.branches WHERE company_id = ANY(@CompanyIds);
-                    DELETE FROM core.roles WHERE company_id = ANY(@CompanyIds);
-                    DELETE FROM core.companies WHERE id = ANY(@CompanyIds);",
-                    new { CompanyIds = _companyIds.ToArray() });
-            }
-        }
-        finally
-        {
-            base.Dispose();
-        }
     }
 
     private sealed class MovementSnapshot

@@ -11,6 +11,8 @@ namespace Walos.Tests.Integration;
 
 public abstract class IntegrationTestBase : IDisposable
 {
+    private readonly IntegrationTestDataScope _dataScope = new();
+
     protected readonly IDbConnectionFactory ConnectionFactory;
     protected readonly IAuthRepository AuthRepository;
     protected readonly ICompanyRepository CompanyRepository;
@@ -43,8 +45,13 @@ public abstract class IntegrationTestBase : IDisposable
         Skip.If(string.IsNullOrWhiteSpace(connectionString), 
             "Integration tests skipped: No test database connection configured. Set WALOS_TEST_CONNECTION env var or appsettings.Test.json");
 
-        // Verify connection works before proceeding
-        TestConnection(connectionString);
+        var allowWrites = Environment.GetEnvironmentVariable("WALOS_TEST_ALLOW_WRITES");
+        Skip.If(!string.Equals(allowWrites, "true", StringComparison.OrdinalIgnoreCase),
+            "Integration tests skipped: verify a disposable local database and explicitly set WALOS_TEST_ALLOW_WRITES=true.");
+        IntegrationTestDatabaseSafety.RequireSafeTarget(connectionString!, allowWrites);
+
+        // The safety guard must run before any connection is opened.
+        TestConnection(connectionString!);
 
         ConnectionFactory = new TestConnectionFactory(connectionString);
 
@@ -80,27 +87,34 @@ public abstract class IntegrationTestBase : IDisposable
             using var cmd = new NpgsqlCommand("SELECT 1", conn);
             cmd.ExecuteScalar();
         }
-        catch (Exception ex)
+        catch (NpgsqlException)
         {
-            throw new InvalidOperationException($"Cannot connect to test database. Ensure PostgreSQL is running and WALOS_TEST_CONNECTION is set. Error: {ex.Message}");
+            throw new InvalidOperationException("Cannot connect to the approved local test database. Check the test connection configuration.");
         }
     }
 
     protected async Task<long> SeedCompanyAsync(string name = "Test Company")
     {
+        var suffix = Guid.NewGuid().ToString("N");
         using var conn = await ConnectionFactory.CreateConnectionAsync();
         using var cmd = new NpgsqlCommand(@"
             INSERT INTO core.companies (name, legal_name, tax_id, email, phone, is_active, created_by)
-            VALUES (@name, @name, @taxId, 'test@test.com', '123456', true, 1)
+            VALUES (@name, @name, @taxId, @email, '123456', true, 1)
             RETURNING id", (NpgsqlConnection)conn);
         cmd.Parameters.AddWithValue("@name", name);
-        cmd.Parameters.AddWithValue("@taxId", $"TEST-{Guid.NewGuid():N}");
+        cmd.Parameters.AddWithValue("@taxId", $"TEST-{suffix}");
+        cmd.Parameters.AddWithValue("@email", $"company-{suffix}@test.local");
         var result = await cmd.ExecuteScalarAsync();
-        return (long)(result ?? throw new InvalidOperationException("Failed to seed company"));
+        var companyId = (long)(result ?? throw new InvalidOperationException("Failed to seed company"));
+        _dataScope.RegisterCreatedCompany(companyId);
+        return companyId;
     }
+
+    protected void EnsureOwnedCompany(long companyId) => _dataScope.EnsureOwnedCompany(companyId);
 
     protected async Task<long> SeedBranchAsync(long companyId, string name = "Test Branch")
     {
+        EnsureOwnedCompany(companyId);
         using var conn = await ConnectionFactory.CreateConnectionAsync();
         using var cmd = new NpgsqlCommand(@"
             INSERT INTO core.branches (
@@ -117,16 +131,18 @@ public abstract class IntegrationTestBase : IDisposable
         return (long)(result ?? throw new InvalidOperationException("Failed to seed branch"));
     }
 
-    protected async Task<long> SeedUserAsync(long companyId, long? branchId, string email = "user@test.com", string password = "password123")
+    protected async Task<long> SeedUserAsync(long companyId, long? branchId, string? email = null, string password = "password123")
     {
+        EnsureOwnedCompany(companyId);
+        email ??= $"user-{companyId}-{Guid.NewGuid():N}@test.local";
         var passwordHash = BCrypt.Net.BCrypt.HashPassword(password);
         using var conn = await ConnectionFactory.CreateConnectionAsync();
 
         // First ensure role exists
         using var roleCmd = new NpgsqlCommand(@"
             INSERT INTO core.roles (company_id, code, name, is_active)
-            VALUES (@companyId, 'admin', 'Administrator', true)
-            ON CONFLICT (company_id, code) DO UPDATE SET name = 'Administrator'
+            VALUES (@companyId, 'manager', 'Manager', true)
+            ON CONFLICT (company_id, code) DO UPDATE SET name = 'Manager'
             RETURNING id", (NpgsqlConnection)conn);
         roleCmd.Parameters.AddWithValue("@companyId", companyId);
         var roleId = (long)(await roleCmd.ExecuteScalarAsync() ?? 1);
@@ -134,7 +150,6 @@ public abstract class IntegrationTestBase : IDisposable
         using var cmd = new NpgsqlCommand(@"
             INSERT INTO core.users (company_id, branch_id, role_id, first_name, last_name, email, password_hash, is_active, email_verified, created_by)
             VALUES (@companyId, @branchId, @roleId, 'Test', 'User', @email, @passwordHash, true, true, 1)
-            ON CONFLICT (email) DO UPDATE SET password_hash = @passwordHash
             RETURNING id", (NpgsqlConnection)conn);
         cmd.Parameters.AddWithValue("@companyId", companyId);
         cmd.Parameters.AddWithValue("@branchId", branchId ?? (object)DBNull.Value);
@@ -145,28 +160,26 @@ public abstract class IntegrationTestBase : IDisposable
         return (long)(result ?? throw new InvalidOperationException("Failed to seed user"));
     }
 
-    protected async Task CleanupAsync()
+    protected async Task<DateTime> GetDatabaseUtcNowAsync()
     {
         using var conn = await ConnectionFactory.CreateConnectionAsync();
-        using var cmd = new NpgsqlCommand(@"
-            -- Clean up in reverse dependency order
-            DELETE FROM inventory.recipes WHERE company_id > 900000;
-            DELETE FROM inventory.movements WHERE company_id > 900000;
-            DELETE FROM inventory.stock WHERE company_id > 900000;
-            DELETE FROM inventory.products WHERE company_id > 900000;
-            DELETE FROM inventory.categories WHERE company_id > 900000;
-            DELETE FROM inventory.units WHERE company_id > 900000;
-            DELETE FROM finance.entries WHERE company_id > 900000;
-            DELETE FROM finance.categories WHERE company_id > 900000;
-            DELETE FROM sales.order_items WHERE company_id > 900000;
-            DELETE FROM sales.orders WHERE company_id > 900000;
-            DELETE FROM sales.tables WHERE company_id > 900000;
-            DELETE FROM core.users WHERE company_id > 900000;
-            DELETE FROM core.branches WHERE company_id > 900000;
-            DELETE FROM core.roles WHERE company_id > 900000;
-            DELETE FROM core.companies WHERE id > 900000;",
-            (NpgsqlConnection)conn);
+        using var cmd = new NpgsqlCommand("SELECT CURRENT_TIMESTAMP", (NpgsqlConnection)conn);
+        var result = await cmd.ExecuteScalarAsync();
+        return ((DateTime)(result ?? throw new InvalidOperationException("Failed to read database clock"))).ToUniversalTime();
+    }
+
+    protected async Task CleanupAsync()
+    {
+        if (_dataScope.Count == 0)
+            return;
+
+        using var conn = await ConnectionFactory.CreateConnectionAsync();
+        using var transaction = ((NpgsqlConnection)conn).BeginTransaction();
+        using var cmd = _dataScope.CreateCleanupCommand((NpgsqlConnection)conn, transaction)
+            ?? throw new InvalidOperationException("No fixture-owned companies to clean up.");
         await cmd.ExecuteNonQueryAsync();
+        await transaction.CommitAsync();
+        _dataScope.Clear();
     }
 
     public virtual void Dispose()
