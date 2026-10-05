@@ -89,7 +89,7 @@ const CashMovementModal = ({ isOpen, onClose, onConfirm, registerId, type = 'in'
               <input
                 type="number"
                 min="1"
-                step="100"
+                step="any"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0"

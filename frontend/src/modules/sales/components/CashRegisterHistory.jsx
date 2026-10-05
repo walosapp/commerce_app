@@ -10,23 +10,25 @@ import { X, ChevronDown, ChevronUp, Clock, User, ArrowDownCircle, ArrowUpCircle,
 import { cashRegisterService } from '../../../services/cashRegisterService';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import ZReportPrint from './ZReportPrint';
+import useAuthStore from '../../../stores/authStore';
 
 const CashRegisterHistory = ({ isOpen, onClose }) => {
+  const { tenantId, branchId } = useAuthStore();
   const [expandedId, setExpandedId] = useState(null);
   const [zReportId, setZReportId] = useState(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
   const { data: historyData, isLoading } = useQuery({
-    queryKey: ['cash-register-history', dateFrom, dateTo],
+    queryKey: ['cash-register-history', tenantId, branchId, dateFrom, dateTo],
     queryFn: () => cashRegisterService.getHistory({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
-    enabled: isOpen,
+    enabled: isOpen && !!tenantId && !!branchId,
   });
 
   const { data: movementsData } = useQuery({
-    queryKey: ['cash-register-movements', expandedId],
+    queryKey: ['cash-register-movements', tenantId, branchId, expandedId],
     queryFn: () => cashRegisterService.getMovements(expandedId),
-    enabled: !!expandedId,
+    enabled: isOpen && !!tenantId && !!branchId && !!expandedId,
   });
 
   const registers = historyData?.data || [];

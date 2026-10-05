@@ -48,6 +48,7 @@ describe('direct URL access follows the frozen V1 role matrix', () => {
 
   it.each([
     ['waiter', '/finance', 'finance'],
+    ['waiter', '/cash', 'cash'],
     ['waiter', '/inventory', 'inventory'],
     ['cashier', '/', 'dashboard'],
     ['cashier', '/inventory', 'inventory'],
@@ -72,6 +73,9 @@ describe('direct URL access follows the frozen V1 role matrix', () => {
   it.each([
     [{ role: 'waiter', isPlatformAdmin: false }, '/sales', 'restaurant'],
     [{ role: 'cashier', isPlatformAdmin: false }, '/pos-deli', 'pos'],
+    [{ role: 'cashier', isPlatformAdmin: false }, '/cash', 'cash'],
+    [{ role: 'manager', isPlatformAdmin: false }, '/cash', 'cash'],
+    [{ role: 'super_admin', isPlatformAdmin: false }, '/cash', 'cash'],
     [{ role: 'dev', isPlatformAdmin: true }, '/finance', 'finance'],
   ])('allows an authorized role to open %s directly', (user, path, feature) => {
     authState.user = user;

@@ -10,6 +10,7 @@ import { Toaster } from 'react-hot-toast';
 import Layout from './components/layout/Layout';
 import InventoryPage from './modules/inventory/InventoryPage';
 import SalesPage from './modules/sales/SalesPage';
+import CashPage from './modules/cash/CashPage';
 import AiAssistantPage from './modules/ai-assistant/AiAssistantPage';
 import LoginPage from './modules/auth/LoginPage';
 import useAuthStore from './stores/authStore';
@@ -102,7 +103,7 @@ function App() {
           <Route path="/ai-assistant" element={<FeatureRoute feature="ai"><AiAssistantPage /></FeatureRoute>} />
           <Route path="/sales" element={<FeatureRoute feature="restaurant"><SalesPage initialTab="tables" /></FeatureRoute>} />
           <Route path="/pos-deli" element={<FeatureRoute feature="pos"><PosDeliPage /></FeatureRoute>} />
-          <Route path="/cash" element={<FeatureRoute feature="cash"><SalesPage initialTab="cash" /></FeatureRoute>} />
+          <Route path="/cash" element={<FeatureRoute feature="cash"><CashPage /></FeatureRoute>} />
           <Route path="/finance" element={<FeatureRoute feature="finance"><FinancePage /></FeatureRoute>} />
           <Route path="/suppliers" element={<FeatureRoute feature="suppliers"><SuppliersPage initialTab="suppliers" /></FeatureRoute>} />
           <Route path="/purchases" element={<FeatureRoute feature="purchases"><SuppliersPage initialTab="orders" /></FeatureRoute>} />

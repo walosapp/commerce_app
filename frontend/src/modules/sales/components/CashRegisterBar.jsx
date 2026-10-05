@@ -48,7 +48,7 @@ const CashRegisterBar = ({ register, isLoading = false, isError = false, onRetry
             <p className="text-xs text-amber-600">Debes abrir caja para facturar</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={onHistory}
             className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 transition-colors"
@@ -102,7 +102,7 @@ const CashRegisterBar = ({ register, isLoading = false, isError = false, onRetry
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => onMovement('in')}
           className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 transition-colors"
