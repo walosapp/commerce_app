@@ -1,6 +1,12 @@
 import api from '../config/api';
 
 export const cashRegisterService = {
+  // Estado operativo sin información financiera (Restaurante/POS, incluido mesero).
+  getStatus: async () => {
+    const response = await api.get('/sales/cash-register/status');
+    return response.data;
+  },
+
   // Abrir caja
   open: async (data) => {
     const response = await api.post('/sales/cash-register/open', data);

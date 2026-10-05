@@ -6,13 +6,13 @@ import PosDeliPage from '../../../modules/pos-deli/PosDeliPage';
 const mocks = vi.hoisted(() => ({
   getProducts: vi.fn(),
   getFavorites: vi.fn(),
-  getActive: vi.fn(),
+  getStatus: vi.fn(),
   addUnitItem: vi.fn(),
-  auth: { tenantId: 155, branchId: 91, user: { role: 'cashier', isPlatformAdmin: false } },
+  auth: { isAuthenticated: true, tenantId: 155, branchId: 91, user: { role: 'cashier', isPlatformAdmin: false } },
 }));
 
 vi.mock('../../../hooks/useCompanyFeatures', () => ({ default: () => ({ canAccess: () => true, hasFeature: () => true, isReady: true, isError: false }) }));
-vi.mock('../../../services/cashRegisterService', () => ({ cashRegisterService: { getActive: mocks.getActive } }));
+vi.mock('../../../services/cashRegisterService', () => ({ cashRegisterService: { getStatus: mocks.getStatus } }));
 
 vi.mock('../../../stores/authStore', () => ({ default: () => mocks.auth }));
 vi.mock('../../../services/posDeliService', () => ({
@@ -52,7 +52,7 @@ describe('PosDeli catalog request', () => {
     vi.clearAllMocks();
     mocks.auth.branchId = 91;
     mocks.auth.user = { role: 'cashier', isPlatformAdmin: false, name: 'Edwin', branchName: 'Principal' };
-    mocks.getActive.mockResolvedValue({ data: { status: 'open', branchName: 'Principal' } });
+    mocks.getStatus.mockResolvedValue({ data: { branchId: 91, status: 'open' } });
     mocks.getProducts.mockResolvedValue({
       data: [{ id: 501, name: 'Café POS', salePrice: 5000, unitAbbreviation: 'und' }],
     });
@@ -132,7 +132,7 @@ describe('PosDeli catalog request', () => {
     renderPos();
     expect(screen.getByText('Necesitás una sucursal asignada para cargar productos.')).toBeInTheDocument();
     expect(mocks.getProducts).not.toHaveBeenCalled();
-    expect(mocks.getActive).not.toHaveBeenCalled();
+    expect(mocks.getStatus).not.toHaveBeenCalled();
   });
 
   it('does not resurrect favorites after a successful empty catalog response', async () => {

@@ -1,5 +1,8 @@
 namespace Walos.Application.DTOs.Sales;
 
+// Operational visibility only: never include amounts, totals, notes or operator details.
+public record CashRegisterStatusResponse(long BranchId, string Status);
+
 // Request: Abrir caja
 public record OpenCashRegisterRequest(
     decimal OpeningAmount,

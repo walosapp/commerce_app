@@ -10,9 +10,9 @@ const { cancelTable, invoiceTable, getSaleCatalog, enqueuePostSale, invalidateQu
   invalidateQueries: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
-  featureState: { canAccess: vi.fn() },
+  featureState: { canAccess: vi.fn(), hasFeature: vi.fn(), isReady: true },
   queryConfigs: [],
-  authState: { branchId: 7, tenantId: 3, user: { role: 'manager', isPlatformAdmin: false } },
+  authState: { isAuthenticated: true, branchId: 7, tenantId: 3, user: { role: 'manager', isPlatformAdmin: false } },
   cashState: { register: null, isLoading: false },
   catalogState: { items: [] },
 }));
@@ -32,11 +32,12 @@ vi.mock('@tanstack/react-query', () => ({
     const { queryKey } = config;
     if (queryKey[0] === 'sales-tables') return { data: { data: [table] }, isLoading: false };
     if (queryKey[0] === 'sale-catalog') return { data: { data: catalogState.items }, isLoading: false };
-    if (queryKey[0] === 'cash-register-active') {
+    if (queryKey[0] === 'cash-register-status') {
       return {
-        data: { data: cashState.register },
+        data: { data: { branchId: 7, status: cashState.register ? 'open' : 'closed' } },
         isLoading: cashState.isLoading,
         isError: cashState.isError,
+        isSuccess: !cashState.isLoading && !cashState.isError,
         refetch: cashState.refetch,
       };
     }
@@ -53,7 +54,7 @@ vi.mock('../../../services/salesService', () => ({
 }));
 
 vi.mock('../../../services/cashRegisterService', () => ({
-  cashRegisterService: { getActive: vi.fn() },
+  cashRegisterService: { getStatus: vi.fn() },
 }));
 
 vi.mock('../../../services/inventoryService', () => ({
@@ -131,6 +132,7 @@ describe('SalesPage postventa restaurante H3', () => {
     cashState.refetch = vi.fn();
     catalogState.items = [];
     featureState.canAccess.mockReturnValue(true);
+    featureState.hasFeature.mockReturnValue(true);
     getSaleCatalog.mockResolvedValue({ data: [] });
     cancelTable.mockResolvedValue({ success: true });
     invoiceTable.mockResolvedValue({
@@ -201,10 +203,11 @@ describe('SalesPage postventa restaurante H3', () => {
 
   it('no inicia caja cuando el feature cash esta apagado', () => {
     featureState.canAccess.mockImplementation((code) => code === 'restaurant');
+    featureState.hasFeature.mockReturnValue(false);
 
     render(<SalesPage />);
 
-    expect(queryConfigs.find((config) => config.queryKey[0] === 'cash-register-active')?.enabled).toBe(false);
+    expect(queryConfigs.find((config) => config.queryKey[0] === 'cash-register-status')?.enabled).toBe(false);
     expect(queryConfigs.find((config) => config.queryKey[0] === 'sales-tables')?.enabled).toBe(true);
     expect(screen.queryByRole('button', { name: /Caja/i })).not.toBeInTheDocument();
   });
@@ -243,31 +246,6 @@ describe('SalesPage postventa restaurante H3', () => {
     expect(getSaleCatalog).toHaveBeenCalledWith(7);
   });
 
-  it('permite caja sin montar queries de restaurante', () => {
-    featureState.canAccess.mockImplementation((code) => code === 'cash');
-
-    render(<SalesPage initialTab="cash" />);
-
-    expect(queryConfigs.find((config) => config.queryKey[0] === 'cash-register-active')?.enabled).toBe(true);
-    expect(queryConfigs.find((config) => config.queryKey[0] === 'sales-tables')?.enabled).toBe(false);
-    expect(queryConfigs.find((config) => config.queryKey[0] === 'sale-catalog')?.enabled).toBe(false);
-    expect(screen.queryByRole('button', { name: /Mesas/i })).not.toBeInTheDocument();
-  });
-
-  it('synchronizes the active view when routing between sales and cash', async () => {
-    featureState.canAccess.mockImplementation((code) => ['restaurant', 'cash'].includes(code));
-    const view = render(<SalesPage initialTab="tables" />);
-    expect(screen.getAllByRole('button', { name: 'Facturar mesa' }).length).toBeGreaterThan(0);
-
-    view.rerender(<SalesPage initialTab="cash" />);
-    expect(await screen.findByText('No hay caja abierta')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Facturar mesa' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cancelar mesa' })).not.toBeInTheDocument();
-
-    view.rerender(<SalesPage initialTab="tables" />);
-    expect((await screen.findAllByRole('button', { name: 'Facturar mesa' })).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: 'Imprimir comanda' }).length).toBeGreaterThan(0);
-  });
 
   it('keeps waiter on table operations without invoice, credits, refunds or sales history', () => {
     authState.user = { role: 'waiter', isPlatformAdmin: false };
@@ -300,44 +278,40 @@ describe('SalesPage postventa restaurante H3', () => {
     expect(screen.getByText('Puede devolver')).toBeInTheDocument();
   });
 
-  it('uses the active register shared by the tenant branch and hides duplicate opening', () => {
-    authState.user = { role: 'cashier', isPlatformAdmin: false };
-    cashState.register = {
-      id: 81,
-      openedByUserId: 99,
-      openedByName: 'Dueño',
-      openedAt: new Date().toISOString(),
-      orderCount: 0,
-      openingAmount: 100000,
-      totalSales: 0,
-      totalCashSales: 0,
-      totalCardSales: 0,
-      totalTransferSales: 0,
-      totalDiscounts: 0,
-      cashIn: 0,
-      cashOut: 0,
-    };
-    featureState.canAccess.mockImplementation((code) => code === 'cash');
-
-    render(<SalesPage initialTab="cash" />);
-
-    const activeQuery = queryConfigs.find((config) => config.queryKey[0] === 'cash-register-active');
-    expect(activeQuery.queryKey).toEqual(['cash-register-active', 3, 7]);
-    expect(screen.getByText('Caja abierta')).toBeInTheDocument();
-    expect(screen.getByText('Turno actual')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Abrir Caja/i })).not.toBeInTheDocument();
+  it.each(['waiter', 'cashier'])('solo consulta estado de caja para %s, sin gestión ni resumen financiero', async (role) => {
+    authState.user = { role, isPlatformAdmin: false };
+    cashState.register = { id: 81, totalSales: 999999 };
+    featureState.canAccess.mockImplementation(code => code === 'restaurant');
+    render(<SalesPage />);
+    expect(screen.getByText('Caja: ABIERTA')).toBeInTheDocument();
+    const status = queryConfigs.find(config => config.queryKey[0] === 'cash-register-status');
+    expect(status.enabled).toBe(true);
+    expect(status.queryKey).toEqual(['cash-register-status', 3, 7]);
+    expect(queryConfigs.some(config => config.queryKey[0] === 'cash-register-active')).toBe(false);
+    for (const name of ['Abrir Caja', 'Cerrar Caja', 'Entrada', 'Salida', 'Caja']) {
+      expect(screen.queryByRole('button', { name, exact: true })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText('Turno actual')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ventas totales')).not.toBeInTheDocument();
   });
 
-  it('fails closed when active cash-register state cannot be verified', () => {
-    authState.user = { role: 'cashier', isPlatformAdmin: false };
+  it('retry del estado no permite apertura desde Restaurante', () => {
     cashState.isError = true;
-    featureState.canAccess.mockImplementation((code) => code === 'cash');
-
-    render(<SalesPage initialTab="cash" />);
-
-    expect(screen.getAllByText(/Estado de caja no disponible/).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button', { name: /Abrir Caja/i })).not.toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole('button', { name: /Reintentar/i })[0]);
+    render(<SalesPage />);
+    expect(screen.getByText('Caja: NO SE PUDO VERIFICAR')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar caja' }));
     expect(cashState.refetch).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: 'Abrir Caja' })).not.toBeInTheDocument();
+  });
+
+  it('desmonta resumen de ventas al cambiar de cajero a mesero', () => {
+    const view = render(<SalesPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ventas' }));
+    expect(screen.getByText('Puede devolver')).toBeInTheDocument();
+    authState.user = { role: 'waiter', isPlatformAdmin: false };
+    view.rerender(<SalesPage />);
+    expect(screen.queryByText('Puede devolver')).not.toBeInTheDocument();
+    expect(screen.queryByText('Solo consulta')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Mesa operativa sin cobro').length).toBeGreaterThan(0);
   });
 });

@@ -53,6 +53,7 @@ const CashWorkspace = ({ tenantId, branchId, user }) => {
 
   const refreshCash = () => {
     queryClient.invalidateQueries({ queryKey: ['cash-register-active'] });
+    queryClient.invalidateQueries({ queryKey: ['cash-register-status'] });
     queryClient.invalidateQueries({ queryKey: ['cash-register-history'] });
     queryClient.invalidateQueries({ queryKey: ['cash-register-movements'] });
   };

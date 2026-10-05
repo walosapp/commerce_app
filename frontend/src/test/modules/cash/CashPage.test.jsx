@@ -115,6 +115,7 @@ describe('HU1: pantalla propia de Caja', () => {
     expect(await screen.findByText('Turno actual')).toBeInTheDocument();
     expect(mocks.open).toHaveBeenCalledWith({ openingAmount: 10000, notes: null });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cash-register-active'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cash-register-status'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cash-register-history'] });
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
   });

@@ -6,12 +6,12 @@ import SalesPage from '../../../modules/sales/SalesPage';
 const mocks = vi.hoisted(() => ({
   getSaleCatalog: vi.fn(),
   getTables: vi.fn(),
-  auth: { tenantId: 155, branchId: 91, user: { role: 'cashier', isPlatformAdmin: false } },
+  auth: { isAuthenticated: true, tenantId: 155, branchId: 91, user: { role: 'cashier', isPlatformAdmin: false } },
 }));
 
 vi.mock('../../../stores/authStore', () => ({ default: () => mocks.auth }));
 vi.mock('../../../hooks/useCompanyFeatures', () => ({
-  default: () => ({ canAccess: (code) => code === 'restaurant' }),
+  default: () => ({ canAccess: (code) => code === 'restaurant', hasFeature: () => false, isReady: true }),
 }));
 vi.mock('../../../services/inventoryService', () => ({
   default: { getSaleCatalog: mocks.getSaleCatalog },
@@ -24,7 +24,7 @@ vi.mock('../../../services/salesService', () => ({
   },
 }));
 vi.mock('../../../services/cashRegisterService', () => ({
-  cashRegisterService: { getActive: vi.fn() },
+  cashRegisterService: { getStatus: vi.fn() },
 }));
 vi.mock('../../../services/printService', () => ({ default: {} }));
 vi.mock('../../../stores/postSaleHardwareStore', () => ({

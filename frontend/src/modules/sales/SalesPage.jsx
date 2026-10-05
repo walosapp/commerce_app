@@ -6,43 +6,33 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusCircle, ShoppingCart, LayoutGrid, CreditCard, TableProperties, TrendingUp, Wallet, ClipboardList } from 'lucide-react';
+import { PlusCircle, ShoppingCart, LayoutGrid, CreditCard, TableProperties, TrendingUp, ClipboardList } from 'lucide-react';
 import toast from 'react-hot-toast';
 import salesService from '../../services/salesService';
-import { cashRegisterService } from '../../services/cashRegisterService';
-import printService from '../../services/printService';
 import inventoryService from '../../services/inventoryService';
 import useAuthStore from '../../stores/authStore';
 import usePostSaleHardwareStore from '../../stores/postSaleHardwareStore';
-import usePrintAgentStore from '../../stores/printAgentStore';
 import AddTablePanel from './components/AddTablePanel';
 import TableCard from './components/TableCard';
 import InvoicePanel from './components/InvoicePanel';
 import CreditsPanel from './components/CreditsPanel';
 import SalesSummaryTab from './components/SalesSummaryTab';
-import CashRegisterBar from './components/CashRegisterBar';
-import CashSummaryView from './components/CashSummaryView';
-import OpenCashRegisterModal from './components/OpenCashRegisterModal';
-import CloseCashRegisterModal from './components/CloseCashRegisterModal';
-import CashMovementModal from './components/CashMovementModal';
-import CashRegisterHistory from './components/CashRegisterHistory';
+import CashStatusBar from './components/CashStatusBar';
 import OrderHistoryTab from './components/OrderHistoryTab';
 import KitchenTicket from './components/KitchenTicket';
 
 import useCompanyFeatures from '../../hooks/useCompanyFeatures';
 import { canCancelSalesTable, canInvoiceSales, canOperateCash, canReviewSales } from '../../config/companyFeatures';
 
-const SalesPage = ({ initialTab = 'tables' }) => {
+const SalesPage = () => {
   const { branchId, tenantId, user } = useAuthStore();
   const { canAccess } = useCompanyFeatures();
   const restaurantEnabled = canAccess('restaurant');
-  const cashEnabled = canAccess('cash');
   const canUseCashOperations = canOperateCash(user);
   const canInvoice = canInvoiceSales(user);
   const canCancelTable = canCancelSalesTable(user);
   const canReview = canReviewSales(user);
   const enqueuePostSale = usePostSaleHardwareStore((state) => state.enqueuePostSale);
-  const printCashClose = usePrintAgentStore((state) => state.printCashClose);
   const queryClient = useQueryClient();
   const areaRef = useRef(null);
   const quantitySyncTimeoutsRef = useRef(new Map());
@@ -52,28 +42,7 @@ const SalesPage = ({ initialTab = 'tables' }) => {
   const [kitchenTicketOrderId, setKitchenTicketOrderId] = useState(null);
   const [addProductsTarget, setAddProductsTarget] = useState(null);
   const [arrangeKey, setArrangeKey] = useState(0);
-  const [showCredits, setShowCredits] = useState(false);
-  const [activeTab, setActiveTab] = useState(initialTab);
-
-  // Cash register state
-  const [showOpenCash, setShowOpenCash] = useState(false);
-  const [showCloseCash, setShowCloseCash] = useState(false);
-  const [cashMovementType, setCashMovementType] = useState(null);
-  const [showCashHistory, setShowCashHistory] = useState(false);
-
-  // Cash register query
-  const {
-    data: cashRegData,
-    isLoading: cashLoading,
-    isError: cashError,
-    refetch: retryCashRegister,
-  } = useQuery({
-    queryKey: ['cash-register-active', tenantId, branchId],
-    queryFn: () => cashRegisterService.getActive(),
-    enabled: !!branchId && cashEnabled,
-    refetchInterval: 60000,
-  });
-  const activeRegister = cashRegData?.data || null;
+  const [activeTab, setActiveTab] = useState('tables');
 
   const { data: tablesData, isLoading: tablesLoading } = useQuery({
     queryKey: ['sales-tables', branchId],
@@ -120,41 +89,6 @@ const SalesPage = ({ initialTab = 'tables' }) => {
     queryClient.invalidateQueries({ queryKey: ['alerts'] });
   };
 
-  const refetchCashRegister = () => {
-    queryClient.invalidateQueries({ queryKey: ['cash-register-active'] });
-    queryClient.invalidateQueries({ queryKey: ['cash-register-history'] });
-  };
-
-  useEffect(() => {
-    if (activeRegister) setShowOpenCash(false);
-  }, [activeRegister]);
-
-  const handleOpenCash = async (data) => {
-    await cashRegisterService.open(data);
-    toast.success('Caja abierta exitosamente');
-    refetchCashRegister();
-  };
-
-  const handleCloseCash = async (id, data) => {
-    const closed = await cashRegisterService.close(id, data);
-    toast.success('Caja cerrada exitosamente');
-    refetchCashRegister();
-    if (window.confirm('Caja cerrada. ¿Deseas imprimir el cierre?')) {
-      try {
-        const report = await printService.getZReport(closed.data.id);
-        await printCashClose(report.data);
-        toast.success('Cierre enviado a la impresora');
-      } catch (printError) {
-        toast.error(printError?.message || 'La caja cerró, pero no fue posible imprimir el cierre');
-      }
-    }
-  };
-
-  const handleCashMovement = async (id, data) => {
-    await cashRegisterService.addMovement(id, data);
-    toast.success(data.type === 'in' ? 'Entrada registrada' : 'Salida registrada');
-    refetchCashRegister();
-  };
 
   const updateTableItemQuantityInCache = (tableId, itemId, nextQuantity) => {
     queryClient.setQueryData(['sales-tables', branchId], (current) => {
@@ -299,32 +233,20 @@ const SalesPage = ({ initialTab = 'tables' }) => {
         { k: 'history', label: 'Historial', icon: ClipboardList },
       ] : []),
     ] : []),
-    ...(cashEnabled ? [{ k: 'cash', label: 'Caja', icon: Wallet }] : []),
   ];
 
   useEffect(() => {
-    const requestedTab = initialTab === 'cash' && cashEnabled
-      ? 'cash'
-      : (restaurantEnabled ? 'tables' : (cashEnabled ? 'cash' : undefined));
-    if (requestedTab) setActiveTab(requestedTab);
-  }, [canUseCashOperations, cashEnabled, initialTab, restaurantEnabled]);
+    if (!restaurantEnabled
+      || (activeTab === 'credits' && !canUseCashOperations)
+      || (['sales', 'history'].includes(activeTab) && !canReview)) {
+      setActiveTab('tables');
+    }
+  }, [activeTab, canUseCashOperations, canReview, restaurantEnabled]);
 
   return (
     <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden">
 
-      {/* Cash register bar */}
-      {cashEnabled && (
-        <CashRegisterBar
-          register={activeRegister}
-          isLoading={cashLoading}
-          isError={cashError}
-          onRetry={retryCashRegister}
-          onOpen={() => setShowOpenCash(true)}
-          onClose={() => setShowCloseCash(true)}
-          onMovement={(type) => setCashMovementType(type)}
-          onHistory={() => setShowCashHistory(true)}
-        />
-      )}
+      <CashStatusBar />
 
       {/* Top bar */}
       <div className="px-4 md:px-6 py-4 border-b bg-white flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
@@ -333,11 +255,9 @@ const SalesPage = ({ initialTab = 'tables' }) => {
             <ShoppingCart size={20} className="text-primary-600" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">{restaurantEnabled ? 'Restaurante' : 'Caja'}</h1>
+            <h1 className="text-xl font-bold text-gray-900">Restaurante</h1>
             <p className="text-sm text-gray-500">
-              {restaurantEnabled
-                ? `${tables.length} mesa${tables.length !== 1 ? 's' : ''} activa${tables.length !== 1 ? 's' : ''}`
-                : 'Control del turno de caja'}
+              {`${tables.length} mesa${tables.length !== 1 ? 's' : ''} activa${tables.length !== 1 ? 's' : ''}`}
             </p>
           </div>
         </div>
@@ -457,51 +377,15 @@ const SalesPage = ({ initialTab = 'tables' }) => {
         )}
 
         {/* ── VENTAS TAB ── */}
-        {activeTab === 'sales' && (
+        {canReview && activeTab === 'sales' && (
           <SalesSummaryTab canRefund={canUseCashOperations} />
         )}
 
         {/* ── HISTORIAL TAB ── */}
-        {activeTab === 'history' && (
+        {canReview && activeTab === 'history' && (
           <OrderHistoryTab />
         )}
 
-        {/* ── CAJA TAB ── */}
-        {activeTab === 'cash' && (
-          <div className="flex-1 overflow-y-auto p-4 md:p-6">
-            {cashLoading ? (
-              <div className="flex h-60 items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
-              </div>
-            ) : cashError ? (
-              <div className="flex h-60 flex-col items-center justify-center text-red-600" role="alert">
-                <p className="text-lg font-medium">Estado de caja no disponible</p>
-                <p className="mt-1 text-sm text-red-500">No se puede abrir otra caja hasta verificar el estado actual.</p>
-                <button
-                  type="button"
-                  onClick={() => retryCashRegister()}
-                  className="mt-4 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-                >
-                  Reintentar
-                </button>
-              </div>
-            ) : !activeRegister ? (
-              <div className="flex flex-col items-center justify-center h-60 text-gray-400">
-                <Wallet size={48} className="mb-3 opacity-50" />
-                <p className="text-lg font-medium">No hay caja abierta</p>
-                <p className="text-sm mt-1">Abre una caja para ver el resumen del turno</p>
-                <button
-                  onClick={() => setShowOpenCash(true)}
-                  className="mt-4 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
-                >
-                  Abrir Caja
-                </button>
-              </div>
-            ) : (
-              <CashSummaryView register={activeRegister} />
-            )}
-          </div>
-        )}
 
       </div>
 
@@ -544,35 +428,6 @@ const SalesPage = ({ initialTab = 'tables' }) => {
         </>
       )}
 
-      {cashEnabled && (
-        <>
-          <OpenCashRegisterModal
-            isOpen={showOpenCash && !cashLoading && !cashError && !activeRegister}
-            onClose={() => setShowOpenCash(false)}
-            onConfirm={handleOpenCash}
-          />
-
-          <CloseCashRegisterModal
-            isOpen={showCloseCash}
-            onClose={() => setShowCloseCash(false)}
-            onConfirm={handleCloseCash}
-            register={activeRegister}
-          />
-
-          <CashMovementModal
-            isOpen={!!cashMovementType}
-            onClose={() => setCashMovementType(null)}
-            onConfirm={handleCashMovement}
-            registerId={activeRegister?.id}
-            type={cashMovementType || 'in'}
-          />
-
-          <CashRegisterHistory
-            isOpen={showCashHistory}
-            onClose={() => setShowCashHistory(false)}
-          />
-        </>
-      )}
     </div>
   );
 };

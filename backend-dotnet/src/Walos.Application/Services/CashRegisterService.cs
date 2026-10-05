@@ -10,6 +10,7 @@ public interface ICashRegisterService
 {
     Task<CashRegisterResponse> OpenAsync(long companyId, long branchId, long userId, OpenCashRegisterRequest request);
     Task<CashRegisterResponse?> GetActiveAsync(long companyId, long branchId);
+    Task<CashRegisterStatusResponse> GetStatusAsync(long companyId, long branchId);
     Task<CashRegisterResponse> CloseAsync(long id, long companyId, long branchId, long userId, CloseCashRegisterRequest request);
     Task<CashMovementResponse> AddMovementAsync(long cashRegisterId, long companyId, long branchId, long userId, CashMovementRequest request);
     Task<IEnumerable<CashMovementResponse>> GetMovementsAsync(long cashRegisterId, long companyId, long branchId);
@@ -58,6 +59,12 @@ public class CashRegisterService : ICashRegisterService
     {
         var register = await _cashRegisterRepo.GetActiveAsync(companyId, branchId);
         return register != null ? MapToResponse(register) : null;
+    }
+
+    public async Task<CashRegisterStatusResponse> GetStatusAsync(long companyId, long branchId)
+    {
+        var register = await _cashRegisterRepo.GetActiveAsync(companyId, branchId);
+        return new CashRegisterStatusResponse(branchId, register is null ? "closed" : "open");
     }
 
     public async Task<CashRegisterResponse> CloseAsync(long id, long companyId, long branchId, long userId, CloseCashRegisterRequest request)

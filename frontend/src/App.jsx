@@ -101,7 +101,7 @@ function App() {
           <Route path="/landing" element={<PostLoginLanding />} />
           <Route path="/inventory" element={<FeatureRoute feature="inventory"><InventoryPage /></FeatureRoute>} />
           <Route path="/ai-assistant" element={<FeatureRoute feature="ai"><AiAssistantPage /></FeatureRoute>} />
-          <Route path="/sales" element={<FeatureRoute feature="restaurant"><SalesPage initialTab="tables" /></FeatureRoute>} />
+          <Route path="/sales" element={<FeatureRoute feature="restaurant"><SalesPage /></FeatureRoute>} />
           <Route path="/pos-deli" element={<FeatureRoute feature="pos"><PosDeliPage /></FeatureRoute>} />
           <Route path="/cash" element={<FeatureRoute feature="cash"><CashPage /></FeatureRoute>} />
           <Route path="/finance" element={<FeatureRoute feature="finance"><FinancePage /></FeatureRoute>} />

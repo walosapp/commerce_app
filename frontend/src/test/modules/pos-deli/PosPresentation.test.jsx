@@ -5,17 +5,17 @@ import TicketPanel from '../../../modules/pos-deli/components/TicketPanel';
 import ProductGrid from '../../../modules/pos-deli/components/ProductGrid';
 import ScaleIndicator from '../../../modules/pos-deli/components/ScaleIndicator';
 
-const mocks = vi.hoisted(() => ({ auth: {}, features: {}, query: {}, config: null, getActive: vi.fn() }));
+const mocks = vi.hoisted(() => ({ auth: {}, features: {}, query: {}, config: null, getStatus: vi.fn() }));
 vi.mock('../../../stores/authStore', () => ({ default: () => mocks.auth }));
 vi.mock('../../../hooks/useCompanyFeatures', () => ({ default: () => mocks.features }));
-vi.mock('../../../services/cashRegisterService', () => ({ cashRegisterService: { getActive: mocks.getActive } }));
+vi.mock('../../../services/cashRegisterService', () => ({ cashRegisterService: { getStatus: mocks.getStatus } }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: (config) => { mocks.config = config; return mocks.query; } }));
 
 describe('POS header', () => {
   beforeEach(() => {
-    mocks.auth = { tenantId: 155, branchId: 91, user: { name: 'Edwin', branchName: 'Principal' } };
+    mocks.auth = { isAuthenticated: true, tenantId: 155, branchId: 91, user: { name: 'Edwin', branchName: 'Principal' } };
     mocks.features = { isReady: true, isError: false, canAccess: () => true, hasFeature: () => true };
-    mocks.query = { isSuccess: true, isError: false, data: { data: { status: 'open' } }, refetch: vi.fn() };
+    mocks.query = { isSuccess: true, isError: false, data: { data: { branchId: 91, status: 'open' } }, refetch: vi.fn() };
   });
 
   it('reads shared active cash in the current context and shows the logged-in cashier, not the opener', async () => {
@@ -24,14 +24,14 @@ describe('POS header', () => {
     expect(screen.getByText('Caja: ABIERTA')).toBeInTheDocument();
     expect(screen.getByText('Edwin')).toBeInTheDocument();
     expect(screen.queryByText('Otro operador')).not.toBeInTheDocument();
-    expect(mocks.config.queryKey).toEqual(['cash-register-active', 155, 91]);
+    expect(mocks.config.queryKey).toEqual(['cash-register-status', 155, 91]);
     expect(mocks.config.enabled).toBe(true);
     await mocks.config.queryFn();
-    expect(mocks.getActive).toHaveBeenCalled();
+    expect(mocks.getStatus).toHaveBeenCalled();
   });
 
   it('shows closed only after a successful read without an active register', () => {
-    mocks.query.data = { data: null };
+    mocks.query.data = { data: { branchId: 91, status: 'closed' } };
     render(<PosHeader />);
     expect(screen.getByText('Caja: CERRADA')).toBeInTheDocument();
   });
@@ -51,7 +51,7 @@ describe('POS header', () => {
   });
 
   it('never queries disabled cash features', () => {
-    mocks.features.canAccess = () => false;
+    mocks.features.canAccess = (code) => code === 'pos';
     mocks.features.hasFeature = () => false;
     render(<PosHeader />);
     expect(mocks.config.enabled).toBe(false);
