@@ -1,3 +1,5 @@
+> **Nota documental 2026-10-04:** las referencias a `docs/pending-credit-module.md` en este snapshot son históricas; el archivo fue retirado y su alcance se consolidó en [guía de usuario](GUIA-USUARIO.md) y [backlog](../PENDING.md). Esto no modifica los hallazgos originales ni certifica su resolución general.
+
 # Diagnóstico de Auditoría — Walos
 
 > Documento vivo de auditoría.  

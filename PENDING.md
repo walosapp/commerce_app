@@ -1,4 +1,4 @@
-﻿# PENDING — Backlog Operativo Walos
+# PENDING — Backlog Operativo Walos
 
 > **Fuente de verdad operativa actual** para trabajo pendiente.
 >
@@ -58,11 +58,11 @@ Para estado real, riesgos y deuda usar:
 | R-12 | Limpiar ownership DI entre Application e Infrastructure | `[ ]` | P1 | F2 |
 | R-13 | Reducir carga de `App.jsx` y entrypoints frontend | `[ ]` | P1 | F3 |
 | R-14 | Resolver destino de `AdminUsersPage` y módulos huérfanos | `[ ]` | P1 | F3 |
-| R-15 | Actualizar `backend-dotnet/README.md` | `[ ]` | P1 | F7 / C-34 |
-| R-16 | Actualizar `frontend/README.md` | `[ ]` | P1 | F7 / C-35 |
-| R-17 | Corregir `docs/architecture.md` separando estado actual vs ideal | `[ ]` | P1 | F7 / C-36 |
+| R-15 | Actualizar `backend-dotnet/README.md` | `[x]` | P1 | F7 / C-34 |
+| R-16 | Actualizar `frontend/README.md` | `[x]` | P1 | F7 / C-35 |
+| R-17 | Corregir `docs/architecture.md` separando estado actual vs ideal | `[x]` | P1 | F7 / C-36 |
 | R-18 | Reordenar docs `pending-*` que ya son historial implementado | `[ ]` | P2 | F7 / C-37 |
-| R-19 | Marcar `docs/CODE_AUDIT_REPORT.md` como snapshot histórico | `[ ]` | P2 | F7 / C-38 |
+| R-19 | Marcar `docs/CODE_AUDIT_REPORT.md` como snapshot histórico | `[x]` | P2 | F7 / C-38 |
 
 ---
 
@@ -109,3 +109,13 @@ Si un estado o afirmación de este archivo contradice al código:
 3. documentá la diferencia en `docs/diagnostico-auditoria-walos.md` si corresponde
 
 Ese es el estándar. No al revés.
+
+## Revisión documental 2026-10-04
+
+R-15, R-16, R-17 y R-19 actualizados mediante contraste estático con código. Sin certificación de tests, build o despliegue. R-18 queda abierto: se clasificaron planes históricos y se retiró el documento de crédito duplicado, pero no se reescribieron todos los diseños.
+
+Alcance preservado del retirado `docs/pending-credit-module.md`:
+- [ ] Confirmar necesidad/implementar agregados de créditos por día, semana y mes: `CreditsPanel` actualmente suma sobre la lista cargada/filtrada.
+- [ ] Confirmar detalle de productos de la orden en créditos: el panel observado muestra montos y pagos; no se declara ese detalle implementado.
+
+Las casillas previas de este backlog son antecedentes y requieren revalidación antes de ejecutar trabajo; ver `docs/README.md`.

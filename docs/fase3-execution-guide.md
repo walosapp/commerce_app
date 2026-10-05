@@ -1,3 +1,5 @@
+> **Referencia histórica / de diseño.** Revisada documentalmente el 2026-10-04: no usar sus estados, conteos ni instrucciones de implementación como contrato actual. Consultar [índice vigente](README.md) y código antes de ejecutar. Se conserva el contenido original como evidencia.
+
 # Fase 3 — Guía de Ejecución para Agente
 
 > **Estado actual del proyecto**: Fases 1 y 2 completadas.  

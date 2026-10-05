@@ -1,3 +1,5 @@
+> **Referencia histórica / de diseño.** Revisada documentalmente el 2026-10-04: no usar sus estados, conteos ni instrucciones de implementación como contrato actual. Consultar [índice vigente](README.md) y código antes de ejecutar. Se conserva el contenido original como evidencia.
+
 # Funcionalidades POS — Roadmap y Estado
 
 > Estado: **Fase 1 ✅ | Fase 2 ✅ | Fase 3 ⏳ Pendiente**  

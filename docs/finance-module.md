@@ -1,3 +1,5 @@
+> **Referencia parcial heredada — 2026-10-04.** No se revalidó íntegramente este documento; sus ejemplos, esquema y afirmaciones de producción no constituyen un contrato ni certificación actual. Consultar [guía técnica](GUIA-TECNICA.md), controladores/DTOs y migraciones para comportamiento vigente.
+
 # Modulo de Finanzas — Documentacion Tecnica
 
 > **Ultima actualizacion**: Abril 2026
