@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Loader2, UserPlus, Eye, EyeOff } from 'lucide-react';
 import userService from '../../../services/userService';
-import adminService from '../../../services/adminService';
+import platformService from '../../../services/platformService';
 import useAuthStore from '../../../stores/authStore';
 import { validatePassword } from '../../../utils/passwordPolicy';
 
@@ -45,6 +45,18 @@ const UserFormModal = ({ user, onSave, onClose, companies = [] }) => {
     staleTime: 2 * 60 * 1000,
   });
   const roles = rolesData?.data ?? [];
+  const selectedRole = roles.find(role => String(role.id) === String(form.roleId));
+  const requiresBranch = ['manager', 'cashier', 'waiter'].includes(selectedRole?.code);
+
+  const { data: branchesData, isLoading: branchesLoading } = useQuery({
+    queryKey: ['user-branches', selectedCompanyId],
+    queryFn: () => isDev
+      ? platformService.getAdminBranches(selectedCompanyId)
+      : userService.getBranches(),
+    enabled: !!selectedCompanyId,
+    staleTime: 2 * 60 * 1000,
+  });
+  const branches = (branchesData?.data ?? []).filter(branch => branch.isActive !== false);
 
   useEffect(() => {
     if (user) {
@@ -75,6 +87,7 @@ const UserFormModal = ({ user, onSave, onClose, companies = [] }) => {
     }
     if (!form.roleId) { setError('Selecciona un rol'); return; }
     if (isDev && !isEdit && !form.companyId) { setError('Selecciona un comercio'); return; }
+    if (requiresBranch && !form.branchId) { setError('Selecciona una sucursal para el rol operativo'); return; }
 
     setSaving(true);
     setError('');
@@ -114,7 +127,7 @@ const UserFormModal = ({ user, onSave, onClose, companies = [] }) => {
             <Field label="Comercio" required>
               <select
                 value={form.companyId}
-                onChange={e => setForm(p => ({ ...p, companyId: e.target.value, roleId: '' }))}
+                onChange={e => setForm(p => ({ ...p, companyId: e.target.value, roleId: '', branchId: '' }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="">Seleccionar comercio...</option>
@@ -168,6 +181,22 @@ const UserFormModal = ({ user, onSave, onClose, companies = [] }) => {
               </select>
             </Field>
           </div>
+
+          {requiresBranch && (
+            <Field label="Sucursal" required>
+              <select
+                value={form.branchId}
+                onChange={e => setForm(p => ({ ...p, branchId: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                disabled={branchesLoading}
+              >
+                <option value="">{branchesLoading ? 'Cargando sucursales...' : 'Seleccionar sucursal...'}</option>
+                {branches.map(branch => (
+                  <option key={branch.id} value={branch.id}>{branch.name}</option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
         </div>

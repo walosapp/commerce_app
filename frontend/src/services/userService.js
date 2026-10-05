@@ -3,6 +3,7 @@ import api from '../config/api';
 const userService = {
   getAll: ()                    => api.get('/users').then(r => r.data),
   getRoles: ()                  => api.get('/users/roles').then(r => r.data),
+  getBranches: ()               => api.get('/users/branches').then(r => r.data),
   getById: (id)                 => api.get(`/users/${id}`).then(r => r.data),
   create: (data)                => api.post('/users', data).then(r => r.data),
   update: (id, data)            => api.put(`/users/${id}`, data).then(r => r.data),

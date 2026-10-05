@@ -25,6 +25,9 @@ public class UsersService : IUsersService
     public Task<IEnumerable<RoleOption>> GetRolesAsync(long companyId)
         => _repository.GetRolesAsync(companyId, excludeDev: true);
 
+    public Task<IEnumerable<BranchOption>> GetBranchesAsync(long companyId)
+        => _repository.GetActiveBranchesAsync(companyId);
+
     public Task<User?> GetByIdAsync(long id, long companyId)
         => _repository.GetByIdAsync(id, companyId);
 
@@ -114,6 +117,9 @@ public class UsersService : IUsersService
 
         if (targetRole.AccessLevel > actorRole.AccessLevel)
             throw new BusinessException("No puedes asignar un rol con nivel superior al propio");
+
+        if (WalosUserBranchPolicy.RequiresBranch(targetRole.Code) && !branchId.HasValue)
+            throw new ValidationException("Selecciona una sucursal para el rol operativo");
 
         if (branchId.HasValue
             && !await _repository.IsActiveBranchInCompanyAsync(branchId.Value, companyId))

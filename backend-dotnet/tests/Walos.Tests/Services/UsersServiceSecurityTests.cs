@@ -57,6 +57,25 @@ public class UsersServiceSecurityTests
         _repository.Verify(r => r.CreateAsync(It.IsAny<User>(), It.IsAny<string>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData(WalosRoles.Waiter)]
+    [InlineData(WalosRoles.Cashier)]
+    [InlineData(WalosRoles.Manager)]
+    public async Task Create_Rejects_Operational_Role_Without_Branch(string roleCode)
+    {
+        var service = CreateService();
+        SetupActorRole();
+        _repository.Setup(r => r.EmailExistsAsync(It.IsAny<string>(), null)).ReturnsAsync(false);
+        _repository.Setup(r => r.GetRoleForAssignmentAsync(3, 10))
+            .ReturnsAsync(new RoleAssignmentInfo(3, roleCode, 5));
+
+        var error = await Assert.ThrowsAsync<ValidationException>(() => service.CreateAsync(
+            10, 7, WalosRoles.Manager, Request(roleId: 3, branchId: null)));
+
+        Assert.Contains("sucursal", error.Message, StringComparison.OrdinalIgnoreCase);
+        _repository.Verify(r => r.CreateAsync(It.IsAny<User>(), It.IsAny<string>()), Times.Never);
+    }
+
     [Fact]
     public async Task Update_Rejects_Manager_Self_Elevation_To_SuperAdmin()
     {
@@ -99,6 +118,40 @@ public class UsersServiceSecurityTests
         Assert.Equal(10, result.CompanyId);
         Assert.Equal(20, result.BranchId);
         Assert.Equal(3, result.RoleId);
+    }
+
+    [Theory]
+    [InlineData(WalosRoles.Waiter)]
+    [InlineData(WalosRoles.Cashier)]
+    [InlineData(WalosRoles.Manager)]
+    public async Task Update_Rejects_Operational_Role_Without_Branch(string roleCode)
+    {
+        var service = CreateService();
+        SetupActorRole();
+        _repository.Setup(r => r.GetByIdAsync(8, 10)).ReturnsAsync(new User
+        {
+            Id = 8,
+            CompanyId = 10,
+            RoleCode = WalosRoles.Cashier,
+        });
+        _repository.Setup(r => r.GetRoleForAssignmentAsync(3, 10))
+            .ReturnsAsync(new RoleAssignmentInfo(3, roleCode, 5));
+
+        var error = await Assert.ThrowsAsync<ValidationException>(() => service.UpdateAsync(
+            10,
+            7,
+            WalosRoles.Manager,
+            8,
+            new UpdateUserRequest
+            {
+                FirstName = "Operational",
+                LastName = "User",
+                RoleId = 3,
+                BranchId = null,
+            }));
+
+        Assert.Contains("sucursal", error.Message, StringComparison.OrdinalIgnoreCase);
+        _repository.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Never);
     }
 
     [Fact]

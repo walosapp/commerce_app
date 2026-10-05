@@ -15,6 +15,7 @@ public interface IUsersRepository
     Task<bool> SoftDeleteAsync(long userId, long companyId);
     Task<bool> EmailExistsAsync(string email, long? excludeUserId = null);
     Task<IEnumerable<RoleOption>> GetRolesAsync(long companyId, bool excludeDev = true);
+    Task<IEnumerable<BranchOption>> GetActiveBranchesAsync(long companyId);
     Task<RoleAssignmentInfo?> GetRoleForAssignmentAsync(long roleId, long companyId);
     Task<RoleAssignmentInfo?> GetUserRoleForAssignmentAsync(long userId, long companyId);
     Task<bool> IsActiveBranchInCompanyAsync(long branchId, long companyId);

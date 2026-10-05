@@ -105,6 +105,11 @@ public class UsersRepository : IUsersRepository
                         AND b.is_active = TRUE AND b.deleted_at IS NULL
                   )
               )
+              AND EXISTS (
+                  SELECT 1 FROM core.roles r
+                  WHERE r.id = @RoleId AND r.company_id = @CompanyId
+                    AND (r.code NOT IN ('manager', 'cashier', 'waiter') OR @BranchId IS NOT NULL)
+              )
             RETURNING id AS Id, company_id AS CompanyId, branch_id AS BranchId,
                       role_id AS RoleId, first_name AS FirstName, last_name AS LastName,
                       email AS Email, phone AS Phone, is_active AS IsActive,
@@ -142,6 +147,11 @@ public class UsersRepository : IUsersRepository
                       WHERE b.id = @BranchId AND b.company_id = @CompanyId
                         AND b.is_active = TRUE AND b.deleted_at IS NULL
                   )
+              )
+              AND EXISTS (
+                  SELECT 1 FROM core.roles r
+                  WHERE r.id = @RoleId AND r.company_id = @CompanyId
+                    AND (r.code NOT IN ('manager', 'cashier', 'waiter') OR @BranchId IS NOT NULL)
               )
             RETURNING id AS Id, company_id AS CompanyId, branch_id AS BranchId,
                       role_id AS RoleId, first_name AS FirstName, last_name AS LastName,
@@ -281,6 +291,19 @@ public class UsersRepository : IUsersRepository
             WHERE r.company_id = @CompanyId AND r.is_active = TRUE AND r.deleted_at IS NULL {where}
             ORDER BY r.access_level DESC, r.name ASC";
         return await conn.QueryAsync<RoleOption>(sql, new { CompanyId = companyId });
+    }
+
+    public async Task<IEnumerable<BranchOption>> GetActiveBranchesAsync(long companyId)
+    {
+        using var conn = await _db.CreateConnectionAsync();
+        const string sql = @"
+            SELECT id AS Id, name AS Name
+            FROM core.branches
+            WHERE company_id = @CompanyId
+              AND is_active = TRUE
+              AND deleted_at IS NULL
+            ORDER BY is_main DESC, name";
+        return await conn.QueryAsync<BranchOption>(sql, new { CompanyId = companyId });
     }
 
     public async Task<RoleAssignmentInfo?> GetRoleForAssignmentAsync(long roleId, long companyId)

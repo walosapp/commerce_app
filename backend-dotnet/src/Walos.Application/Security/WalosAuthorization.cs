@@ -19,6 +19,12 @@ public static class WalosRoles
     public const string Waiter = "waiter";
 }
 
+public static class WalosUserBranchPolicy
+{
+    public static bool RequiresBranch(string? roleCode)
+        => roleCode is WalosRoles.Manager or WalosRoles.Cashier or WalosRoles.Waiter;
+}
+
 public static class WalosPolicies
 {
     public const string PlatformAdmin = "PlatformAdmin";

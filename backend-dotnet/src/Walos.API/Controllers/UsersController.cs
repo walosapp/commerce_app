@@ -38,6 +38,13 @@ public class UsersController : ControllerBase
         return Ok(ApiResponse<IEnumerable<RoleOption>>.Ok(roles));
     }
 
+    [HttpGet("branches")]
+    public async Task<IActionResult> GetBranches()
+    {
+        var branches = await _service.GetBranchesAsync(_tenant.CompanyId);
+        return Ok(ApiResponse<IEnumerable<BranchOption>>.Ok(branches));
+    }
+
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetById(long id)
     {

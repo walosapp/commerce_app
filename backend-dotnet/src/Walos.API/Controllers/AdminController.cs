@@ -115,6 +115,9 @@ public class AdminController : ControllerBase
         if (role is null || string.Equals(role.Code, WalosRoles.Dev, StringComparison.OrdinalIgnoreCase))
             return BadRequest(ApiResponse.Fail("El rol no pertenece al comercio, esta inactivo o no puede asignarse"));
 
+        if (WalosUserBranchPolicy.RequiresBranch(role.Code) && !request.BranchId.HasValue)
+            return BadRequest(ApiResponse.Fail("Selecciona una sucursal para el rol operativo"));
+
         if (request.BranchId.HasValue
             && !await _usersRepo.IsActiveBranchInCompanyAsync(request.BranchId.Value, request.CompanyId))
             return BadRequest(ApiResponse.Fail("La sucursal no pertenece al comercio o esta inactiva"));

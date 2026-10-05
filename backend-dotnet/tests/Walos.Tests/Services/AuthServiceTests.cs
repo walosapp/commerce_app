@@ -156,6 +156,7 @@ public class AuthServiceTests
         Assert.Equal("Ana Lopez", result.User.Name);
         Assert.Equal(WalosRoles.Manager, result.User.Role);
         Assert.Equal(1, result.User.CompanyId);
+        Assert.Equal(10, result.User.BranchId);
         var jwt = new JwtSecurityTokenHandler().ReadJwtToken(result.Token);
         var stamp = jwt.Claims.Single(claim => claim.Type == WalosClaimTypes.SecurityStamp).Value;
         Assert.NotEmpty(stamp);
