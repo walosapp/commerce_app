@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusCircle, ShoppingCart, LayoutGrid, CreditCard, TableProperties, TrendingUp, ClipboardList } from 'lucide-react';
+import { PlusCircle, ShoppingCart, LayoutGrid } from 'lucide-react';
 import toast from 'react-hot-toast';
 import salesService from '../../services/salesService';
 import inventoryService from '../../services/inventoryService';
@@ -15,23 +15,18 @@ import usePostSaleHardwareStore from '../../stores/postSaleHardwareStore';
 import AddTablePanel from './components/AddTablePanel';
 import TableCard from './components/TableCard';
 import InvoicePanel from './components/InvoicePanel';
-import CreditsPanel from './components/CreditsPanel';
-import SalesSummaryTab from './components/SalesSummaryTab';
 import CashStatusBar from './components/CashStatusBar';
-import OrderHistoryTab from './components/OrderHistoryTab';
 import KitchenTicket from './components/KitchenTicket';
 
 import useCompanyFeatures from '../../hooks/useCompanyFeatures';
-import { canCancelSalesTable, canInvoiceSales, canOperateCash, canReviewSales } from '../../config/companyFeatures';
+import { canCancelSalesTable, canInvoiceSales } from '../../config/companyFeatures';
 
 const SalesPage = () => {
   const { branchId, tenantId, user } = useAuthStore();
   const { canAccess } = useCompanyFeatures();
   const restaurantEnabled = canAccess('restaurant');
-  const canUseCashOperations = canOperateCash(user);
   const canInvoice = canInvoiceSales(user);
   const canCancelTable = canCancelSalesTable(user);
-  const canReview = canReviewSales(user);
   const enqueuePostSale = usePostSaleHardwareStore((state) => state.enqueuePostSale);
   const queryClient = useQueryClient();
   const areaRef = useRef(null);
@@ -42,7 +37,6 @@ const SalesPage = () => {
   const [kitchenTicketOrderId, setKitchenTicketOrderId] = useState(null);
   const [addProductsTarget, setAddProductsTarget] = useState(null);
   const [arrangeKey, setArrangeKey] = useState(0);
-  const [activeTab, setActiveTab] = useState('tables');
 
   const { data: tablesData, isLoading: tablesLoading } = useQuery({
     queryKey: ['sales-tables', branchId],
@@ -224,25 +218,6 @@ const SalesPage = () => {
     }
   };
 
-  const TABS = [
-    ...(restaurantEnabled ? [
-      { k: 'tables',  label: 'Mesas',   icon: TableProperties },
-      ...(canUseCashOperations ? [{ k: 'credits', label: 'Créditos', icon: CreditCard }] : []),
-      ...(canReview ? [
-        { k: 'sales',   label: 'Ventas',   icon: TrendingUp },
-        { k: 'history', label: 'Historial', icon: ClipboardList },
-      ] : []),
-    ] : []),
-  ];
-
-  useEffect(() => {
-    if (!restaurantEnabled
-      || (activeTab === 'credits' && !canUseCashOperations)
-      || (['sales', 'history'].includes(activeTab) && !canReview)) {
-      setActiveTab('tables');
-    }
-  }, [activeTab, canUseCashOperations, canReview, restaurantEnabled]);
-
   return (
     <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden">
 
@@ -262,7 +237,7 @@ const SalesPage = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {activeTab === 'tables' && tables.length > 0 && (
+          {tables.length > 0 && (
             <button
               onClick={() => setArrangeKey((k) => k + 1)}
               className="hidden md:flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
@@ -270,7 +245,7 @@ const SalesPage = () => {
               <LayoutGrid size={16} /> Ordenar
             </button>
           )}
-          {activeTab === 'tables' && (
+          {restaurantEnabled && (
             <button
               onClick={() => setShowAddPanel(true)}
               className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
@@ -281,33 +256,11 @@ const SalesPage = () => {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b bg-white px-6 flex-shrink-0">
-        {TABS.map(({ k, label, icon: Icon }) => (
-          <button
-            key={k}
-            onClick={() => setActiveTab(k)}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === k
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Icon size={16} /> {label}
-            {k === 'tables' && tables.length > 0 && (
-              <span className="ml-1 bg-primary-100 text-primary-700 text-xs rounded-full px-1.5">
-                {tables.length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
       {/* Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
 
-        {/* ── MESAS TAB ── */}
-        {activeTab === 'tables' && (
+        {/* Mesas */}
+        {restaurantEnabled && (
           <div
             ref={areaRef}
             className="flex-1 rounded-none border-0 bg-gray-50/50 relative overflow-y-auto"
@@ -370,23 +323,6 @@ const SalesPage = () => {
             )}
           </div>
         )}
-
-        {/* ── CRÉDITOS TAB ── */}
-        {canUseCashOperations && activeTab === 'credits' && (
-          <CreditsPanel inline />
-        )}
-
-        {/* ── VENTAS TAB ── */}
-        {canReview && activeTab === 'sales' && (
-          <SalesSummaryTab canRefund={canUseCashOperations} />
-        )}
-
-        {/* ── HISTORIAL TAB ── */}
-        {canReview && activeTab === 'history' && (
-          <OrderHistoryTab />
-        )}
-
-
       </div>
 
       {restaurantEnabled && (

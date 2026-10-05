@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Wallet } from 'lucide-react';
+import { Wallet, CreditCard, TrendingUp, ClipboardList } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAuthStore from '../../stores/authStore';
 import useCompanyFeatures from '../../hooks/useCompanyFeatures';
@@ -14,6 +14,9 @@ import OpenCashRegisterModal from '../sales/components/OpenCashRegisterModal';
 import CloseCashRegisterModal from '../sales/components/CloseCashRegisterModal';
 import CashMovementModal from '../sales/components/CashMovementModal';
 import CashRegisterHistory from '../sales/components/CashRegisterHistory';
+import CreditsPanel from '../sales/components/CreditsPanel';
+import SalesSummaryTab from '../sales/components/SalesSummaryTab';
+import OrderHistoryTab from '../sales/components/OrderHistoryTab';
 
 // Do not mount financial queries or render cached data outside an authorized context.
 const CashPage = () => {
@@ -27,16 +30,26 @@ const CashPage = () => {
     return <div role="alert" className="p-6 text-sm text-amber-700">Necesitás una empresa y una sucursal válida para gestionar la caja. Revisá tu asignación e iniciá sesión nuevamente.</div>;
   }
 
-  return <CashWorkspace key={`${tenantId}:${branchId}:${user?.id}:${user?.role}`} tenantId={tenantId} branchId={branchId} user={user} />;
+  const salesEnabled = canAccess('restaurant') || canAccess('pos');
+  return <CashWorkspace key={`${tenantId}:${branchId}:${user?.id}:${user?.role}`} tenantId={tenantId} branchId={branchId} user={user} salesEnabled={salesEnabled} />;
 };
 
-const CashWorkspace = ({ tenantId, branchId, user }) => {
+const CashWorkspace = ({ tenantId, branchId, user, salesEnabled }) => {
   const queryClient = useQueryClient();
   const printCashClose = usePrintAgentStore(state => state.printCashClose);
   const [showOpen, setShowOpen] = useState(false);
   const [showClose, setShowClose] = useState(false);
   const [movementType, setMovementType] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [activeTab, setActiveTab] = useState('turn');
+  const tabs = [
+    { key: 'turn', label: 'Turno', icon: Wallet },
+    ...(salesEnabled ? [
+      { key: 'credits', label: 'Créditos', icon: CreditCard },
+      { key: 'sales', label: 'Ventas', icon: TrendingUp },
+      { key: 'history', label: 'Historial', icon: ClipboardList },
+    ] : []),
+  ];
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['cash-register-active', tenantId, branchId],
     queryFn: () => cashRegisterService.getActive(),
@@ -50,6 +63,10 @@ const CashWorkspace = ({ tenantId, branchId, user }) => {
     setShowClose(false);
     setMovementType(null);
   }, [register?.id]);
+
+  useEffect(() => {
+    if (!salesEnabled) setActiveTab('turn');
+  }, [salesEnabled]);
 
   const refreshCash = () => {
     queryClient.invalidateQueries({ queryKey: ['cash-register-active'] });
@@ -101,7 +118,7 @@ const CashWorkspace = ({ tenantId, branchId, user }) => {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><Wallet size={22} /></div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">Caja</h1>
-            <p className="text-xs text-gray-500">Apertura, cierre y movimientos del turno</p>
+            <p className="text-xs text-gray-500">{salesEnabled ? 'Turnos, créditos, ventas e historial' : 'Gestión del turno de caja'}</p>
           </div>
         </div>
         <div className="text-xs text-gray-500">
@@ -112,17 +129,32 @@ const CashWorkspace = ({ tenantId, branchId, user }) => {
 
       <CashRegisterBar register={register} isLoading={isLoading} isError={isError} onRetry={refetch}
         onOpen={() => setShowOpen(true)} onClose={() => setShowClose(true)}
-        onMovement={setMovementType} onHistory={() => setShowHistory(true)} />
+        onMovement={setMovementType} onHistory={() => setShowHistory(true)} historyLabel="Turnos de caja" />
 
-      <main className="scrollbar-subtle flex-1 overflow-y-auto p-4 md:p-6">
-        {stateVerified && (register ? <CashSummaryView register={register} /> : (
-          <div className="mx-auto max-w-2xl rounded-xl border border-gray-200 bg-white p-8 text-center">
-            <Wallet size={36} className="mx-auto mb-3 text-gray-300" />
-            <h2 className="text-base font-semibold text-gray-900">Sin turno abierto</h2>
-            <p className="mt-2 text-sm text-gray-500">Abrí la caja de esta sucursal para iniciar la operación. Podés consultar los turnos anteriores en Historial.</p>
-          </div>
+      <nav role="tablist" aria-label="Gestión de caja" className="scrollbar-subtle flex flex-shrink-0 gap-1 overflow-x-auto border-b border-gray-200 bg-white px-2 md:px-6">
+        {tabs.map(({ key, label, icon: Icon }) => (
+          <button key={key} type="button" role="tab" id={`cash-tab-${key}`} aria-controls="cash-tab-panel"
+            aria-selected={activeTab === key} onClick={() => setActiveTab(key)}
+            className={`flex items-center gap-1 whitespace-nowrap border-b-2 px-2 py-3 text-xs font-medium md:gap-2 md:px-4 md:text-sm ${activeTab === key ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            <Icon size={16} />{label}
+          </button>
         ))}
-      </main>
+      </nav>
+
+      <div role="tabpanel" id="cash-tab-panel" aria-labelledby={`cash-tab-${activeTab}`} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {activeTab === 'turn' && <main className="scrollbar-subtle flex-1 overflow-y-auto p-4 md:p-6">
+          {stateVerified && (register ? <CashSummaryView register={register} /> : (
+            <div className="mx-auto max-w-2xl rounded-xl border border-gray-200 bg-white p-8 text-center">
+              <Wallet size={36} className="mx-auto mb-3 text-gray-300" />
+              <h2 className="text-base font-semibold text-gray-900">Sin turno abierto</h2>
+              <p className="mt-2 text-sm text-gray-500">Abrí la caja de esta sucursal para iniciar la operación. Podés consultar los turnos anteriores en Turnos de caja.</p>
+            </div>
+          ))}
+        </main>}
+        {salesEnabled && activeTab === 'credits' && <CreditsPanel inline />}
+        {salesEnabled && activeTab === 'sales' && <SalesSummaryTab canRefund={canOperateCash(user)} />}
+        {salesEnabled && activeTab === 'history' && <OrderHistoryTab />}
+      </div>
 
       <OpenCashRegisterModal isOpen={showOpen && stateVerified && !register} onClose={() => setShowOpen(false)} onConfirm={handleOpen} />
       <CloseCashRegisterModal isOpen={showClose && stateVerified && !!register} register={register} onClose={() => setShowClose(false)} onConfirm={handleClose} />

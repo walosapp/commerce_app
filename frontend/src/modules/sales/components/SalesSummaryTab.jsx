@@ -108,22 +108,22 @@ const OrderRow = ({ order, onRefund, onPrintReceipt }) => {
 };
 
 const SalesSummaryTab = ({ canRefund = false }) => {
-  const { branchId } = useAuthStore();
+  const { tenantId, branchId } = useAuthStore();
   const queryClient = useQueryClient();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [refundTarget, setRefundTarget] = useState(null);
   const [receiptOrderId, setReceiptOrderId] = useState(null);
 
   const { data: summaryData, isLoading: loadingSummary } = useQuery({
-    queryKey: ['sales-summary', branchId, date],
+    queryKey: ['sales-summary', tenantId, branchId, date],
     queryFn: () => salesService.getSummary(branchId, date),
-    enabled: !!branchId,
+    enabled: !!tenantId && !!branchId,
   });
 
   const { data: ordersData, isLoading: loadingOrders } = useQuery({
-    queryKey: ['sales-completed', branchId, date],
+    queryKey: ['sales-completed', tenantId, branchId, date],
     queryFn: () => salesService.getCompleted(branchId, date),
-    enabled: !!branchId,
+    enabled: !!tenantId && !!branchId,
   });
 
   const summary = summaryData?.data;

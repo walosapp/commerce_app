@@ -5,6 +5,7 @@ import OrderItemsList from './OrderItemsList';
 import toast from 'react-hot-toast';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import creditService from '../../../services/creditService';
+import useAuthStore from '../../../stores/authStore';
 
 const STATUS_LABEL = { pending: 'Pendiente', partial: 'Parcial', paid: 'Pagado', cancelled: 'Cancelado' };
 const STATUS_CLS   = {
@@ -180,14 +181,15 @@ const CreditsPanelContent = ({ statusFilter, setStatusFilter, search, setSearch,
 );
 
 const CreditsPanel = ({ isOpen, onClose, inline = false }) => {
+  const { tenantId, branchId } = useAuthStore();
   const queryClient  = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('pending');
   const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['credits', statusFilter, search],
+    queryKey: ['credits', tenantId, branchId, statusFilter, search],
     queryFn:  () => creditService.getCredits({ status: statusFilter, search: search || undefined }),
-    enabled:  isOpen || inline,
+    enabled: !!tenantId && !!branchId && (isOpen || inline),
   });
 
   const payMutation = useMutation({

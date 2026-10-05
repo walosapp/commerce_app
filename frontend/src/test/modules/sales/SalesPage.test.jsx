@@ -105,13 +105,6 @@ vi.mock('../../../modules/sales/components/AddTablePanel', () => ({
     ? <div>{products.map((product) => <span key={product.productId}>{product.productName}</span>)}</div>
     : null,
 }));
-vi.mock('../../../modules/sales/components/CreditsPanel', () => ({ default: () => <div>Panel de créditos</div> }));
-vi.mock('../../../modules/sales/components/SalesSummaryTab', () => ({ default: ({ canRefund }) => <div>{canRefund ? 'Puede devolver' : 'Solo consulta'}</div> }));
-vi.mock('../../../modules/sales/components/OpenCashRegisterModal', () => ({ default: () => null }));
-vi.mock('../../../modules/sales/components/CloseCashRegisterModal', () => ({ default: () => null }));
-vi.mock('../../../modules/sales/components/CashMovementModal', () => ({ default: () => null }));
-vi.mock('../../../modules/sales/components/CashRegisterHistory', () => ({ default: () => null }));
-vi.mock('../../../modules/sales/components/OrderHistoryTab', () => ({ default: () => null }));
 vi.mock('../../../modules/sales/components/KitchenTicket', () => ({
   default: ({ orderId, scope }) => <div>Comanda {scope} {orderId}</div>,
 }));
@@ -265,17 +258,17 @@ describe('SalesPage postventa restaurante H3', () => {
     expect(screen.getByText('Comanda activeRestaurant 44')).toBeInTheDocument();
   });
 
-  it('allows cashier cash operations when the company modules are enabled', () => {
+  it('conserva facturación y cancelación para cajero pero no paneles financieros', () => {
     authState.user = { role: 'cashier', isPlatformAdmin: false };
     featureState.canAccess.mockImplementation((code) => ['restaurant', 'cash'].includes(code));
 
     render(<SalesPage />);
 
-    expect(screen.getByRole('button', { name: /Créditos/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Créditos/i })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Facturar mesa' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Cancelar mesa' }).length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole('button', { name: /Ventas/i }));
-    expect(screen.getByText('Puede devolver')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Ventas|Historial/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Puede devolver')).not.toBeInTheDocument();
   });
 
   it.each(['waiter', 'cashier'])('solo consulta estado de caja para %s, sin gestión ni resumen financiero', async (role) => {
@@ -304,10 +297,10 @@ describe('SalesPage postventa restaurante H3', () => {
     expect(screen.queryByRole('button', { name: 'Abrir Caja' })).not.toBeInTheDocument();
   });
 
-  it('desmonta resumen de ventas al cambiar de cajero a mesero', () => {
+  it('no monta reportes financieros ni al cambiar de cajero a mesero', () => {
     const view = render(<SalesPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Ventas' }));
-    expect(screen.getByText('Puede devolver')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ventas' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Puede devolver')).not.toBeInTheDocument();
     authState.user = { role: 'waiter', isPlatformAdmin: false };
     view.rerender(<SalesPage />);
     expect(screen.queryByText('Puede devolver')).not.toBeInTheDocument();

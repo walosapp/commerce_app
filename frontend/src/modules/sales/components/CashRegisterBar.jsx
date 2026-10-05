@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { Wallet, DoorOpen, DoorClosed, ArrowDownCircle, ArrowUpCircle, Clock } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatCurrency';
 
-const CashRegisterBar = ({ register, isLoading = false, isError = false, onRetry, onOpen, onClose, onMovement, onHistory }) => {
+const CashRegisterBar = ({ register, isLoading = false, isError = false, onRetry, onOpen, onClose, onMovement, onHistory, historyLabel = 'Historial' }) => {
   if (isLoading) {
     return (
       <div className="bg-gray-50 border-b border-gray-200 px-4 md:px-6 py-3 flex items-center gap-3 flex-shrink-0">
@@ -53,7 +53,7 @@ const CashRegisterBar = ({ register, isLoading = false, isError = false, onRetry
             onClick={onHistory}
             className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 transition-colors"
           >
-            <Clock size={14} /> Historial
+            <Clock size={14} /> {historyLabel}
           </button>
           <button
             onClick={onOpen}
@@ -121,7 +121,7 @@ const CashRegisterBar = ({ register, isLoading = false, isError = false, onRetry
           onClick={onHistory}
           className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 transition-colors"
         >
-          <Clock size={14} /> Historial
+          <Clock size={14} /> {historyLabel}
         </button>
         <button
           onClick={onClose}

@@ -11,7 +11,7 @@ const STATUS_LABELS = { completed: 'Facturada', cancelled: 'Cancelada' };
 const REFUND_LABELS = { partial_refund: 'Parcial', full_refund: 'Anulada' };
 
 const OrderHistoryTab = () => {
-  const { branchId } = useAuthStore();
+  const { tenantId, branchId } = useAuthStore();
   const [filters, setFilters] = useState({
     dateFrom: '',
     dateTo: '',
@@ -38,9 +38,9 @@ const OrderHistoryTab = () => {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['order-history', queryParams],
+    queryKey: ['order-history', tenantId, branchId, queryParams],
     queryFn: () => salesService.searchOrders(queryParams),
-    enabled: !!branchId,
+    enabled: !!tenantId && !!branchId,
     keepPreviousData: true,
   });
 

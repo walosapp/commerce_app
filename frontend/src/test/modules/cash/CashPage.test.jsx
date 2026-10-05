@@ -61,7 +61,7 @@ describe('HU1: pantalla propia de Caja', () => {
     expect(screen.getByRole('heading', { name: 'Caja' })).toBeInTheDocument();
     expect(client.getQueryCache().getAll().map(q => q.queryKey)).toEqual([['cash-register-active', 3, 7]]);
     expect(screen.queryByText('Mesas')).not.toBeInTheDocument();
-    expect(screen.queryByText('Créditos')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Créditos' })).toBeInTheDocument();
   });
 
   it.each(['waiter', 'platform_admin', 'unknown'])('no consulta ni muestra caja al rol %s aunque haya cache', (role) => {
@@ -147,7 +147,7 @@ describe('HU1: pantalla propia de Caja', () => {
 
   it('abre historial de turnos sin consultas de Restaurante', async () => {
     const { client } = mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Historial' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Turnos de caja' }));
     expect(await screen.findByText('Sin turnos registrados')).toBeInTheDocument();
     expect(mocks.getHistory).toHaveBeenCalledWith({ dateFrom: undefined, dateTo: undefined });
     expect(client.getQueryCache().getAll().every(q => q.queryKey[0].startsWith('cash-register-'))).toBe(true);
@@ -157,7 +157,7 @@ describe('HU1: pantalla propia de Caja', () => {
   it('oculta datos y desmonta historial al cambiar a mesero con cache financiero', async () => {
     mocks.getActive.mockResolvedValue({ data: register });
     const view = mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Historial' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Turnos de caja' }));
     expect(await screen.findByText('Sin turnos registrados')).toBeInTheDocument();
     mocks.auth.user = { ...mocks.auth.user, role: 'waiter' };
     view.rerender(<QueryClientProvider client={view.client}><CashPage /></QueryClientProvider>);
