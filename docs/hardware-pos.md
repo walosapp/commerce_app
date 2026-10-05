@@ -290,6 +290,8 @@ La venta exitosa se informa antes del hardware. Después se notifican, sin bloqu
 |---|---:|
 | Print Agent tests Release | 55/55 verdes |
 | Frontend suite completa | 143/143 en 20/20 archivos |
+| Backend unitarios afectados | 51/51 verdes (`SalesServiceTests` y `PosSaleIdempotencyPolicyTests`) |
+| Backend integración checkout/POS-Deli | 71/71 verdes contra PostgreSQL de desarrollo, con secreto solo en variable del proceso |
 | Backend Release | Verde, 0 errores; 18 warnings preexistentes de nulabilidad/ocultamiento |
 | Frontend build | Verde; conserva warnings preexistentes de CSS, Browserslist y tamaño de chunk |
 | `git diff --check` | Verde; solo avisos informativos LF/CRLF |
@@ -300,14 +302,15 @@ Precondición: recompilar y reiniciar Walos Print Agent H3, vincularlo con la em
 
 1. **Restaurante + efectivo:** abrir una mesa, agregar un producto y facturar con una línea `cash` positiva. Confirmar que la venta aparece una sola vez en historial, el ticket H2 sale automáticamente sin diálogo y DIG-4101 abre una vez.
 2. **Restaurante + tarjeta:** repetir con una venta diferente pagada solo con `card`. Confirmar un ticket automático y cero apertura del cajón.
-3. **POS-Deli + efectivo:** registrar una venta nueva en efectivo. Confirmar una sola orden, un solo descuento de stock, un ticket automático y una sola apertura.
+3. **POS-Deli + efectivo:** registrar una venta nueva en efectivo. Confirmar una sola orden, un solo descuento de stock, un ticket automático y una sola apertura. Ante retry de red debe conservarse la idempotencia de venta existente y los jobs determinísticos deben impedir efectos repetidos.
 4. **Reimpresión desde historial:** abrir `ReceiptPreview` de cualquiera de las órdenes y pulsar **Imprimir con Walos**. Confirmar el mismo formato H2, un nuevo ticket y ninguna apertura de cajón.
+5. **Replay físico:** repetir exactamente el request de una venta con su misma idempotencia. Confirmar la misma orden, impresión `replayed` sin segundo ticket y cero nueva apertura.
 
 Registrar por escenario: `orderId`, método(s) persistido(s), estados print/drawer, cantidad de tickets físicos y cantidad de aperturas. No usar ventas nuevas para simular replay.
 
 ### Criterio de aprobación H3
 
-La UAT real confirmó los criterios funcionales de H3. Para futuras versiones se deben repetir impresión automática H2 en Restaurante y POS-Deli, efectivo abre una vez, tarjeta no abre, reimpresión manual nunca abre y los fallos de hardware no deben afectar la venta persistida ni duplicar ticket o apertura.
+La UAT real confirmó los criterios funcionales de H3. Para futuras versiones se deben repetir impresión automática H2 en Restaurante y POS-Deli, efectivo abre una vez, tarjeta no abre, reimpresión manual nunca abre y ningún retry duplica venta, ticket o apertura.
 
 **H3 APROBADO físicamente.**
 
