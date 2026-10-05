@@ -87,7 +87,7 @@ const CashSummaryView = ({ register }) => {
 };
 
 const SalesPage = ({ initialTab = 'tables' }) => {
-  const { branchId, user } = useAuthStore();
+  const { branchId, tenantId, user } = useAuthStore();
   const { canAccess } = useCompanyFeatures();
   const restaurantEnabled = canAccess('restaurant');
   const cashEnabled = canAccess('cash');
@@ -122,7 +122,7 @@ const SalesPage = ({ initialTab = 'tables' }) => {
     isError: cashError,
     refetch: retryCashRegister,
   } = useQuery({
-    queryKey: ['cash-register-active', branchId],
+    queryKey: ['cash-register-active', tenantId, branchId],
     queryFn: () => cashRegisterService.getActive(),
     enabled: !!branchId && cashEnabled,
     refetchInterval: 60000,
@@ -137,7 +137,7 @@ const SalesPage = ({ initialTab = 'tables' }) => {
   });
 
   const { data: stockData, isLoading: stockLoading } = useQuery({
-    queryKey: ['sale-catalog', branchId],
+    queryKey: ['sale-catalog', tenantId, branchId],
     queryFn: () => inventoryService.getSaleCatalog(branchId),
     enabled: !!branchId && restaurantEnabled,
   });

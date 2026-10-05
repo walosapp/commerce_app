@@ -11,14 +11,24 @@ const mocks = vi.hoisted(() => ({
   renewIdempotencyKey: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  getProducts: vi.fn(),
+  getFavorites: vi.fn(),
+  queryConfigs: [],
+  authState: { tenantId: 3, branchId: 7, user: { role: 'cashier', isPlatformAdmin: false } },
+  catalogState: { products: [] },
   storeState: null,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }) => ({
-    data: { data: [] },
-    ...(queryKey[0] === 'pos-deli-products' ? { refetch: mocks.refetch } : {}),
-  }),
+  useQuery: (config) => {
+    mocks.queryConfigs.push(config);
+    return {
+      data: {
+        data: config.queryKey[0] === 'pos-deli-products' ? mocks.catalogState.products : [],
+      },
+      ...(config.queryKey[0] === 'pos-deli-products' ? { refetch: mocks.refetch } : {}),
+    };
+  },
 }));
 
 vi.mock('react-hot-toast', () => ({
@@ -30,10 +40,14 @@ vi.mock('react-hot-toast', () => ({
 
 vi.mock('../../../services/posDeliService', () => ({
   default: {
-    getProducts: vi.fn(),
-    getFavorites: vi.fn(),
+    getProducts: mocks.getProducts,
+    getFavorites: mocks.getFavorites,
     createSale: mocks.createSale,
   },
+}));
+
+vi.mock('../../../stores/authStore', () => ({
+  default: () => mocks.authState,
 }));
 
 vi.mock('../../../stores/postSaleHardwareStore', () => ({
@@ -59,7 +73,9 @@ vi.mock('../../../modules/pos-deli/hooks/useBarcodeScanner', () => ({
 }));
 
 vi.mock('../../../modules/pos-deli/components/ProductGrid', () => ({
-  default: () => null,
+  default: ({ weighedProducts, unitProducts }) => (
+    <div>{[...weighedProducts, ...unitProducts].map((product) => <span key={product.id}>{product.name}</span>)}</div>
+  ),
 }));
 
 vi.mock('../../../modules/pos-deli/components/ProductSearchBar', () => ({
@@ -99,6 +115,9 @@ const renderCheckout = () => {
 describe('PosDeliPage H3 postventa', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.queryConfigs.length = 0;
+    mocks.authState.user = { role: 'cashier', isPlatformAdmin: false };
+    mocks.catalogState.products = [];
     mocks.getIdempotencyKey.mockReturnValue('sale-key-1');
     mocks.renewIdempotencyKey.mockReturnValue('sale-key-2');
     mocks.refetch.mockResolvedValue({ data: { data: [] } });
@@ -127,6 +146,22 @@ describe('PosDeliPage H3 postventa', () => {
       getIdempotencyKey: mocks.getIdempotencyKey,
       renewIdempotencyKey: mocks.renewIdempotencyKey,
     };
+  });
+
+  it('renders the POS sales catalog for cashier in the active tenant branch', async () => {
+    mocks.catalogState.products = [{ id: 501, name: 'Café POS', unitAbbreviation: 'und' }];
+    render(<PosDeliPage />);
+
+    const productsQuery = mocks.queryConfigs.find((config) => config.queryKey[0] === 'pos-deli-products');
+    const favoritesQuery = mocks.queryConfigs.find((config) => config.queryKey[0] === 'pos-deli-favorites');
+
+    expect(productsQuery.enabled).toBe(true);
+    expect(favoritesQuery.enabled).toBe(true);
+    expect(productsQuery.queryKey).toEqual(['pos-deli-products', 3, 7, '']);
+    expect(favoritesQuery.queryKey).toEqual(['pos-deli-favorites', 3, 7]);
+    expect(screen.getByText('Café POS')).toBeInTheDocument();
+    await productsQuery.queryFn();
+    expect(mocks.getProducts).toHaveBeenCalledWith({ search: '' });
   });
 
   it('encola hardware solo con el orderId persistido y conserva la idempotencia de venta', async () => {

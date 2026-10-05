@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SalesPage from '../../../modules/sales/SalesPage';
 
-const { cancelTable, invoiceTable, getSaleCatalog, enqueuePostSale, invalidateQueries, toastSuccess, toastError, featureState, queryConfigs, authState, cashState } = vi.hoisted(() => ({
+const { cancelTable, invoiceTable, getSaleCatalog, enqueuePostSale, invalidateQueries, toastSuccess, toastError, featureState, queryConfigs, authState, cashState, catalogState } = vi.hoisted(() => ({
   cancelTable: vi.fn(),
   invoiceTable: vi.fn(),
   getSaleCatalog: vi.fn(),
@@ -12,8 +12,9 @@ const { cancelTable, invoiceTable, getSaleCatalog, enqueuePostSale, invalidateQu
   toastError: vi.fn(),
   featureState: { canAccess: vi.fn() },
   queryConfigs: [],
-  authState: { branchId: 7, user: { role: 'manager', isPlatformAdmin: false } },
+  authState: { branchId: 7, tenantId: 3, user: { role: 'manager', isPlatformAdmin: false } },
   cashState: { register: null, isLoading: false },
+  catalogState: { items: [] },
 }));
 
 const table = {
@@ -30,7 +31,7 @@ vi.mock('@tanstack/react-query', () => ({
     queryConfigs.push(config);
     const { queryKey } = config;
     if (queryKey[0] === 'sales-tables') return { data: { data: [table] }, isLoading: false };
-    if (queryKey[0] === 'sale-catalog') return { data: { data: [] }, isLoading: false };
+    if (queryKey[0] === 'sale-catalog') return { data: { data: catalogState.items }, isLoading: false };
     if (queryKey[0] === 'cash-register-active') {
       return {
         data: { data: cashState.register },
@@ -98,7 +99,11 @@ vi.mock('../../../modules/sales/components/InvoicePanel', () => ({
   ) : null,
 }));
 
-vi.mock('../../../modules/sales/components/AddTablePanel', () => ({ default: () => null }));
+vi.mock('../../../modules/sales/components/AddTablePanel', () => ({
+  default: ({ isOpen, products }) => isOpen
+    ? <div>{products.map((product) => <span key={product.productId}>{product.productName}</span>)}</div>
+    : null,
+}));
 vi.mock('../../../modules/sales/components/CreditsPanel', () => ({ default: () => <div>Panel de créditos</div> }));
 vi.mock('../../../modules/sales/components/SalesSummaryTab', () => ({ default: ({ canRefund }) => <div>{canRefund ? 'Puede devolver' : 'Solo consulta'}</div> }));
 vi.mock('../../../modules/sales/components/OpenCashRegisterModal', () => ({ default: () => null }));
@@ -124,6 +129,7 @@ describe('SalesPage postventa restaurante H3', () => {
     cashState.isLoading = false;
     cashState.isError = false;
     cashState.refetch = vi.fn();
+    catalogState.items = [];
     featureState.canAccess.mockReturnValue(true);
     getSaleCatalog.mockResolvedValue({ data: [] });
     cancelTable.mockResolvedValue({ success: true });
@@ -210,6 +216,29 @@ describe('SalesPage postventa restaurante H3', () => {
 
     const catalogQuery = queryConfigs.find((config) => config.queryKey[0] === 'sale-catalog');
     expect(catalogQuery.enabled).toBe(true);
+    expect(catalogQuery.queryKey).toEqual(['sale-catalog', 3, 7]);
+    await catalogQuery.queryFn();
+    expect(getSaleCatalog).toHaveBeenCalledWith(7);
+  });
+
+  it.each(['waiter', 'cashier'])('loads the restaurant sales catalog for %s without inventory administration', async (role) => {
+    authState.user = { role, isPlatformAdmin: false };
+    featureState.canAccess.mockImplementation((code) => code === 'restaurant');
+    catalogState.items = [{
+      productId: 501,
+      productName: `Café ${role}`,
+      isConfiguredForSale: true,
+      trackStock: false,
+      availableQuantity: 0,
+    }];
+
+    render(<SalesPage />);
+
+    const catalogQuery = queryConfigs.find((config) => config.queryKey[0] === 'sale-catalog');
+    expect(catalogQuery.enabled).toBe(true);
+    expect(catalogQuery.queryKey).toEqual(['sale-catalog', 3, 7]);
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar Mesa' }));
+    expect(screen.getByText(`Café ${role}`)).toBeInTheDocument();
     await catalogQuery.queryFn();
     expect(getSaleCatalog).toHaveBeenCalledWith(7);
   });
@@ -293,7 +322,7 @@ describe('SalesPage postventa restaurante H3', () => {
     render(<SalesPage initialTab="cash" />);
 
     const activeQuery = queryConfigs.find((config) => config.queryKey[0] === 'cash-register-active');
-    expect(activeQuery.queryKey).toEqual(['cash-register-active', 7]);
+    expect(activeQuery.queryKey).toEqual(['cash-register-active', 3, 7]);
     expect(screen.getByText('Caja abierta')).toBeInTheDocument();
     expect(screen.getByText('Turno actual')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Abrir Caja/i })).not.toBeInTheDocument();

@@ -27,6 +27,34 @@ public class AuthorizationPolicyTests
     }
 
     [Theory]
+    [InlineData(WalosRoles.Waiter)]
+    [InlineData(WalosRoles.Cashier)]
+    public async Task Sales_Roles_Can_Read_Catalog_But_Not_Administrative_Inventory(string role)
+    {
+        var authorization = CreateAuthorizationService();
+        var principal = Principal(role);
+
+        var catalog = await authorization.AuthorizeAsync(
+            principal, null, WalosPolicies.CatalogRead);
+        var inventory = await authorization.AuthorizeAsync(
+            principal, null, WalosPolicies.InventoryRead);
+
+        Assert.True(catalog.Succeeded);
+        Assert.False(inventory.Succeeded);
+    }
+
+    [Fact]
+    public async Task Platform_Admin_Cannot_Read_Operational_Sales_Catalog()
+    {
+        var result = await CreateAuthorizationService().AuthorizeAsync(
+            Principal(WalosRoles.PlatformAdmin, platformAdmin: true),
+            null,
+            WalosPolicies.CatalogRead);
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Theory]
     [InlineData(WalosRoles.Cashier, WalosPolicies.PurchasesRead)]
     [InlineData(WalosRoles.Cashier, WalosPolicies.SuppliersRead)]
     [InlineData(WalosRoles.Waiter, WalosPolicies.PurchasesRead)]

@@ -11,6 +11,7 @@ import useScale from './hooks/useScale';
 import useBarcodeScanner from './hooks/useBarcodeScanner';
 import usePosDeliStore from './stores/posDeliStore';
 import usePostSaleHardwareStore from '../../stores/postSaleHardwareStore';
+import useAuthStore from '../../stores/authStore';
 import posDeliService from '../../services/posDeliService';
 
 const isWeighedProduct = (product) => {
@@ -19,6 +20,8 @@ const isWeighedProduct = (product) => {
 };
 
 const PosDeliPage = () => {
+  const { branchId, tenantId } = useAuthStore();
+  const canLoadSalesCatalog = !!tenantId && !!branchId;
   const [search, setSearch] = useState('');
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [weightModalProduct, setWeightModalProduct] = useState(null);
@@ -52,13 +55,15 @@ const PosDeliPage = () => {
   const total = getTotal();
 
   const { data: productsData, refetch } = useQuery({
-    queryKey: ['pos-deli-products', search],
+    queryKey: ['pos-deli-products', tenantId, branchId, search],
     queryFn: () => posDeliService.getProducts({ search }),
+    enabled: canLoadSalesCatalog,
   });
 
   const { data: favoritesData } = useQuery({
-    queryKey: ['pos-deli-favorites'],
+    queryKey: ['pos-deli-favorites', tenantId, branchId],
     queryFn: () => posDeliService.getFavorites(),
+    enabled: canLoadSalesCatalog,
   });
 
   const products = useMemo(() => {
