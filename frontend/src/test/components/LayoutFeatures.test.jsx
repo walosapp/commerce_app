@@ -56,6 +56,20 @@ describe('Layout company features', () => {
     featureState.canAccess.mockImplementation((code) => ['dashboard', 'restaurant'].includes(code));
   });
 
+  it('bounds inventory to the viewport and delegates scrolling to its table', () => {
+    const { container } = render(<MemoryRouter initialEntries={['/inventory']}><Layout><div>Inventario</div></Layout></MemoryRouter>);
+    expect(container.firstElementChild).toHaveClass('h-dvh', 'overflow-hidden');
+    expect(screen.getByRole('main')).toHaveClass('min-h-0', 'overflow-hidden', 'flex');
+    expect(screen.getByRole('main')).not.toHaveClass('overflow-y-auto');
+  });
+
+  it.each(['/sales', '/profile', '/pos-deli'])('preserves page scrolling outside inventory: %s', route => {
+    const { container } = render(<MemoryRouter initialEntries={[route]}><Layout><div>Contenido</div></Layout></MemoryRouter>);
+    expect(container.firstElementChild).toHaveClass('h-full');
+    expect(screen.getByRole('main')).toHaveClass('overflow-y-auto');
+    expect(screen.getByRole('main')).not.toHaveClass('overflow-hidden');
+  });
+
   it('builds navigation from independent restaurant and POS features', () => {
     render(<MemoryRouter><Layout><div>Contenido</div></Layout></MemoryRouter>);
 

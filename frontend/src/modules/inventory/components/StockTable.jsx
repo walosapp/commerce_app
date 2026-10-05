@@ -5,12 +5,11 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Search, ArrowUpDown, Package, Pencil, Trash2, Plus, ImageIcon } from 'lucide-react';
+import { ArrowUpDown, Package, Pencil, Trash2, Plus, ImageIcon } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import { resolveAssetUrl } from '../../../utils/assetUrl';
 
-const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStock }) => {
-  const [search, setSearch] = useState('');
+const StockTable = ({ stock = [], search = '', isLoading = false, onEdit, onDelete, onAddStock }) => {
   const [sortField, setSortField] = useState('productName');
   const [sortDirection, setSortDirection] = useState('asc');
   const showActions = Boolean(onEdit || onDelete || onAddStock);
@@ -82,7 +81,7 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
 
   if (isLoading) {
     return (
-      <div className="card flex items-center justify-center py-12">
+      <div className="card flex min-h-0 flex-1 items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500" />
         <span className="ml-3 text-gray-500">Cargando stock...</span>
       </div>
@@ -90,24 +89,10 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
   }
 
   return (
-    <div className="card p-0 overflow-hidden">
-      {/* Search */}
-      <div className="border-b border-gray-200 p-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar por nombre, SKU o categoría..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input pl-10"
-          />
-        </div>
-      </div>
-
+    <div className="card flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
       {/* Table */}
       {filteredAndSorted.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+        <div className="inventory-table-scroll flex min-h-0 flex-1 flex-col items-center justify-center overflow-auto p-4 text-center text-gray-500">
           <Package className="h-12 w-12 mb-3 text-gray-300" />
           <p className="font-medium">No se encontraron productos</p>
           <p className="text-sm mt-1">
@@ -115,8 +100,9 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+        <div role="region" aria-label="Tabla de inventario" tabIndex={0}
+          className="inventory-table-scroll min-h-0 flex-1 overflow-auto overscroll-contain focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-500">
+          <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-gray-50 text-xs uppercase text-gray-500">
               <tr>
                 <th
@@ -255,7 +241,7 @@ const StockTable = ({ stock = [], isLoading = false, onEdit, onDelete, onAddStoc
 
       {/* Footer */}
       {filteredAndSorted.length > 0 && (
-        <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500">
+        <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500">
           Mostrando {filteredAndSorted.length} de {stock?.length || 0} productos
         </div>
       )}

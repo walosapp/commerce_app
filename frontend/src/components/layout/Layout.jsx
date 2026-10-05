@@ -54,6 +54,7 @@ const Layout = ({ children }) => {
   const setTheme = useUiStore((state) => state.setTheme);
   const navigate = useNavigate();
   const location = useLocation();
+  const isInventoryWorkspace = location.pathname.replace(/\/$/, '') === '/inventory';
   const { canAccess, isPlatformOnly, isReady } = useCompanyFeatures();
   const canUseInventory = isReady && canAccess('inventory');
 
@@ -204,7 +205,7 @@ const Layout = ({ children }) => {
   };
 
   return (
-    <div className="flex h-full bg-gray-50">
+    <div className={`flex bg-gray-50 ${isInventoryWorkspace ? 'h-dvh overflow-hidden' : 'h-full'}`}>
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 transition-opacity duration-300 lg:hidden"
@@ -321,8 +322,8 @@ const Layout = ({ children }) => {
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 items-center justify-between border-b bg-white px-6 shadow-sm">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b bg-white px-6 shadow-sm">
           <div className="flex min-w-0 items-center gap-3">
             <button onClick={() => setSidebarOpen(true)} className="lg:hidden">
               <Menu className="h-6 w-6" />
@@ -366,7 +367,7 @@ const Layout = ({ children }) => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4">{children}</main>
+        <main className={`flex-1 p-4 ${isInventoryWorkspace ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}`}>{children}</main>
       </div>
     </div>
   );

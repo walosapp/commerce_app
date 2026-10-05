@@ -15,7 +15,7 @@ import usePostSaleHardwareStore from '../../stores/postSaleHardwareStore';
 import AddTablePanel from './components/AddTablePanel';
 import TableCard from './components/TableCard';
 import InvoicePanel from './components/InvoicePanel';
-import CashStatusBar from './components/CashStatusBar';
+import RestaurantHeader from './components/RestaurantHeader';
 import KitchenTicket from './components/KitchenTicket';
 
 import useCompanyFeatures from '../../hooks/useCompanyFeatures';
@@ -219,24 +219,11 @@ const SalesPage = () => {
   };
 
   return (
-    <div className="flex flex-col -m-4 h-[calc(100%+2rem)] overflow-hidden">
-
-      <CashStatusBar />
-
-      {/* Top bar */}
-      <div className="px-4 md:px-6 py-4 border-b bg-white flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center">
-            <ShoppingCart size={20} className="text-primary-600" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Restaurante</h1>
-            <p className="text-sm text-gray-500">
-              {`${tables.length} mesa${tables.length !== 1 ? 's' : ''} activa${tables.length !== 1 ? 's' : ''}`}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
+      <RestaurantHeader>
+          <span className="mr-1 text-xs text-gray-500">
+            {`${tables.length} mesa${tables.length !== 1 ? 's' : ''} activa${tables.length !== 1 ? 's' : ''}`}
+          </span>
           {tables.length > 0 && (
             <button
               onClick={() => setArrangeKey((k) => k + 1)}
@@ -253,8 +240,7 @@ const SalesPage = () => {
               <PlusCircle size={16} /> Agregar Mesa
             </button>
           )}
-        </div>
-      </div>
+      </RestaurantHeader>
 
       {/* Content */}
       <div className="flex-1 overflow-hidden flex flex-col">

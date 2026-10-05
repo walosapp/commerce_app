@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import CashStatusBar from '../../../modules/sales/components/CashStatusBar';
+import RestaurantHeader from '../../../modules/sales/components/RestaurantHeader';
 import PosHeader from '../../../modules/pos-deli/components/PosHeader';
 import { canRoleAccessFeature } from '../../../config/companyFeatures';
 
@@ -10,7 +10,7 @@ vi.mock('../../../stores/authStore', () => ({ default: () => mocks.auth }));
 vi.mock('../../../hooks/useCompanyFeatures', () => ({ default: () => mocks.features }));
 vi.mock('../../../services/cashRegisterService', () => ({ cashRegisterService: { getStatus: mocks.getStatus, getActive: mocks.getActive } }));
 
-const mount = (children = <CashStatusBar />) => {
+const mount = (children = <RestaurantHeader />) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(['cash-register-active', 155, 91], { data: { status: 'open', totalSales: 999999, openingAmount: 50000 } });
   const view = render(<QueryClientProvider client={client}>{children}</QueryClientProvider>);
@@ -41,7 +41,7 @@ describe('HU2: estado mínimo operativo, sin API financiera', () => {
 
   it('POS utiliza la misma query de estado, no una caja completa', async () => {
     mocks.auth.user.role = 'cashier';
-    mount(<><CashStatusBar /><PosHeader /></>);
+    mount(<><RestaurantHeader /><PosHeader /></>);
     await waitFor(() => expect(screen.getAllByText('Caja: ABIERTA')).toHaveLength(2));
     expect(mocks.getStatus).toHaveBeenCalledOnce();
     expect(mocks.getActive).not.toHaveBeenCalled();
@@ -118,8 +118,47 @@ describe('HU2: estado mínimo operativo, sin API financiera', () => {
     expect(await screen.findByText('Caja: ABIERTA')).toBeInTheDocument();
     mocks.auth.branchId = 92;
     mocks.getStatus.mockResolvedValue({ data: { branchId: 92, status: 'closed' } });
-    view.rerender(<QueryClientProvider client={view.client}><CashStatusBar /></QueryClientProvider>);
+    view.rerender(<QueryClientProvider client={view.client}><RestaurantHeader /></QueryClientProvider>);
     expect(await screen.findByText('Caja: CERRADA')).toBeInTheDocument();
     expect(view.client.getQueryData(['cash-register-status', 155, 92])).toEqual({ data: { branchId: 92, status: 'closed' } });
+  });
+});
+
+describe('Encabezado Restaurante con estilo POS sin buscador', () => {
+  it.each(['waiter', 'cashier'])('muestra operador, sucursal y hora para %s sin resumen ni buscador', async (role) => {
+    mocks.auth.user = { ...mocks.auth.user, role, name: 'Edwin Campo', branchName: 'Principal' };
+    const { container } = mount();
+    expect(screen.getByRole('heading', { name: 'Restaurante' })).toBeInTheDocument();
+    expect(screen.getByText('Edwin Campo')).toBeInTheDocument();
+    expect(screen.getByText('Principal')).toBeInTheDocument();
+    expect(screen.getByText(/Operador:/)).toBeInTheDocument();
+    expect(container.querySelector('time')).toHaveAttribute('datetime');
+    expect(container.querySelector('time')).toHaveTextContent(/\d{2}:\d{2}/);
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cajero:|Ventas totales/)).not.toBeInTheDocument();
+    expect(await screen.findByText('Caja: ABIERTA')).toBeInTheDocument();
+    expect(mocks.getActive).not.toHaveBeenCalled();
+  });
+
+  it('conserva el espacio para acciones de mesas sin agregar buscador', () => {
+    const onCreate = vi.fn();
+    mount(<RestaurantHeader><span>2 mesas activas</span><button onClick={onCreate}>Agregar Mesa</button></RestaurantHeader>);
+    expect(screen.getByText('2 mesas activas')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar Mesa' }));
+    expect(onCreate).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('identifica la sucursal por id si la sesión no trae su nombre', () => {
+    mount();
+    expect(screen.getByText('#91')).toBeInTheDocument();
+  });
+
+  it('indica sucursal sin asignar y no consulta estado sin contexto', () => {
+    mocks.auth.branchId = null;
+    mount();
+    expect(screen.getByText('Sin asignar')).toBeInTheDocument();
+    expect(screen.getByText('Caja: SIN CONTEXTO DE SUCURSAL')).toBeInTheDocument();
+    expect(mocks.getStatus).not.toHaveBeenCalled();
   });
 });
