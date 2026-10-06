@@ -4,12 +4,13 @@
  * ¿Para qué? Registrar arqueo, calcular diferencia y generar reporte Z
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { DoorClosed, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatCurrency';
 import { calculateExpectedCash } from '../../../utils/cashRegister';
 
 const CloseCashRegisterModal = ({ isOpen, onClose, onConfirm, register }) => {
+  const fieldId = useId();
   const [closingAmount, setClosingAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -136,19 +137,20 @@ const CloseCashRegisterModal = ({ isOpen, onClose, onConfirm, register }) => {
           {/* Formulario de arqueo */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor={`${fieldId}-amount`} className="block text-sm font-medium text-gray-700 mb-1">
                 Conteo real de efectivo
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                 <input
+                  id={`${fieldId}-amount`}
                   type="number"
                   min="0"
                   step="100"
                   value={closingAmount}
                   onChange={(e) => setClosingAmount(e.target.value)}
                   placeholder="Cuenta el efectivo"
-                  className="w-full rounded-lg border border-gray-300 pl-7 pr-4 py-2.5 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                  className="input pl-7 pr-4 py-2.5"
                   autoFocus
                 />
               </div>
@@ -175,15 +177,16 @@ const CloseCashRegisterModal = ({ isOpen, onClose, onConfirm, register }) => {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor={`${fieldId}-notes`} className="block text-sm font-medium text-gray-700 mb-1">
                 Notas de cierre (opcional)
               </label>
               <textarea
+                id={`${fieldId}-notes`}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Observaciones del turno..."
                 rows={2}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 resize-none"
+                className="input px-4 py-2.5 resize-none"
               />
             </div>
 

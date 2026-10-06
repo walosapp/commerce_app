@@ -93,7 +93,7 @@ const CashMovementModal = ({ isOpen, onClose, onConfirm, registerId, type = 'in'
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0"
-                className="w-full rounded-lg border border-gray-300 pl-7 pr-4 py-2.5 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                className="input pl-7 pr-4 py-2.5"
                 autoFocus
               />
             </div>
@@ -134,7 +134,7 @@ const CashMovementModal = ({ isOpen, onClose, onConfirm, registerId, type = 'in'
                 value={customReason}
                 onChange={(e) => setCustomReason(e.target.value)}
                 placeholder="Describe el motivo"
-                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                className="input px-4 py-2.5"
               />
             )}
           </div>
@@ -148,7 +148,7 @@ const CashMovementModal = ({ isOpen, onClose, onConfirm, registerId, type = 'in'
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Detalle adicional"
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+              className="input px-4 py-2.5"
             />
           </div>
 
