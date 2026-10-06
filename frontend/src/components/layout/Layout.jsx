@@ -57,6 +57,8 @@ const Layout = ({ children }) => {
   const isInventoryWorkspace = location.pathname.replace(/\/$/, '') === '/inventory';
   const { canAccess, isPlatformOnly, isReady } = useCompanyFeatures();
   const canUseInventory = isReady && canAccess('inventory');
+  const canUsePurchases = isReady && canAccess('purchases');
+  const canUseSuppliers = isReady && canAccess('suppliers');
 
   const { data: settingsData } = useQuery({
     queryKey: ['company-settings', tenantId],
@@ -131,8 +133,13 @@ const Layout = ({ children }) => {
     { feature: 'restaurant', name: 'Restaurante', path: '/sales', icon: ShoppingCart },
     { feature: 'pos', name: 'POS', path: '/pos-deli', icon: Scale },
     { feature: 'cash', name: 'Caja', path: '/cash', icon: Wallet },
-    { feature: 'purchases', name: 'Compras', path: '/purchases', icon: ClipboardList },
-    { feature: 'suppliers', name: 'Proveedores', path: '/suppliers', icon: Truck },
+    {
+      feature: canUsePurchases ? 'purchases' : 'suppliers',
+      name: canUsePurchases && canUseSuppliers ? 'Compras y proveedores' : (canUsePurchases ? 'Compras' : 'Proveedores'),
+      path: canUsePurchases ? '/purchases' : '/suppliers',
+      activePaths: ['/purchases', '/suppliers'],
+      icon: canUsePurchases ? ClipboardList : Truck,
+    },
     { feature: 'delivery', name: 'Delivery', path: '/delivery', icon: Bike },
     { feature: 'finance', name: 'Finanzas', path: '/finance', icon: Landmark },
     { feature: 'ai', name: 'Asistente IA', path: '/ai-assistant', icon: Bot },
@@ -165,13 +172,14 @@ const Layout = ({ children }) => {
 
   const renderMenuLink = (item, child = false) => {
     const Icon = item.icon;
-    const isRoot = item.path === '/';
-    const isActive = isRoot ? location.pathname === '/' : location.pathname.startsWith(item.path);
+    const isActive = (item.activePaths || [item.path]).some(path =>
+      path === '/' ? location.pathname === '/' : location.pathname.startsWith(path));
 
     return (
       <Link
         key={item.path}
         to={item.path}
+        aria-current={isActive ? 'page' : undefined}
         title={collapsed ? item.name : undefined}
         className={`group relative flex items-center gap-3 rounded-lg px-3 transition-colors ${
           child ? 'ml-3 border-l border-gray-200 py-2.5 pl-4 text-sm' : 'py-3'
@@ -192,6 +200,7 @@ const Layout = ({ children }) => {
         </span>
 
         <span
+          aria-hidden="true"
           className={`
             pointer-events-none absolute left-full z-[60] ml-2 hidden whitespace-nowrap rounded-md bg-gray-900 px-2.5 py-1.5
             text-xs font-medium text-white shadow-lg transition-opacity duration-200

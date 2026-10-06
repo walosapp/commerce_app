@@ -52,8 +52,42 @@ describe('Layout company features', () => {
     vi.clearAllMocks();
     queryConfigs.length = 0;
     featureState.isPlatformOnly = false;
+    featureState.isReady = true;
     authState.user = { role: 'manager', isPlatformAdmin: false, email: 'manager@walos.app' };
     featureState.canAccess.mockImplementation((code) => ['dashboard', 'restaurant'].includes(code));
+  });
+
+  it.each([
+    { enabled: ['purchases', 'suppliers'], name: 'Compras y proveedores', path: '/purchases' },
+    { enabled: ['purchases'], name: 'Compras', path: '/purchases' },
+    { enabled: ['suppliers'], name: 'Proveedores', path: '/suppliers' },
+  ])('shows one purchasing workspace entry for $enabled without expanding feature access', ({ enabled, name, path }) => {
+    featureState.canAccess.mockImplementation(code => enabled.includes(code));
+    render(<MemoryRouter><Layout><div>Contenido</div></Layout></MemoryRouter>);
+    const links = screen.getAllByRole('link').filter(link => ['/purchases', '/suppliers'].includes(link.getAttribute('href')));
+    expect(links).toHaveLength(1);
+    expect(screen.getByRole('link', { name })).toHaveAttribute('href', path);
+  });
+
+  it.each(['/purchases', '/suppliers'])('highlights the single entry while viewing either workspace route: %s', path => {
+    featureState.canAccess.mockImplementation(code => ['purchases', 'suppliers'].includes(code));
+    render(<MemoryRouter initialEntries={[path]}><Layout><div>Contenido</div></Layout></MemoryRouter>);
+    expect(screen.getByRole('link', { name: 'Compras y proveedores' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('link', { name: /^Proveedores$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^Compras$/ })).not.toBeInTheDocument();
+  });
+
+  it('does not show the combined entry when neither feature is allowed', () => {
+    featureState.canAccess.mockReturnValue(false);
+    render(<MemoryRouter><Layout><div>Contenido</div></Layout></MemoryRouter>);
+    expect(screen.queryByRole('link', { name: /Compras|Proveedores/i })).not.toBeInTheDocument();
+  });
+
+  it('does not show the combined entry while feature configuration is unresolved', () => {
+    featureState.isReady = false;
+    featureState.canAccess.mockReturnValue(true);
+    render(<MemoryRouter><Layout><div>Contenido</div></Layout></MemoryRouter>);
+    expect(screen.queryByRole('link', { name: /Compras|Proveedores/i })).not.toBeInTheDocument();
   });
 
   it('bounds inventory to the viewport and delegates scrolling to its table', () => {
